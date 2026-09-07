@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="ru" class="h-full bg-slate-950 text-slate-100 select-none">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Козырной Дурак - Roguelike</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .felt-bg {
+            background: radial-gradient(circle at center, #1b3a21 0%, #0d1e12 70%, #050b06 100%);
+        }
+        .card-shadow {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.2);
+        }
+        .hand-scroll::-webkit-scrollbar { display: none; }
+        .hand-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+        .trump-glow {
+            box-shadow: 0 0 12px rgba(251, 191, 36, 0.7), 0 4px 10px rgba(0, 0, 0, 0.5);
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col justify-between overflow-hidden felt-bg relative">
+
+    <!-- Top Navigation & Stats Bar -->
+    <header class="w-full bg-black/60 border-b border-emerald-800/40 px-3 py-2 flex items-center justify-between text-xs sm:text-sm z-30 backdrop-blur-md">
+        <div class="flex items-center gap-3">
+            <div class="flex items-center gap-1.5 bg-rose-950/80 border border-rose-700/50 px-2.5 py-1 rounded-full">
+                <span class="text-rose-500 font-bold">♥</span>
+                <span id="player-hp-display" class="font-extrabold text-rose-200">30/30</span>
+            </div>
+            <div class="flex items-center gap-1.5 bg-amber-950/80 border border-amber-700/50 px-2.5 py-1 rounded-full">
+                <span class="text-amber-400 font-bold">🪙</span>
+                <span id="player-gold-display" class="font-extrabold text-amber-200">15$</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <div class="bg-emerald-950/80 border border-emerald-700/50 px-3 py-1 rounded-full font-semibold text-emerald-300">
+                Этаж <span id="floor-display" class="text-white font-bold">1</span>/5
+            </div>
+            <div id="save-status-badge" class="flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-900/30 border border-emerald-600/30 px-2 py-0.5 rounded-full">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span id="save-status-text">Сохранено</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Game Container -->
+    <main class="flex-1 flex flex-col justify-between p-2 max-w-md mx-auto w-full relative z-10">
+        
+        <!-- Enemy Area -->
+        <section class="bg-black/40 border border-emerald-900/40 rounded-xl p-2.5 flex items-center justify-between shadow-lg backdrop-blur-sm">
+            <div class="flex items-center gap-2.5">
+                <div class="w-10 h-10 rounded-full bg-slate-800 border-2 border-emerald-500 flex items-center justify-center text-xl shadow" id="enemy-avatar">
+                    🧔
+                </div>
+                <div>
+                    <h2 id="enemy-name" class="font-bold text-sm text-slate-100 leading-tight">Уличный Шулер</h2>
+                    <div class="flex items-center gap-2 text-xs mt-0.5">
+                        <span class="text-rose-400 font-medium">HP: <span id="enemy-hp">20</span></span>
+                        <span class="text-slate-400">| Карт: <span id="enemy-card-count" class="text-amber-300 font-semibold">6</span></span>
+                    </div>
+                    <!-- Boss Passive Rule Badge -->
+                    <div id="boss-ability-badge" class="mt-1 text-[10px] font-semibold text-amber-300 bg-amber-950/60 border border-amber-600/40 px-2 py-0.5 rounded-md inline-block">
+                        Особенность: Нет
+                    </div>
+                </div>
+            </div>
+            <div id="enemy-hand-visual" class="flex -space-x-4 overflow-hidden py-1">
+                <!-- Dynamic enemy cards -->
+            </div>
+        </section>
+
+        <!-- Battle Table Area -->
+        <section class="flex-1 my-2 flex flex-col justify-center items-center relative rounded-2xl border border-dashed border-emerald-700/30 bg-emerald-950/20 p-2">
+            
+            <!-- Deck & Trump Badge -->
+            <div id="deck-container" class="absolute left-3 top-3 flex items-center">
+                <!-- Deck elements rendered dynamically -->
+            </div>
+
+            <!-- Status Banner -->
+            <div id="turn-banner" class="mb-2 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm animate-pulse">
+                Ваш ход: Атака
+            </div>
+
+            <!-- Table Card Pairs Container -->
+            <div id="table-pairs" class="flex flex-wrap items-center justify-center gap-2 sm:gap-3 max-w-full min-h-[110px]">
+                <!-- Played cards appear here -->
+            </div>
+        </section>
+
+        <!-- Relics / Jokers Slot Bar -->
+        <section class="mb-1">
+            <div class="flex items-center justify-between px-1 mb-1 text-[11px] font-semibold text-emerald-400/80">
+                <span>ШУЛЕРСКИЕ АРТЕФАКТЫ (JOKERS)</span>
+                <span id="relic-count">0/5</span>
+            </div>
+            <div id="relics-bar" class="grid grid-cols-5 gap-1.5 bg-black/50 p-1.5 rounded-xl border border-emerald-900/50">
+                <!-- 5 Slots -->
+            </div>
+        </section>
+
+        <!-- Player Zone (Hand & Actions) -->
+        <section class="flex flex-col gap-2">
+            <!-- Player Hand -->
+            <div id="player-hand" class="hand-scroll flex items-center justify-start sm:justify-center -space-x-6 overflow-x-auto min-h-[105px] px-4 py-2">
+                <!-- Player cards dynamically inserted -->
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="grid grid-cols-3 gap-2">
+                <button id="btn-action" class="py-3 px-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg border border-emerald-400/30 transition disabled:opacity-40 disabled:pointer-events-none">
+                    БИТО
+                </button>
+                <button id="btn-transfer" class="py-3 px-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg border border-indigo-400/30 transition disabled:opacity-40 disabled:pointer-events-none">
+                    ПЕРЕВОД
+                </button>
+                <button id="btn-take" class="py-3 px-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg border border-rose-400/30 transition disabled:opacity-40 disabled:pointer-events-none">
+                    ВЗЯТЬ
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <!-- Shop Modal Overlay -->
+    <div id="shop-modal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 hidden flex-col justify-between p-4 max-w-md mx-auto">
+        <div class="text-center py-2 border-b border-amber-500/30">
+            <h2 class="text-xl font-extrabold text-amber-400 tracking-wide">ВОРОВСКОЙ ПРИТОН</h2>
+            <p class="text-xs text-slate-400">Покупайте артефакты и улучшайте колоду перед следующим боссом</p>
+        </div>
+
+        <div class="flex-1 overflow-y-auto py-3 flex flex-col gap-4">
+            <!-- Relics Shop Section -->
+            <div>
+                <h3 class="text-xs font-bold text-emerald-400 mb-2 uppercase tracking-wider">Шулерские Артефакты</h3>
+                <div id="shop-relics-list" class="grid grid-cols-1 gap-2">
+                    <!-- Shop Items -->
+                </div>
+            </div>
+
+            <!-- Card Removal Section -->
+            <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-xs font-bold text-rose-400">Сбросить слабую карту</span>
+                    <span class="text-xs font-bold text-amber-300">10$</span>
+                </div>
+                <p class="text-[11px] text-slate-400 mb-2">Удалите шестерку или семерку из колоды навсегда.</p>
+                <button id="btn-prune-card" class="w-full py-2 bg-rose-900/60 border border-rose-600/50 hover:bg-rose-800 text-rose-200 text-xs font-bold rounded-lg transition">
+                    Очистить колоду
+                </button>
+            </div>
+        </div>
+
+        <button id="btn-next-floor" class="w-full py-3 bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-black text-sm rounded-xl shadow-lg border border-yellow-300 active:scale-95 transition">
+            СЛЕДУЮЩИЙ ЭТАЖ ➔
+        </button>
+    </div>
+
+    <!-- Notification / Modal Message Box -->
+    <div id="msg-box" class="fixed inset-0 bg-black/75 z-50 hidden items-center justify-center p-4">
+        <div class="bg-slate-900 border-2 border-amber-500/60 rounded-2xl p-5 max-w-xs w-full text-center shadow-2xl space-y-4">
+            <div id="msg-title" class="text-lg font-black text-amber-400">Уведомление</div>
+            <div id="msg-body" class="text-xs text-slate-300 leading-relaxed">Текст сообщения</div>
+            <button id="msg-btn" class="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs rounded-xl shadow">
+                ПОНЯТНО
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const SAVE_KEY = 'fools_deck_local_run';
+
+        function updateSaveStatus(text) {
+            const badgeText = document.getElementById('save-status-text');
+            if (badgeText) badgeText.innerText = text;
+        }
+
+        function saveRunToLocal() {
+            try {
+                localStorage.setItem(SAVE_KEY, JSON.stringify({
+                    runState: run,
+                    updatedAt: new Date().toISOString()
+                }));
+                updateSaveStatus("Сохранено");
+            } catch (err) {
+                console.warn("Local storage unavailable:", err);
+                updateSaveStatus("Сессия");
+            }
+        }
+
+        function loadRunFromLocal() {
+            try {
+                const savedData = localStorage.getItem(SAVE_KEY);
+                if (savedData) {
+                    const parsed = JSON.parse(savedData);
+                    if (parsed && parsed.runState) {
+                        run = parsed.runState;
+                        showModal("Загрузка", `Восстановлен сохраненный забег: Этаж ${run.floor}, HP: ${run.playerHP}, Золото: ${run.gold}$`, () => {
+                            startFloorBattle();
+                        });
+                        return true;
+                    }
+                }
+            } catch (err) {
+                console.warn("Failed to load local run:", err);
+            }
+            return false;
+        }
+
+        function clearLocalSave() {
+            try {
+                localStorage.removeItem(SAVE_KEY);
+            } catch (err) {}
+        }
+
+        // --- Audio Synthesizer Engine (Web Audio API) ---
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+            }
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+            playCardSound() {
+                this.init();
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(200, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(60, this.ctx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.08);
+            }
+            playWinSound() {
+                this.init();
+                if (!this.ctx) return;
+                [261, 329, 392, 523].forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.1);
+                    gain.gain.setValueAtTime(0.2, this.ctx.currentTime + idx * 0.1);
+                    gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + idx * 0.1 + 0.2);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(this.ctx.currentTime + idx * 0.1);
+                    osc.stop(this.ctx.currentTime + idx * 0.1 + 0.25);
+                });
+            }
+            playTakeSound() {
+                this.init();
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(80, this.ctx.currentTime + 0.15);
+                gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.15);
+            }
+        }
+        const audio = new SoundEngine();
+
+        // --- Constants & Game State Data ---
+        const SUITS = { Pikes: '♠', Hearts: '♥', Tiles: '♦', Clovers: '♣' };
+        const SUIT_COLORS = { Pikes: 'text-slate-900', Clovers: 'text-slate-900', Hearts: 'text-rose-600', Tiles: 'text-rose-600' };
+        const VALUES = { 6:'6', 7:'7', 8:'8', 9:'9', 10:'10', 11:'В', 12:'Д', 13:'К', 14:'Т' };
+
+        const ALL_RELICS = [
+            { id: "ace_sleeve", name: "Туз в рукаве", icon: "🃏", desc: "Заставление врага взять карты наносит +5 ед. дополнительного урона.", price: 12 },
+            { id: "bully_throw", name: "Безжалостный подкидыш", icon: "💣", desc: "Позволяет подкидывать до 12 карт (ограничивается рукой защитника).", price: 15 },
+            { id: "midas_touch", name: "Золотое пальто", icon: "🪙", desc: "Получайте +3$ каждый раз, когда успешно отбиваетесь.", price: 10 },
+            { id: "mirror_ring", name: "Зеркальный перстень", icon: "💍", desc: "Когда вы берете карты, враг получает двойной урон от взятых карт.", price: 14 },
+            { id: "cheat_eye", name: "Шулерский глаз", icon: "👁️", desc: "Показывает вам наименьшую карту в руке соперника.", price: 8 }
+        ];
+
+        const ENEMIES = [
+            { floor: 1, name: "Уличный Шулер", hp: 20, avatar: "🧔", abilityId: "none", abilityDesc: "Стандартный противник" },
+            { floor: 2, name: "Карточный Трактирщик", hp: 30, avatar: "🍺", abilityId: "no_transfer", abilityDesc: "Запрет на Перевод карт" },
+            { floor: 3, name: "Фаворит Казино", hp: 40, avatar: "🎩", abilityId: "ai_transfer", abilityDesc: "Умеет Переводить ваши атаки" },
+            { floor: 4, name: "Основатель Синдиката", hp: 55, avatar: "🕵️", abilityId: "aggressive_throw", abilityDesc: "Агрессивно подкидывает до 8 карт" },
+            { floor: 5, name: "Тень (Финальный БОСС)", hp: 75, avatar: "👑", abilityId: "double_penalty", abilityDesc: "Удвоенный урон игроку при взятии карт" }
+        ];
+
+        let run = {
+            floor: 1,
+            playerHP: 30,
+            maxHP: 30,
+            gold: 15,
+            relics: [],
+            deck: []
+        };
+
+        let battle = {
+            drawDeck: [],
+            discardPile: [],
+            playerHand: [],
+            enemyHand: [],
+            trumpCard: null,
+            trumpSuit: null,
+            table: [], 
+            defender: 'enemy', // 'player' or 'enemy'
+            selectedCardIndex: null,
+            cardsToTake: false
+        };
+
+        function generateStandardDeck() {
+            const deck = [];
+            for (let suit in SUITS) {
+                for (let val = 6; val <= 14; val++) {
+                    deck.push({ id: `${suit}_${val}_${Math.random().toString(36).substr(2,4)}`, suit, value: val });
+                }
+            }
+            return deck;
+        }
+
+        function getCurrentEnemy() {
+            return ENEMIES[Math.min(run.floor - 1, ENEMIES.length - 1)];
+        }
+
+        function initNewRun() {
+            run = {
+                floor: 1,
+                playerHP: 30,
+                maxHP: 30,
+                gold: 15,
+                relics: [],
+                deck: generateStandardDeck()
+            };
+            saveRunToLocal();
+            startFloorBattle();
+        }
+
+        function startFloorBattle() {
+            const enemyData = getCurrentEnemy();
+            document.getElementById('enemy-name').innerText = enemyData.name;
+            document.getElementById('enemy-avatar').innerText = enemyData.avatar;
+            document.getElementById('enemy-hp').innerText = enemyData.hp;
+            document.getElementById('boss-ability-badge').innerText = `Особенность: ${enemyData.abilityDesc}`;
+
+            startNewRound();
+        }
+
+        function startNewRound() {
+            battle.drawDeck = [...run.deck].sort(() => Math.random() - 0.5);
+            battle.discardPile = [];
+            battle.playerHand = [];
+            battle.enemyHand = [];
+            battle.table = [];
+            battle.defender = 'enemy'; // Player attacks first
+            battle.selectedCardIndex = null;
+            battle.cardsToTake = false;
+
+            battle.trumpCard = battle.drawDeck[0];
+            battle.trumpSuit = battle.trumpCard.suit;
+
+            replenishHands();
+            renderAll();
+        }
+
+        function replenishHands() {
+            while (battle.playerHand.length < 6 && battle.drawDeck.length > 0) {
+                battle.playerHand.push(battle.drawDeck.pop());
+            }
+            while (battle.enemyHand.length < 6 && battle.drawDeck.length > 0) {
+                battle.enemyHand.push(battle.drawDeck.pop());
+            }
+            battle.playerHand.sort((a,b) => {
+                const aTrump = a.suit === battle.trumpSuit ? 1 : 0;
+                const bTrump = b.suit === battle.trumpSuit ? 1 : 0;
+                if (aTrump !== bTrump) return aTrump - bTrump;
+                if (a.suit === b.suit) return a.value - b.value;
+                return a.suit.localeCompare(b.suit);
+            });
+        }
+
+        function checkRoundEnd() {
+            if (battle.drawDeck.length > 0) return false;
+            if (battle.table.length > 0) return false;
+
+            const playerEmpty = battle.playerHand.length === 0;
+            const enemyEmpty = battle.enemyHand.length === 0;
+
+            if (playerEmpty && enemyEmpty) {
+                showModal("Ничья в кону", "Колода и карты обоих игроков закончились! Перемешиваем колоду...", () => {
+                    startNewRound();
+                });
+                return true;
+            }
+
+            if (playerEmpty) {
+                const enemyCardsLeft = battle.enemyHand.length;
+                const damage = 6 + (enemyCardsLeft * 4);
+                showModal("Раунд Выигран!", `Вы первыми скинули все карты! Противник остается в дураках и получает ${damage} ед. урона.`, () => {
+                    damageEnemyHP(damage);
+                    const currentHP = parseInt(document.getElementById('enemy-hp').innerText);
+                    if (currentHP > 0) {
+                        startNewRound();
+                    }
+                });
+                return true;
+            }
+
+            if (enemyEmpty) {
+                const playerCardsLeft = battle.playerHand.length;
+                const damage = 6 + (playerCardsLeft * 4);
+                run.playerHP = Math.max(0, run.playerHP - damage);
+                renderAll();
+
+                if (run.playerHP <= 0) {
+                    clearLocalSave();
+                    showModal("Поражение!", `Соперник первым скинул все карты. Вы получили ${damage} ед. урона и погибли.`, () => initNewRun());
+                } else {
+                    showModal("Раунд Проигран!", `Соперник первым скинул все карты! Вы остались в дураках с ${playerCardsLeft} картами и получили ${damage} ед. урона.`, () => {
+                        startNewRound();
+                    });
+                }
+                return true;
+            }
+
+            return false;
+        }
+
+        function canBeat(attackCard, defendCard) {
+            if (defendCard.suit === attackCard.suit) {
+                return defendCard.value > attackCard.value;
+            }
+            if (defendCard.suit === battle.trumpSuit && attackCard.suit !== battle.trumpSuit) {
+                return true;
+            }
+            return false;
+        }
+
+        function isRankOnTable(value) {
+            for (let pair of battle.table) {
+                if (pair.attack.value === value) return true;
+                if (pair.defend && pair.defend.value === value) return true;
+            }
+            return false;
+        }
+
+        // Calculated Max Attacks Limit based on rule: Cannot throw more cards than defender holds
+        function getMaxAllowedAttacks() {
+            const enemyData = getCurrentEnemy();
+            let baseLimit = hasRelic('bully_throw') ? 12 : 6;
+            if (enemyData.abilityId === 'aggressive_throw') baseLimit = 8;
+
+            if (battle.defender === 'enemy') {
+                // Enemy defender: limit is current cards in enemy hand + already open undefended/defended pairs
+                return Math.min(baseLimit, battle.enemyHand.length + battle.table.filter(p => p.defend).length);
+            } else {
+                return Math.min(baseLimit, battle.playerHand.length + battle.table.filter(p => p.defend).length);
+            }
+        }
+
+        // Enemy AI Logic
+        function executeEnemyAI() {
+            if (checkRoundEnd()) return;
+
+            const enemyData = getCurrentEnemy();
+
+            if (battle.defender === 'enemy') {
+                const openPairs = battle.table.filter(p => p.defend === null);
+                if (openPairs.length === 0) return;
+
+                // Check AI Transfer capability (Boss 3 or higher)
+                if ((enemyData.abilityId === 'ai_transfer' || run.floor >= 3) && battle.table.length === 1 && openPairs.length === 1) {
+                    const attackVal = battle.table[0].attack.value;
+                    const transferCardIdx = battle.enemyHand.findIndex(c => c.value === attackVal);
+                    if (transferCardIdx !== -1) {
+                        const transferCard = battle.enemyHand.splice(transferCardIdx, 1)[0];
+                        battle.table.push({ attack: transferCard, defend: null });
+                        battle.defender = 'player';
+                        audio.playCardSound();
+                        showModal("Враг Переводит!", `${enemyData.name} переводит атаку обратно на вас!`);
+                        renderAll();
+                        return;
+                    }
+                }
+
+                let allDefended = true;
+
+                for (let pair of openPairs) {
+                    let validCards = battle.enemyHand.filter(c => canBeat(pair.attack, c));
+                    validCards.sort((a,b) => {
+                        const aTrump = a.suit === battle.trumpSuit ? 100 : 0;
+                        const bTrump = b.suit === battle.trumpSuit ? 100 : 0;
+                        return (aTrump + a.value) - (bTrump + b.value);
+                    });
+
+                    if (validCards.length > 0) {
+                        const cardToDefend = validCards[0];
+                        pair.defend = cardToDefend;
+                        battle.enemyHand = battle.enemyHand.filter(c => c.id !== cardToDefend.id);
+                        audio.playCardSound();
+                    } else {
+                        allDefended = false;
+                        break;
+                    }
+                }
+
+                if (!allDefended) {
+                    battle.cardsToTake = true;
+                }
+            } else {
+                // Enemy Attacking Player
+                if (battle.enemyHand.length === 0) {
+                    checkRoundEnd();
+                    return;
+                }
+                const openPairs = battle.table.filter(p => p.defend === null);
+                const maxAllowed = getMaxAllowedAttacks();
+                
+                if (battle.table.length === 0) {
+                    // First attack: lowest non-trump
+                    battle.enemyHand.sort((a,b) => {
+                        const aTrump = a.suit === battle.trumpSuit ? 100 : 0;
+                        const bTrump = b.suit === battle.trumpSuit ? 100 : 0;
+                        return (aTrump + a.value) - (bTrump + b.value);
+                    });
+                    const attackCard = battle.enemyHand.shift();
+                    if (attackCard) {
+                        battle.table.push({ attack: attackCard, defend: null });
+                        audio.playCardSound();
+                    }
+                } else if (openPairs.length === 0) {
+                    // Throw matching ranks if within allowed limit
+                    const playable = battle.enemyHand.filter(c => isRankOnTable(c.value));
+                    if (playable.length > 0 && battle.table.length < maxAllowed) {
+                        const throwCard = playable[0];
+                        battle.enemyHand = battle.enemyHand.filter(c => c.id !== throwCard.id);
+                        battle.table.push({ attack: throwCard, defend: null });
+                        audio.playCardSound();
+                    }
+                }
+            }
+            renderAll();
+        }
+
+        // Player Card Click Handler
+        window.onPlayerCardClick = function(index) {
+            audio.playCardSound();
+            const card = battle.playerHand[index];
+
+            if (battle.defender === 'enemy') {
+                const maxAllowed = getMaxAllowedAttacks();
+
+                if (battle.table.length === 0) {
+                    battle.table.push({ attack: card, defend: null });
+                    battle.playerHand.splice(index, 1);
+                    executeEnemyAI();
+                } else {
+                    if (battle.table.length >= maxAllowed) {
+                        showModal("Лимит карт", "Нельзя подкинуть больше карт, чем есть на руках у защищающегося!");
+                        return;
+                    }
+                    if (isRankOnTable(card.value)) {
+                        battle.table.push({ attack: card, defend: null });
+                        battle.playerHand.splice(index, 1);
+                        executeEnemyAI();
+                    } else {
+                        showModal("Недопустимый ход", "Вы можете подкидывать только карты того номинала, что уже есть на столе!");
+                    }
+                }
+            } else {
+                const undefendedPair = battle.table.find(p => p.defend === null);
+                if (undefendedPair) {
+                    if (canBeat(undefendedPair.attack, card)) {
+                        undefendedPair.defend = card;
+                        battle.playerHand.splice(index, 1);
+                        audio.playCardSound();
+
+                        setTimeout(() => executeEnemyAI(), 400);
+                    } else {
+                        showModal("Нельзя отбить", "Эта карта не покрывает атакующего! Нужна карта той же масти старше или козырь.");
+                    }
+                }
+            }
+            renderAll();
+        };
+
+        // Action Button ("БИТО")
+        document.getElementById('btn-action').onclick = () => {
+            if (battle.table.length === 0) return;
+
+            if (battle.defender === 'enemy') {
+                if (battle.cardsToTake) {
+                    const cardsCount = battle.table.reduce((acc, p) => acc + (p.attack ? 1 : 0) + (p.defend ? 1 : 0), 0);
+                    for (let pair of battle.table) {
+                        if (pair.attack) battle.enemyHand.push(pair.attack);
+                        if (pair.defend) battle.enemyHand.push(pair.defend);
+                    }
+                    
+                    let damage = cardsCount * 2;
+                    if (hasRelic('ace_sleeve')) damage += 5;
+                    damageEnemyHP(damage);
+
+                    battle.table = [];
+                    battle.cardsToTake = false;
+                    audio.playTakeSound();
+                } else {
+                    if (hasRelic('midas_touch')) {
+                        run.gold += 3;
+                    }
+                    battle.discardPile.push(...battle.table);
+                    battle.table = [];
+                    battle.defender = 'player';
+                }
+            } else {
+                battle.discardPile.push(...battle.table);
+                battle.table = [];
+                battle.defender = 'enemy';
+            }
+
+            replenishHands();
+            saveRunToLocal();
+            renderAll();
+
+            if (!checkRoundEnd()) {
+                if (battle.defender === 'player') {
+                    setTimeout(() => executeEnemyAI(), 500);
+                }
+            }
+        };
+
+        // Take Cards Button ("ВЗЯТЬ")
+        document.getElementById('btn-take').onclick = () => {
+            if (battle.defender !== 'player' || battle.table.length === 0) return;
+
+            audio.playTakeSound();
+            executeEnemyAI();
+
+            const cardsTakenCount = battle.table.reduce((acc, p) => acc + (p.attack ? 1 : 0) + (p.defend ? 1 : 0), 0);
+
+            for (let pair of battle.table) {
+                if (pair.attack) battle.playerHand.push(pair.attack);
+                if (pair.defend) battle.playerHand.push(pair.defend);
+            }
+
+            const enemyData = getCurrentEnemy();
+            let multiplier = enemyData.abilityId === 'double_penalty' ? 3 : 1.5;
+            const selfDamage = Math.max(3, Math.floor(cardsTakenCount * multiplier));
+            run.playerHP = Math.max(0, run.playerHP - selfDamage);
+
+            if (hasRelic('mirror_ring')) {
+                damageEnemyHP(selfDamage * 2);
+            }
+
+            battle.table = [];
+            battle.defender = 'player';
+            
+            replenishHands();
+            saveRunToLocal();
+            renderAll();
+
+            if (run.playerHP <= 0) {
+                clearLocalSave();
+                showModal("Поражение!", "Вы потеряли всё здоровье. Забег окончен.", () => initNewRun());
+            } else {
+                if (!checkRoundEnd()) {
+                    setTimeout(() => executeEnemyAI(), 600);
+                }
+            }
+        };
+
+        // Transfer Button ("ПЕРЕВОД")
+        document.getElementById('btn-transfer').onclick = () => {
+            const enemyData = getCurrentEnemy();
+            if (enemyData.abilityId === 'no_transfer') {
+                showModal("Перевод заблокирован", "Трактирщик запрещает переводить карты на этом этаже!");
+                return;
+            }
+
+            if (battle.defender !== 'player' || battle.table.length !== 1 || battle.table[0].defend !== null) return;
+
+            const attackVal = battle.table[0].attack.value;
+            const matchIdx = battle.playerHand.findIndex(c => c.value === attackVal);
+
+            if (matchIdx !== -1) {
+                const transferCard = battle.playerHand.splice(matchIdx, 1)[0];
+                battle.table.push({ attack: transferCard, defend: null });
+                battle.defender = 'enemy';
+                audio.playCardSound();
+                renderAll();
+                setTimeout(() => executeEnemyAI(), 500);
+            } else {
+                showModal("Перевод невозможен", "Чтобы перевести ход, у вас должна быть карта такого же номинала!");
+            }
+        };
+
+        function damageEnemyHP(amount) {
+            const enemyHpEl = document.getElementById('enemy-hp');
+            let current = parseInt(enemyHpEl.innerText);
+            current = Math.max(0, current - amount);
+            enemyHpEl.innerText = current;
+
+            if (current <= 0) {
+                audio.playWinSound();
+                run.gold += 10 + run.floor * 2;
+                showModal("Победа в Бою!", `Вы одолели соперника! Получено +${10 + run.floor * 2}$`, () => {
+                    openShop();
+                });
+            }
+        }
+
+        function hasRelic(relicId) {
+            return run.relics.some(r => r.id === relicId);
+        }
+
+        function openShop() {
+            document.getElementById('shop-modal').classList.remove('hidden');
+            document.getElementById('shop-modal').classList.add('flex');
+
+            const shopList = document.getElementById('shop-relics-list');
+            shopList.innerHTML = '';
+
+            const available = ALL_RELICS.filter(r => !hasRelic(r.id));
+            available.forEach(relic => {
+                const item = document.createElement('div');
+                item.className = "flex items-center justify-between p-2.5 bg-slate-900 border border-emerald-800/60 rounded-xl";
+                item.innerHTML = `
+                    <div class="flex items-center gap-2.5">
+                        <span class="text-2xl">${relic.icon}</span>
+                        <div>
+                            <div class="text-xs font-bold text-amber-300">${relic.name}</div>
+                            <div class="text-[10px] text-slate-400 leading-tight">${relic.desc}</div>
+                        </div>
+                    </div>
+                    <button class="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-lg shadow border border-amber-300" onclick="buyRelic('${relic.id}')">
+                        ${relic.price}$
+                    </button>
+                `;
+                shopList.appendChild(item);
+            });
+
+            saveRunToLocal();
+        }
+
+        window.buyRelic = function(relicId) {
+            const relic = ALL_RELICS.find(r => r.id === relicId);
+            if (!relic) return;
+
+            if (run.gold >= relic.price) {
+                if (run.relics.length < 5) {
+                    run.gold -= relic.price;
+                    run.relics.push(relic);
+                    audio.playWinSound();
+                    openShop();
+                    renderAll();
+                } else {
+                    showModal("Слоты забиты", "Максимум 5 артефактов на руках!");
+                }
+            } else {
+                showModal("Недостаточно денег", "Побеждайте в боях, чтобы зарабатывать золотые монеты.");
+            }
+        };
+
+        document.getElementById('btn-prune-card').onclick = () => {
+            if (run.gold >= 10) {
+                const weakCardIndex = run.deck.findIndex(c => c.value === 6 || c.value === 7);
+                if (weakCardIndex !== -1) {
+                    run.gold -= 10;
+                    const removed = run.deck.splice(weakCardIndex, 1)[0];
+                    showModal("Карта Удалена", `Из вашей колоды навсегда удалена ${VALUES[removed.value]} ${SUITS[removed.suit]}`);
+                    openShop();
+                    renderAll();
+                } else {
+                    showModal("Очистка недоступна", "В вашей колоде больше нет 6-ок и 7-ок!");
+                }
+            } else {
+                showModal("Недостаточно денег", "Удаление карты стоит 10$");
+            }
+        };
+
+        document.getElementById('btn-next-floor').onclick = () => {
+            document.getElementById('shop-modal').classList.add('hidden');
+            document.getElementById('shop-modal').classList.remove('flex');
+
+            run.floor++;
+            if (run.floor > 5) {
+                clearLocalSave();
+                showModal("ПОБЕДА В ЗАБЕГЕ!", "Вы прошли все 5 этажей и стали Легендой Дурака!", () => initNewRun());
+            } else {
+                saveRunToLocal();
+                startFloorBattle();
+            }
+        };
+
+        // --- Render Engine ---
+        function renderCardHTML(card, extraClass = '') {
+            const color = SUIT_COLORS[card.suit];
+            const isTrump = battle && battle.trumpSuit && card.suit === battle.trumpSuit;
+            const trumpStyle = isTrump 
+                ? 'border-amber-400 ring-2 ring-amber-400/80 trump-glow bg-gradient-to-b from-amber-50 via-slate-100 to-amber-100/50' 
+                : 'border-slate-300 bg-gradient-to-b from-white to-slate-100';
+
+            return `
+                <div class="w-14 h-20 sm:w-16 sm:h-24 ${trumpStyle} rounded-lg border-2 card-shadow flex flex-col justify-between p-1.5 cursor-pointer transform transition relative ${color} ${extraClass}">
+                    ${isTrump ? '<span class="absolute top-0.5 right-0.5 text-[10px] leading-none select-none text-amber-500 font-black" title="Козырь">👑</span>' : ''}
+                    <div class="text-xs font-black leading-none">${VALUES[card.value]}</div>
+                    <div class="text-center text-xl font-bold leading-none select-none">${SUITS[card.suit]}</div>
+                    <div class="text-xs font-black leading-none self-end transform rotate-180">${VALUES[card.value]}</div>
+                </div>
+            `;
+        }
+
+        function renderAll() {
+            document.getElementById('player-hp-display').innerText = `${run.playerHP}/${run.maxHP}`;
+            document.getElementById('player-gold-display').innerText = `${run.gold}$`;
+            document.getElementById('floor-display').innerText = run.floor;
+
+            const banner = document.getElementById('turn-banner');
+            if (battle.defender === 'enemy') {
+                banner.innerText = battle.cardsToTake ? "Соперник забирает карты! (Жмите БИТО)" : "Ваш ход: Атака";
+                banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm animate-pulse";
+            } else {
+                banner.innerText = "Ход соперника: Защищайтесь!";
+                banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm animate-pulse";
+            }
+
+            const enemyHandVis = document.getElementById('enemy-hand-visual');
+            enemyHandVis.innerHTML = '';
+
+            let lowestEnemyCard = null;
+            if (hasRelic('cheat_eye') && battle.enemyHand.length > 0) {
+                lowestEnemyCard = battle.enemyHand.reduce((minCard, currentCard) => {
+                    const minPower = (minCard.suit === battle.trumpSuit ? 100 : 0) + minCard.value;
+                    const currPower = (currentCard.suit === battle.trumpSuit ? 100 : 0) + currentCard.value;
+                    return currPower < minPower ? currentCard : minCard;
+                }, battle.enemyHand[0]);
+            }
+
+            for (let i = 0; i < battle.enemyHand.length; i++) {
+                const card = battle.enemyHand[i];
+                if (lowestEnemyCard && card.id === lowestEnemyCard.id) {
+                    const color = SUIT_COLORS[card.suit];
+                    const isTrump = card.suit === battle.trumpSuit;
+                    const eyeCard = document.createElement('div');
+                    eyeCard.className = `w-7 h-10 sm:w-9 sm:h-12 bg-amber-50 border-2 ${isTrump ? 'border-amber-400 ring-2 ring-amber-400/60' : 'border-amber-300'} rounded shadow-md flex flex-col justify-between p-0.5 relative flex-shrink-0 ${color}`;
+                    eyeCard.innerHTML = `
+                        <span class="absolute -top-1.5 -right-1.5 text-[10px] leading-none bg-black/80 rounded-full p-0.5 border border-amber-400" title="Шулерский глаз">👁️</span>
+                        <div class="text-[9px] font-black leading-none">${VALUES[card.value]}</div>
+                        <div class="text-center text-xs font-bold leading-none">${SUITS[card.suit]}</div>
+                        <div class="text-[9px] font-black leading-none self-end transform rotate-180">${VALUES[card.value]}</div>
+                    `;
+                    enemyHandVis.appendChild(eyeCard);
+                } else {
+                    const cardBack = document.createElement('div');
+                    cardBack.className = 'w-6 h-9 sm:w-8 sm:h-11 bg-gradient-to-br from-rose-900 to-red-950 border border-white/40 rounded shadow-sm flex-shrink-0';
+                    enemyHandVis.appendChild(cardBack);
+                }
+            }
+            document.getElementById('enemy-card-count').innerText = battle.enemyHand.length;
+
+            const deckContainer = document.getElementById('deck-container');
+            if (battle.drawDeck.length > 0) {
+                deckContainer.innerHTML = `
+                    <div class="relative flex items-center">
+                        <div class="transform rotate-90 translate-x-2 z-0 opacity-90">
+                            ${renderCardHTML(battle.trumpCard)}
+                        </div>
+                        <div class="w-12 h-18 sm:w-14 sm:h-20 bg-rose-950 border-2 border-slate-200 rounded-lg shadow-md z-10 flex items-center justify-center font-extrabold text-xs text-amber-300">
+                            ${battle.drawDeck.length} шт
+                        </div>
+                    </div>
+                `;
+            } else if (battle.trumpCard) {
+                const isRed = battle.trumpSuit === 'Hearts' || battle.trumpSuit === 'Tiles';
+                deckContainer.innerHTML = `
+                    <div class="flex items-center gap-1.5 bg-amber-950/90 border border-amber-500/60 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-300 shadow-md backdrop-blur-sm">
+                        <span>Козырь:</span>
+                        <span class="${isRed ? 'text-rose-400' : 'text-slate-100'} text-base font-extrabold">${SUITS[battle.trumpCard.suit]}</span>
+                    </div>
+                `;
+            }
+
+            const relicsBar = document.getElementById('relics-bar');
+            relicsBar.innerHTML = '';
+            for (let i = 0; i < 5; i++) {
+                const slot = document.createElement('div');
+                if (run.relics[i]) {
+                    const r = run.relics[i];
+                    slot.className = "w-full h-8 bg-amber-500/20 border border-amber-400/60 rounded-lg flex items-center justify-center text-lg shadow-sm cursor-help";
+                    slot.title = `${r.name}: ${r.desc}`;
+                    slot.innerText = r.icon;
+                } else {
+                    slot.className = "w-full h-8 border border-dashed border-emerald-800/60 rounded-lg flex items-center justify-center text-xs text-emerald-700";
+                    slot.innerText = "+";
+                }
+                relicsBar.appendChild(slot);
+            }
+            document.getElementById('relic-count').innerText = `${run.relics.length}/5`;
+
+            const tablePairsEl = document.getElementById('table-pairs');
+            tablePairsEl.innerHTML = '';
+            battle.table.forEach((pair) => {
+                const pairWrap = document.createElement('div');
+                pairWrap.className = 'relative w-14 h-20 sm:w-16 sm:h-24';
+                pairWrap.innerHTML = renderCardHTML(pair.attack);
+                if (pair.defend) {
+                    const defEl = document.createElement('div');
+                    defEl.className = 'absolute top-3 left-3 z-10';
+                    defEl.innerHTML = renderCardHTML(pair.defend);
+                    pairWrap.appendChild(defEl);
+                }
+                tablePairsEl.appendChild(pairWrap);
+            });
+
+            const handEl = document.getElementById('player-hand');
+            handEl.innerHTML = '';
+            battle.playerHand.forEach((card, idx) => {
+                const cardWrap = document.createElement('div');
+                cardWrap.className = 'flex-shrink-0';
+                cardWrap.innerHTML = renderCardHTML(card);
+                cardWrap.onclick = () => window.onPlayerCardClick(idx);
+                handEl.appendChild(cardWrap);
+            });
+
+            const btnAction = document.getElementById('btn-action');
+            const btnTake = document.getElementById('btn-take');
+            const btnTransfer = document.getElementById('btn-transfer');
+
+            if (battle.defender === 'enemy') {
+                btnAction.innerText = battle.cardsToTake ? "БИТО (Враг взял)" : "БИТО";
+                btnAction.disabled = battle.table.length === 0;
+                btnTake.disabled = true;
+                btnTransfer.disabled = true;
+            } else {
+                btnAction.innerText = "БИТО";
+                btnAction.disabled = battle.table.length === 0 || battle.table.some(p => p.defend === null);
+                btnTake.disabled = battle.table.length === 0;
+                
+                const enemyData = getCurrentEnemy();
+                const canTransfer = enemyData.abilityId !== 'no_transfer' &&
+                    battle.table.length === 1 && 
+                    battle.table[0].defend === null &&
+                    battle.playerHand.some(c => c.value === battle.table[0].attack.value);
+                btnTransfer.disabled = !canTransfer;
+            }
+        }
+
+        // Custom Modal Dialogue Box
+        function showModal(title, text, onClose) {
+            const modal = document.getElementById('msg-box');
+            document.getElementById('msg-title').innerText = title;
+            document.getElementById('msg-body').innerText = text;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            document.getElementById('msg-btn').onclick = () => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                if (onClose) onClose();
+            };
+        }
+
+        // Bootstrapping initial setup on load
+        window.addEventListener('DOMContentLoaded', () => {
+            if (!loadRunFromLocal()) {
+                initNewRun();
+            }
+        });
+    </script>
+</body>
+</html>
