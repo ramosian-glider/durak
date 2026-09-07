@@ -27,6 +27,35 @@
 </head>
 <body class="h-full flex flex-col justify-between overflow-hidden felt-bg relative">
 
+    <!-- Start Splash Screen Overlay -->
+    <div id="splash-screen" class="fixed inset-0 z-50 felt-bg flex flex-col items-center justify-center p-4 text-center">
+        <div class="max-w-md w-full bg-black/80 border-2 border-amber-500/60 rounded-3xl p-6 sm:p-8 backdrop-blur-md shadow-2xl flex flex-col items-center gap-5">
+            <div class="text-5xl sm:text-6xl animate-bounce">👑</div>
+            <div>
+                <h1 class="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 tracking-wider">
+                    КОЗЫРНОЙ ДУРАК
+                </h1>
+                <p class="text-xs sm:text-sm font-semibold text-emerald-400 mt-1 uppercase tracking-widest">
+                    Card Roguelike Adventure
+                </p>
+            </div>
+            
+            <p class="text-xs text-slate-300 leading-relaxed px-2">
+                Пройдите 5 этажей подземелья, побеждайте боссов, покупайте шулерские артефакты и улучшайте колоду!
+            </p>
+
+            <div class="w-full flex flex-col gap-3 mt-2">
+                <button id="btn-start-game" class="w-full py-3.5 bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-base rounded-2xl shadow-xl border border-yellow-300 active:scale-95 transition flex items-center justify-center gap-2">
+                    <span>▶ НАЧАТЬ ИГРУ</span>
+                </button>
+            </div>
+            
+            <div class="flex items-center gap-2 text-[11px] text-slate-400">
+                <span>🔊 Нажмите, чтобы начать путешествие</span>
+            </div>
+        </div>
+    </div>
+
     <!-- Top Navigation & Stats Bar -->
     <header class="w-full bg-black/60 border-b border-emerald-800/40 px-3 py-2 flex items-center justify-between text-xs sm:text-sm z-30 backdrop-blur-md">
         <div class="flex items-center gap-3">
@@ -134,6 +163,10 @@
         <div class="text-center py-2 border-b border-amber-500/30">
             <h2 class="text-xl font-extrabold text-amber-400 tracking-wide">ВОРОВСКОЙ ПРИТОН</h2>
             <p class="text-xs text-slate-400">Покупайте артефакты и улучшайте колоду перед следующим боссом</p>
+            <div class="mt-2 inline-flex items-center gap-1.5 bg-amber-950/80 border border-amber-700/50 px-3 py-1 rounded-full text-xs">
+                <span class="text-amber-400 font-bold">🪙 Золото:</span>
+                <span id="shop-gold-display" class="font-extrabold text-amber-200">15$</span>
+            </div>
         </div>
 
         <div class="flex-1 overflow-y-auto py-3 flex flex-col gap-4">
@@ -168,9 +201,14 @@
         <div class="bg-slate-900 border-2 border-amber-500/60 rounded-2xl p-5 max-w-xs w-full text-center shadow-2xl space-y-4">
             <div id="msg-title" class="text-lg font-black text-amber-400">Уведомление</div>
             <div id="msg-body" class="text-xs text-slate-300 leading-relaxed">Текст сообщения</div>
-            <button id="msg-btn" class="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs rounded-xl shadow">
-                ПОНЯТНО
-            </button>
+            <div class="flex gap-2">
+                <button id="msg-btn-cancel" class="hidden w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-extrabold text-xs rounded-xl shadow border border-slate-600/50">
+                    ОТМЕНА
+                </button>
+                <button id="msg-btn" class="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs rounded-xl shadow">
+                    ПОНЯТНО
+                </button>
+            </div>
         </div>
     </div>
 
@@ -220,40 +258,53 @@
             } catch (err) {}
         }
 
-        // --- Audio Synthesizer Engine (Web Audio API) ---
+        // --- Audio & Music Synthesizer Engine (Web Audio API) ---
         class SoundEngine {
             constructor() {
                 this.ctx = null;
+                this.isMuted = false;
+                this.isMusicPlaying = false;
+                this.musicInterval = null;
+                this.noteIndex = 0;
             }
             init() {
                 if (!this.ctx) {
-                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) {
+                        this.ctx = new AudioCtx();
+                    }
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
                 }
             }
             playCardSound() {
+                if (this.isMuted) return;
                 this.init();
                 if (!this.ctx) return;
                 const osc = this.ctx.createOscillator();
                 const gain = this.ctx.createGain();
                 osc.type = 'triangle';
-                osc.frequency.setValueAtTime(200, this.ctx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(60, this.ctx.currentTime + 0.08);
-                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
-                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+                osc.frequency.setValueAtTime(220, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(70, this.ctx.currentTime + 0.09);
+                gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.09);
                 osc.connect(gain);
                 gain.connect(this.ctx.destination);
                 osc.start();
-                osc.stop(this.ctx.currentTime + 0.08);
+                osc.stop(this.ctx.currentTime + 0.09);
             }
             playWinSound() {
+                if (this.isMuted) return;
                 this.init();
                 if (!this.ctx) return;
-                [261, 329, 392, 523].forEach((freq, idx) => {
+                [261.63, 329.63, 392.00, 523.25].forEach((freq, idx) => {
                     const osc = this.ctx.createOscillator();
                     const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
                     osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.1);
-                    gain.gain.setValueAtTime(0.2, this.ctx.currentTime + idx * 0.1);
-                    gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + idx * 0.1 + 0.2);
+                    gain.gain.setValueAtTime(0.3, this.ctx.currentTime + idx * 0.1);
+                    gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + idx * 0.1 + 0.25);
                     osc.connect(gain);
                     gain.connect(this.ctx.destination);
                     osc.start(this.ctx.currentTime + idx * 0.1);
@@ -261,22 +312,100 @@
                 });
             }
             playTakeSound() {
+                if (this.isMuted) return;
                 this.init();
                 if (!this.ctx) return;
                 const osc = this.ctx.createOscillator();
                 const gain = this.ctx.createGain();
                 osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(150, this.ctx.currentTime);
-                osc.frequency.linearRampToValueAtTime(80, this.ctx.currentTime + 0.15);
-                gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
-                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+                osc.frequency.setValueAtTime(160, this.ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(75, this.ctx.currentTime + 0.18);
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.18);
                 osc.connect(gain);
                 gain.connect(this.ctx.destination);
                 osc.start();
-                osc.stop(this.ctx.currentTime + 0.15);
+                osc.stop(this.ctx.currentTime + 0.18);
+            }
+            startMusic() {
+                this.init();
+                if (this.isMusicPlaying) return;
+                this.isMusicPlaying = true;
+
+                const melody = [
+                    329.63, 329.63, 311.13, 329.63, 349.23, 329.63,
+                    0, 0,
+                    293.66, 261.63, 246.94, 261.63, 246.94, 220.00
+                ];
+                
+                const bassline = [
+                    164.81, 164.81, 164.81, 164.81, 174.61, 164.81,
+                    0, 0,
+                    146.83, 130.81, 123.47, 130.81, 123.47, 110.00
+                ];
+
+                this.noteIndex = 0;
+                this.musicInterval = setInterval(() => {
+                    if (this.isMuted || !this.isMusicPlaying || !this.ctx) return;
+                    if (this.ctx.state === 'suspended') {
+                        this.ctx.resume();
+                    }
+
+                    if (this.noteIndex >= melody.length) {
+                        this.stopMusic();
+                        return;
+                    }
+
+                    const freq = melody[this.noteIndex];
+                    const bassFreq = bassline[this.noteIndex];
+                    this.noteIndex++;
+
+                    if (freq > 0) {
+                        try {
+                            const osc = this.ctx.createOscillator();
+                            const gain = this.ctx.createGain();
+                            osc.type = 'triangle';
+                            osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                            gain.gain.setValueAtTime(0.14, this.ctx.currentTime);
+                            gain.gain.exponentialRampToValueAtTime(0.005, this.ctx.currentTime + 0.28);
+                            osc.connect(gain);
+                            gain.connect(this.ctx.destination);
+                            osc.start();
+                            osc.stop(this.ctx.currentTime + 0.28);
+                        } catch (e) {}
+                    }
+
+                    if (bassFreq > 0) {
+                        try {
+                            const bassOsc = this.ctx.createOscillator();
+                            const bassGain = this.ctx.createGain();
+                            bassOsc.type = 'sine';
+                            bassOsc.frequency.setValueAtTime(bassFreq / 2, this.ctx.currentTime);
+                            bassGain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+                            bassGain.gain.exponentialRampToValueAtTime(0.005, this.ctx.currentTime + 0.32);
+                            bassOsc.connect(bassGain);
+                            bassGain.connect(this.ctx.destination);
+                            bassOsc.start();
+                            bassOsc.stop(this.ctx.currentTime + 0.32);
+                        } catch (e) {}
+                    }
+                }, 280);
+            }
+            stopMusic() {
+                this.isMusicPlaying = false;
+                if (this.musicInterval) {
+                    clearInterval(this.musicInterval);
+                    this.musicInterval = null;
+                }
             }
         }
         const audio = new SoundEngine();
+
+        window.addEventListener('click', () => {
+            if (audio && audio.ctx && audio.ctx.state === 'suspended') {
+                audio.ctx.resume();
+            }
+        }, { once: false });
 
         // --- Constants & Game State Data ---
         const SUITS = { Pikes: '♠', Hearts: '♥', Tiles: '♦', Clovers: '♣' };
@@ -364,7 +493,7 @@
             battle.playerHand = [];
             battle.enemyHand = [];
             battle.table = [];
-            battle.defender = 'enemy'; // Player attacks first
+            battle.defender = 'enemy';
             battle.selectedCardIndex = null;
             battle.cardsToTake = false;
 
@@ -456,21 +585,18 @@
             return false;
         }
 
-        // Calculated Max Attacks Limit based on rule: Cannot throw more cards than defender holds
         function getMaxAllowedAttacks() {
             const enemyData = getCurrentEnemy();
             let baseLimit = hasRelic('bully_throw') ? 12 : 6;
             if (enemyData.abilityId === 'aggressive_throw') baseLimit = 8;
 
             if (battle.defender === 'enemy') {
-                // Enemy defender: limit is current cards in enemy hand + already open undefended/defended pairs
                 return Math.min(baseLimit, battle.enemyHand.length + battle.table.filter(p => p.defend).length);
             } else {
                 return Math.min(baseLimit, battle.playerHand.length + battle.table.filter(p => p.defend).length);
             }
         }
 
-        // Enemy AI Logic
         function executeEnemyAI() {
             if (checkRoundEnd()) return;
 
@@ -480,7 +606,6 @@
                 const openPairs = battle.table.filter(p => p.defend === null);
                 if (openPairs.length === 0) return;
 
-                // Check AI Transfer capability (Boss 3 or higher)
                 if ((enemyData.abilityId === 'ai_transfer' || run.floor >= 3) && battle.table.length === 1 && openPairs.length === 1) {
                     const attackVal = battle.table[0].attack.value;
                     const transferCardIdx = battle.enemyHand.findIndex(c => c.value === attackVal);
@@ -520,7 +645,6 @@
                     battle.cardsToTake = true;
                 }
             } else {
-                // Enemy Attacking Player
                 if (battle.enemyHand.length === 0) {
                     checkRoundEnd();
                     return;
@@ -529,7 +653,6 @@
                 const maxAllowed = getMaxAllowedAttacks();
                 
                 if (battle.table.length === 0) {
-                    // First attack: lowest non-trump
                     battle.enemyHand.sort((a,b) => {
                         const aTrump = a.suit === battle.trumpSuit ? 100 : 0;
                         const bTrump = b.suit === battle.trumpSuit ? 100 : 0;
@@ -541,7 +664,6 @@
                         audio.playCardSound();
                     }
                 } else if (openPairs.length === 0) {
-                    // Throw matching ranks if within allowed limit
                     const playable = battle.enemyHand.filter(c => isRankOnTable(c.value));
                     if (playable.length > 0 && battle.table.length < maxAllowed) {
                         const throwCard = playable[0];
@@ -554,7 +676,6 @@
             renderAll();
         }
 
-        // Player Card Click Handler
         window.onPlayerCardClick = function(index) {
             audio.playCardSound();
             const card = battle.playerHand[index];
@@ -596,7 +717,6 @@
             renderAll();
         };
 
-        // Action Button ("БИТО")
         document.getElementById('btn-action').onclick = () => {
             if (battle.table.length === 0) return;
 
@@ -640,7 +760,6 @@
             }
         };
 
-        // Take Cards Button ("ВЗЯТЬ")
         document.getElementById('btn-take').onclick = () => {
             if (battle.defender !== 'player' || battle.table.length === 0) return;
 
@@ -680,7 +799,6 @@
             }
         };
 
-        // Transfer Button ("ПЕРЕВОД")
         document.getElementById('btn-transfer').onclick = () => {
             const enemyData = getCurrentEnemy();
             if (enemyData.abilityId === 'no_transfer') {
@@ -727,6 +845,9 @@
         function openShop() {
             document.getElementById('shop-modal').classList.remove('hidden');
             document.getElementById('shop-modal').classList.add('flex');
+            
+            const shopGoldEl = document.getElementById('shop-gold-display');
+            if (shopGoldEl) shopGoldEl.innerText = `${run.gold}$`;
 
             const shopList = document.getElementById('shop-relics-list');
             shopList.innerHTML = '';
@@ -803,7 +924,6 @@
             }
         };
 
-        // --- Render Engine ---
         function renderCardHTML(card, extraClass = '') {
             const color = SUIT_COLORS[card.suit];
             const isTrump = battle && battle.trumpSuit && card.suit === battle.trumpSuit;
@@ -956,27 +1076,35 @@
             }
         }
 
-        // Custom Modal Dialogue Box
         function showModal(title, text, onClose) {
             const modal = document.getElementById('msg-box');
             document.getElementById('msg-title').innerText = title;
             document.getElementById('msg-body').innerText = text;
+            
+            const cancelBtn = document.getElementById('msg-btn-cancel');
+            if (cancelBtn) cancelBtn.classList.add('hidden');
+
+            const confirmBtn = document.getElementById('msg-btn');
+            confirmBtn.innerText = "ПОНЯТНО";
+
             modal.classList.remove('hidden');
             modal.classList.add('flex');
 
-            document.getElementById('msg-btn').onclick = () => {
+            confirmBtn.onclick = () => {
                 modal.classList.add('hidden');
                 modal.classList.remove('flex');
                 if (onClose) onClose();
             };
         }
 
-        // Bootstrapping initial setup on load
-        window.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('btn-start-game').onclick = () => {
+            audio.init();
+            audio.startMusic();
+            document.getElementById('splash-screen').classList.add('hidden');
             if (!loadRunFromLocal()) {
                 initNewRun();
             }
-        });
+        };
     </script>
 </body>
 </html>
