@@ -23,6 +23,14 @@
         .trump-glow {
             box-shadow: 0 0 12px rgba(251, 191, 36, 0.7), 0 4px 10px rgba(0, 0, 0, 0.5);
         }
+        @keyframes pulse-ring {
+            0% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.7); }
+            70% { box-shadow: 0 0 0 8px rgba(234, 179, 8, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0); }
+        }
+        .transfer-active {
+            animation: pulse-ring 1.5s infinite;
+        }
     </style>
 </head>
 <body class="h-full flex flex-col justify-between overflow-hidden felt-bg relative">
@@ -329,7 +337,6 @@
             }
             startMusic(loop = false) {
                 this.init();
-                // Останавливаем существующий поток перед запуском нового
                 this.stopMusic();
                 
                 if (this.isMuted) return;
@@ -356,7 +363,7 @@
 
                     if (this.noteIndex >= melody.length) {
                         if (loop) {
-                            this.noteIndex = 0; // Повторяем фоновую музыку
+                            this.noteIndex = 0;
                         } else {
                             this.stopMusic();
                             return;
@@ -454,7 +461,8 @@
             table: [], 
             defender: 'enemy', // 'player' or 'enemy'
             selectedCardIndex: null,
-            cardsToTake: false
+            cardsToTake: false,
+            isTransferActive: false // Sticky button state for card transfer
         };
 
         function generateStandardDeck() {
@@ -503,6 +511,7 @@
             battle.defender = 'enemy';
             battle.selectedCardIndex = null;
             battle.cardsToTake = false;
+            battle.isTransferActive = false;
 
             battle.trumpCard = battle.drawDeck[0];
             battle.trumpSuit = battle.trumpCard.suit;
@@ -592,6 +601,21 @@
                 if (pair.defend && pair.defend.value === value) return true;
             }
             return false;
+        }
+
+        function isTransferAllowedForPlayer() {
+            const enemyData = getCurrentEnemy();
+            if (enemyData.abilityId === 'no_transfer') return false;
+            if (battle.defender !== 'player') return false;
+            if (battle.table.length === 0) return false;
+            if (battle.table.some(p => p.defend !== null)) return false;
+
+            const requiredRank = battle.table[0].attack.value;
+            const allSameRank = battle.table.every(p => p.attack.value === requiredRank);
+            if (!allSameRank) return false;
+
+            const hasMatchingCard = battle.playerHand.some(c => c.value === requiredRank);
+            return hasMatchingCard;
         }
 
         function getMaxAllowedAttacks() {
@@ -710,6 +734,27 @@
                     }
                 }
             } else {
+                // Defender mode
+                if (battle.isTransferActive) {
+                    // Try to perform transfer with selected card
+                    const requiredRank = battle.table[0].attack.value;
+                    if (card.value === requiredRank) {
+                        // Successful transfer
+                        battle.table.push({ attack: card, defend: null });
+                        battle.playerHand.splice(index, 1);
+                        battle.defender = 'enemy';
+                        battle.isTransferActive = false; // Unlatch transfer button after move
+                        audio.playCardSound();
+                        renderAll();
+                        setTimeout(() => executeEnemyAI(), 500);
+                        return;
+                    } else {
+                        showModal("Неверная карта", `Для перевода необходимо выбрать карту номинала ${VALUES[requiredRank]}.`);
+                        return;
+                    }
+                }
+
+                // Regular defense against undefended cards
                 const undefendedPair = battle.table.find(p => p.defend === null);
                 if (undefendedPair) {
                     if (canBeat(undefendedPair.attack, card)) {
@@ -727,6 +772,7 @@
         };
 
         document.getElementById('btn-action').onclick = () => {
+            battle.isTransferActive = false;
             if (battle.table.length === 0) return;
 
             if (battle.defender === 'enemy') {
@@ -770,6 +816,7 @@
         };
 
         document.getElementById('btn-take').onclick = () => {
+            battle.isTransferActive = false;
             if (battle.defender !== 'player' || battle.table.length === 0) return;
 
             audio.playTakeSound();
@@ -810,6 +857,7 @@
             }
         };
 
+        // Transfer button toggle click handler
         document.getElementById('btn-transfer').onclick = () => {
             const enemyData = getCurrentEnemy();
             if (enemyData.abilityId === 'no_transfer') {
@@ -817,21 +865,18 @@
                 return;
             }
 
-            if (battle.defender !== 'player' || battle.table.length !== 1 || battle.table[0].defend !== null) return;
-
-            const attackVal = battle.table[0].attack.value;
-            const matchIdx = battle.playerHand.findIndex(c => c.value === attackVal);
-
-            if (matchIdx !== -1) {
-                const transferCard = battle.playerHand.splice(matchIdx, 1)[0];
-                battle.table.push({ attack: transferCard, defend: null });
-                battle.defender = 'enemy';
-                audio.playCardSound();
-                renderAll();
-                setTimeout(() => executeEnemyAI(), 500);
-            } else {
-                showModal("Перевод невозможен", "Чтобы перевести ход, у вас должна быть карта такого же номинала!");
+            if (!isTransferAllowedForPlayer()) {
+                if (battle.table.some(p => p.defend !== null)) {
+                    showModal("Перевод невозможен", "Нельзя переводить хода, если вы уже начали отбивать карты!");
+                } else {
+                    showModal("Перевод невозможен", "Чтобы перевести ход, у вас должна быть карта того же номинала, что и на столе!");
+                }
+                return;
             }
+
+            // Toggle sticky transfer state
+            battle.isTransferActive = !battle.isTransferActive;
+            renderAll();
         };
 
         function damageEnemyHP(amount) {
@@ -964,8 +1009,13 @@
                 banner.innerText = battle.cardsToTake ? "Соперник забирает карты! (Жмите БИТО)" : "Ваш ход: Атака";
                 banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm animate-pulse";
             } else {
-                banner.innerText = "Ход соперника: Защищайтесь!";
-                banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm animate-pulse";
+                if (battle.isTransferActive) {
+                    banner.innerText = "Выберите карту для Перевода!";
+                    banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/60 shadow-sm animate-pulse";
+                } else {
+                    banner.innerText = "Ход соперника: Защищайтесь!";
+                    banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm animate-pulse";
+                }
             }
 
             const enemyHandVis = document.getElementById('enemy-hand-visual');
@@ -1058,10 +1108,20 @@
 
             const handEl = document.getElementById('player-hand');
             handEl.innerHTML = '';
+            
+            const requiredRank = (battle.defender === 'player' && battle.table.length > 0) ? battle.table[0].attack.value : null;
+
             battle.playerHand.forEach((card, idx) => {
                 const cardWrap = document.createElement('div');
-                cardWrap.className = 'flex-shrink-0';
-                cardWrap.innerHTML = renderCardHTML(card);
+                cardWrap.className = 'flex-shrink-0 transition-transform';
+                
+                // Highlight candidate cards if transfer mode is active
+                let extraCardClass = '';
+                if (battle.isTransferActive && card.value === requiredRank) {
+                    extraCardClass = 'ring-4 ring-yellow-400 -translate-y-2';
+                }
+                
+                cardWrap.innerHTML = renderCardHTML(card, extraCardClass);
                 cardWrap.onclick = () => window.onPlayerCardClick(idx);
                 handEl.appendChild(cardWrap);
             });
@@ -1075,17 +1135,22 @@
                 btnAction.disabled = battle.table.length === 0;
                 btnTake.disabled = true;
                 btnTransfer.disabled = true;
+                btnTransfer.className = "py-3 px-2 bg-gradient-to-r from-indigo-600 to-blue-600 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg border border-indigo-400/30 transition disabled:opacity-40 disabled:pointer-events-none";
             } else {
                 btnAction.innerText = "БИТО";
                 btnAction.disabled = battle.table.length === 0 || battle.table.some(p => p.defend === null);
                 btnTake.disabled = battle.table.length === 0;
                 
-                const enemyData = getCurrentEnemy();
-                const canTransfer = enemyData.abilityId !== 'no_transfer' &&
-                    battle.table.length === 1 && 
-                    battle.table[0].defend === null &&
-                    battle.playerHand.some(c => c.value === battle.table[0].attack.value);
+                const canTransfer = isTransferAllowedForPlayer();
                 btnTransfer.disabled = !canTransfer;
+
+                if (battle.isTransferActive) {
+                    btnTransfer.innerText = "ОТМЕНА";
+                    btnTransfer.className = "py-3 px-2 bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-xl border-2 border-yellow-300 transfer-active transition";
+                } else {
+                    btnTransfer.innerText = "ПЕРЕВОД";
+                    btnTransfer.className = "py-3 px-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg border border-indigo-400/30 transition disabled:opacity-40 disabled:pointer-events-none";
+                }
             }
         }
 
