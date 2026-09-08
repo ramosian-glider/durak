@@ -63,6 +63,9 @@
             <button id="btn-open-menu" class="bg-slate-800/80 hover:bg-slate-700 text-amber-300 border border-amber-500/40 px-2.5 py-1 rounded-full font-bold flex items-center gap-1 active:scale-95 transition" title="Меню игры">
                 <span>☰</span> Меню
             </button>
+            <button id="btn-toggle-audio" class="bg-slate-800/80 hover:bg-slate-700 text-amber-300 border border-amber-500/40 px-2 py-1 rounded-full font-bold active:scale-95 transition" title="Включить / Выключить звук">
+                <span id="audio-icon">🔊</span>
+            </button>
             <div class="flex items-center gap-1 bg-rose-950/80 border border-rose-700/50 px-2.5 py-1 rounded-full">
                 <span class="text-rose-500 font-bold">♥</span>
                 <span id="player-hp-display" class="font-extrabold text-rose-200">30/30</span>
@@ -256,7 +259,6 @@
             } catch (err) {}
         }
 
-        // --- Audio & Music Synthesizer Engine (Web Audio API) ---
         class SoundEngine {
             constructor() {
                 this.ctx = null;
@@ -325,9 +327,12 @@
                 osc.start();
                 osc.stop(this.ctx.currentTime + 0.18);
             }
-            startMusic() {
+            startMusic(loop = false) {
                 this.init();
-                if (this.isMusicPlaying) return;
+                // Останавливаем существующий поток перед запуском нового
+                this.stopMusic();
+                
+                if (this.isMuted) return;
                 this.isMusicPlaying = true;
 
                 const melody = [
@@ -350,8 +355,12 @@
                     }
 
                     if (this.noteIndex >= melody.length) {
-                        this.stopMusic();
-                        return;
+                        if (loop) {
+                            this.noteIndex = 0; // Повторяем фоновую музыку
+                        } else {
+                            this.stopMusic();
+                            return;
+                        }
                     }
 
                     const freq = melody[this.noteIndex];
@@ -395,6 +404,7 @@
                     clearInterval(this.musicInterval);
                     this.musicInterval = null;
                 }
+                this.noteIndex = 0;
             }
         }
         const audio = new SoundEngine();
@@ -405,7 +415,6 @@
             }
         }, { once: false });
 
-        // --- Constants & Game State Data ---
         const SUITS = { Pikes: '♠', Hearts: '♥', Tiles: '♦', Clovers: '♣' };
         const SUIT_COLORS = { Pikes: 'text-slate-900', Clovers: 'text-slate-900', Hearts: 'text-rose-600', Tiles: 'text-rose-600' };
         const VALUES = { 6:'6', 7:'7', 8:'8', 9:'9', 10:'10', 11:'В', 12:'Д', 13:'К', 14:'Т' };
@@ -1105,9 +1114,21 @@
             document.getElementById('splash-screen').classList.remove('hidden');
         };
 
+        document.getElementById('btn-toggle-audio').onclick = () => {
+            audio.isMuted = !audio.isMuted;
+            const icon = document.getElementById('audio-icon');
+            if (audio.isMuted) {
+                icon.innerText = '🔇';
+                audio.stopMusic();
+            } else {
+                icon.innerText = '🔊';
+                audio.startMusic(false);
+            }
+        };
+
         document.getElementById('btn-start-game').onclick = () => {
             audio.init();
-            audio.startMusic();
+            audio.startMusic(false);
             document.getElementById('splash-screen').classList.add('hidden');
             if (!loadRunFromLocal()) {
                 initNewRun();
@@ -1117,6 +1138,8 @@
         };
 
         document.getElementById('btn-new-run').onclick = () => {
+            audio.init();
+            audio.startMusic(false);
             clearLocalSave();
             initNewRun();
             document.getElementById('splash-screen').classList.add('hidden');
