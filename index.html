@@ -615,7 +615,12 @@
             if (!allSameRank) return false;
 
             const hasMatchingCard = battle.playerHand.some(c => c.value === requiredRank);
-            return hasMatchingCard;
+            if (!hasMatchingCard) return false;
+
+            // Defender target (enemy) must have enough cards to defend table.length + 1
+            if (battle.enemyHand.length < battle.table.length + 1) return false;
+
+            return true;
         }
 
         function getMaxAllowedAttacks() {
@@ -636,11 +641,24 @@
             const enemyData = getCurrentEnemy();
 
             if (battle.defender === 'enemy') {
+                // If AI has already given up and is taking cards, allow player to toss matching rank cards without AI re-defending
+                if (battle.cardsToTake) {
+                    renderAll();
+                    return;
+                }
+
                 const openPairs = battle.table.filter(p => p.defend === null);
                 if (openPairs.length === 0) return;
 
-                if ((enemyData.abilityId === 'ai_transfer' || run.floor >= 3) && battle.table.length === 1 && openPairs.length === 1) {
-                    const attackVal = battle.table[0].attack.value;
+                // AI Chaining Transfer Check
+                const attackVal = battle.table[0].attack.value;
+                const allSameRank = battle.table.every(p => p.attack.value === attackVal);
+
+                if ((enemyData.abilityId === 'ai_transfer' || run.floor >= 3) && 
+                    openPairs.length === battle.table.length && 
+                    allSameRank && 
+                    battle.playerHand.length >= battle.table.length + 1) {
+                    
                     const transferCardIdx = battle.enemyHand.findIndex(c => c.value === attackVal);
                     if (transferCardIdx !== -1) {
                         const transferCard = battle.enemyHand.splice(transferCardIdx, 1)[0];
@@ -736,14 +754,18 @@
             } else {
                 // Defender mode
                 if (battle.isTransferActive) {
-                    // Try to perform transfer with selected card
                     const requiredRank = battle.table[0].attack.value;
                     if (card.value === requiredRank) {
-                        // Successful transfer
+                        if (battle.enemyHand.length < battle.table.length + 1) {
+                            showModal("Перевод невозможен", "У противника недостаточно карт на руках, чтобы принять перевод!");
+                            battle.isTransferActive = false;
+                            renderAll();
+                            return;
+                        }
                         battle.table.push({ attack: card, defend: null });
                         battle.playerHand.splice(index, 1);
                         battle.defender = 'enemy';
-                        battle.isTransferActive = false; // Unlatch transfer button after move
+                        battle.isTransferActive = false;
                         audio.playCardSound();
                         renderAll();
                         setTimeout(() => executeEnemyAI(), 500);
@@ -820,7 +842,18 @@
             if (battle.defender !== 'player' || battle.table.length === 0) return;
 
             audio.playTakeSound();
-            executeEnemyAI();
+            
+            // Enemy tosses all matching rank cards before player takes
+            const maxAllowed = getMaxAllowedAttacks();
+            while (battle.enemyHand.some(c => isRankOnTable(c.value)) && battle.table.length < maxAllowed) {
+                const playableIdx = battle.enemyHand.findIndex(c => isRankOnTable(c.value));
+                if (playableIdx !== -1) {
+                    const throwCard = battle.enemyHand.splice(playableIdx, 1)[0];
+                    battle.table.push({ attack: throwCard, defend: null });
+                } else {
+                    break;
+                }
+            }
 
             const cardsTakenCount = battle.table.reduce((acc, p) => acc + (p.attack ? 1 : 0) + (p.defend ? 1 : 0), 0);
 
@@ -865,12 +898,28 @@
                 return;
             }
 
-            if (!isTransferAllowedForPlayer()) {
-                if (battle.table.some(p => p.defend !== null)) {
-                    showModal("Перевод невозможен", "Нельзя переводить хода, если вы уже начали отбивать карты!");
-                } else {
-                    showModal("Перевод невозможен", "Чтобы перевести ход, у вас должна быть карта того же номинала, что и на столе!");
-                }
+            if (battle.defender !== 'player' || battle.table.length === 0) return;
+
+            if (battle.table.some(p => p.defend !== null)) {
+                showModal("Перевод невозможен", "Нельзя переводить ход, если вы уже начали отбиваться!");
+                return;
+            }
+
+            const requiredRank = battle.table[0].attack.value;
+            const allSameRank = battle.table.every(p => p.attack.value === requiredRank);
+            if (!allSameRank) {
+                showModal("Перевод невозможен", "Переводить можно только карты одинакового достоинства!");
+                return;
+            }
+
+            const hasMatchingCard = battle.playerHand.some(c => c.value === requiredRank);
+            if (!hasMatchingCard) {
+                showModal("Перевод невозможен", `У вас нет карты достоинства ${VALUES[requiredRank]} для перевода.`);
+                return;
+            }
+
+            if (battle.enemyHand.length < battle.table.length + 1) {
+                showModal("Перевод невозможен", "У противника недостаточно карт на руках, чтобы принять перевод!");
                 return;
             }
 
