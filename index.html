@@ -520,12 +520,23 @@
             renderAll();
         }
 
-        function replenishHands() {
-            while (battle.playerHand.length < 6 && battle.drawDeck.length > 0) {
-                battle.playerHand.push(battle.drawDeck.pop());
-            }
-            while (battle.enemyHand.length < 6 && battle.drawDeck.length > 0) {
-                battle.enemyHand.push(battle.drawDeck.pop());
+        function replenishHands(currentDefender = battle.defender) {
+            if (currentDefender === 'enemy') {
+                // Атакует Игрок -> Игрок берет из колоды первым, затем Враг
+                while (battle.playerHand.length < 6 && battle.drawDeck.length > 0) {
+                    battle.playerHand.push(battle.drawDeck.pop());
+                }
+                while (battle.enemyHand.length < 6 && battle.drawDeck.length > 0) {
+                    battle.enemyHand.push(battle.drawDeck.pop());
+                }
+            } else {
+                // Атакует Враг -> Враг берет из колоды первым, затем Игрок
+                while (battle.enemyHand.length < 6 && battle.drawDeck.length > 0) {
+                    battle.enemyHand.push(battle.drawDeck.pop());
+                }
+                while (battle.playerHand.length < 6 && battle.drawDeck.length > 0) {
+                    battle.playerHand.push(battle.drawDeck.pop());
+                }
             }
             battle.playerHand.sort((a,b) => {
                 const aTrump = a.suit === battle.trumpSuit ? 1 : 0;
@@ -797,6 +808,9 @@
             battle.isTransferActive = false;
             if (battle.table.length === 0) return;
 
+            // Запоминаем, кто отбивался в этом кону до смены роли
+            const currentDefender = battle.defender;
+
             if (battle.defender === 'enemy') {
                 if (battle.cardsToTake) {
                     const cardsCount = battle.table.reduce((acc, p) => acc + (p.attack ? 1 : 0) + (p.defend ? 1 : 0), 0);
@@ -826,7 +840,56 @@
                 battle.defender = 'enemy';
             }
 
-            replenishHands();
+            replenishHands(currentDefender);
+            saveRunToLocal();
+            renderAll();
+
+            if (!checkRoundEnd()) {
+                if (battle.defender === 'player') {
+                    setTimeout(() => executeEnemyAI(), 500);
+                }
+            }
+        };
+
+        document.getElementById('btn-take').onclick = () => {
+            battle.isTransferActive = false;
+            if (battle.defender !== 'player' || battle.table.length === 0) return;
+
+            const currentDefender = battle.defender;
+            audio.playTakeSound();
+            
+            // Enemy tosses all matching rank cards before player takes
+            const maxAllowed = getMaxAllowedAttacks();
+            while (battle.enemyHand.some(c => isRankOnTable(c.value)) && battle.table.length < maxAllowed) {
+                const playableIdx = battle.enemyHand.findIndex(c => isRankOnTable(c.value));
+                if (playableIdx !== -1) {
+                    const throwCard = battle.enemyHand.splice(playableIdx, 1)[0];
+                    battle.table.push({ attack: throwCard, defend: null });
+                } else {
+                    break;
+                }
+            }
+
+            const cardsTakenCount = battle.table.reduce((acc, p) => acc + (p.attack ? 1 : 0) + (p.defend ? 1 : 0), 0);
+
+            for (let pair of battle.table) {
+                if (pair.attack) battle.playerHand.push(pair.attack);
+                if (pair.defend) battle.playerHand.push(pair.defend);
+            }
+
+            const enemyData = getCurrentEnemy();
+            let multiplier = enemyData.abilityId === 'double_penalty' ? 3 : 1.5;
+            const selfDamage = Math.max(3, Math.floor(cardsTakenCount * multiplier));
+            run.playerHP = Math.max(0, run.playerHP - selfDamage);
+
+            if (hasRelic('mirror_ring')) {
+                damageEnemyHP(selfDamage * 2);
+            }
+
+            battle.table = [];
+            battle.defender = 'player';
+            
+            replenishHands(currentDefender);
             saveRunToLocal();
             renderAll();
 
