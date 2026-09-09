@@ -462,7 +462,7 @@
             defender: 'enemy', // 'player' or 'enemy'
             selectedCardIndex: null,
             cardsToTake: false,
-            isTransferActive: false // Sticky button state for card transfer
+            isTransferActive: false
         };
 
         function generateStandardDeck() {
@@ -522,7 +522,6 @@
 
         function replenishHands(currentDefender = battle.defender) {
             if (currentDefender === 'enemy') {
-                // Атакует Игрок -> Игрок берет из колоды первым, затем Враг
                 while (battle.playerHand.length < 6 && battle.drawDeck.length > 0) {
                     battle.playerHand.push(battle.drawDeck.pop());
                 }
@@ -530,7 +529,6 @@
                     battle.enemyHand.push(battle.drawDeck.pop());
                 }
             } else {
-                // Атакует Враг -> Враг берет из колоды первым, затем Игрок
                 while (battle.enemyHand.length < 6 && battle.drawDeck.length > 0) {
                     battle.enemyHand.push(battle.drawDeck.pop());
                 }
@@ -628,7 +626,6 @@
             const hasMatchingCard = battle.playerHand.some(c => c.value === requiredRank);
             if (!hasMatchingCard) return false;
 
-            // Defender target (enemy) must have enough cards to defend table.length + 1
             if (battle.enemyHand.length < battle.table.length + 1) return false;
 
             return true;
@@ -646,20 +643,149 @@
             }
         }
 
+        function handleBito() {
+            battle.isTransferActive = false;
+            if (battle.table.length === 0) return;
+
+            const currentDefender = battle.defender;
+
+            if (battle.defender === 'enemy') {
+                if (battle.cardsToTake) {
+                    handleEnemyTake();
+                    return;
+                } else {
+                    if (hasRelic('midas_touch')) {
+                        run.gold += 3;
+                    }
+                    battle.discardPile.push(...battle.table);
+                    battle.table = [];
+                    battle.defender = 'player';
+                }
+            } else {
+                battle.discardPile.push(...battle.table);
+                battle.table = [];
+                battle.defender = 'enemy';
+            }
+
+            replenishHands(currentDefender);
+            saveRunToLocal();
+            renderAll();
+
+            if (!checkRoundEnd()) {
+                if (battle.defender === 'player') {
+                    setTimeout(() => executeEnemyAI(), 500);
+                }
+            }
+        }
+
+        function handleEnemyTake() {
+            battle.isTransferActive = false;
+            if (battle.table.length === 0) return;
+
+            const currentDefender = battle.defender;
+            const cardsCount = battle.table.reduce((acc, p) => acc + (p.attack ? 1 : 0) + (p.defend ? 1 : 0), 0);
+            for (let pair of battle.table) {
+                if (pair.attack) battle.enemyHand.push(pair.attack);
+                if (pair.defend) battle.enemyHand.push(pair.defend);
+            }
+            
+            let damage = cardsCount * 2;
+            if (hasRelic('ace_sleeve')) damage += 5;
+            damageEnemyHP(damage);
+
+            battle.table = [];
+            battle.cardsToTake = false;
+            audio.playTakeSound();
+
+            replenishHands(currentDefender);
+            saveRunToLocal();
+            renderAll();
+
+            if (!checkRoundEnd()) {
+                renderAll();
+            }
+        }
+
+        function handlePlayerTake() {
+            battle.isTransferActive = false;
+            if (battle.defender !== 'player' || battle.table.length === 0) return;
+
+            const currentDefender = battle.defender;
+            audio.playTakeSound();
+            
+            const maxAllowed = getMaxAllowedAttacks();
+            while (battle.enemyHand.some(c => isRankOnTable(c.value)) && battle.table.length < maxAllowed) {
+                const playableIdx = battle.enemyHand.findIndex(c => isRankOnTable(c.value));
+                if (playableIdx !== -1) {
+                    const throwCard = battle.enemyHand.splice(playableIdx, 1)[0];
+                    battle.table.push({ attack: throwCard, defend: null });
+                } else {
+                    break;
+                }
+            }
+
+            const cardsTakenCount = battle.table.reduce((acc, p) => acc + (p.attack ? 1 : 0) + (p.defend ? 1 : 0), 0);
+
+            for (let pair of battle.table) {
+                if (pair.attack) battle.playerHand.push(pair.attack);
+                if (pair.defend) battle.playerHand.push(pair.defend);
+            }
+
+            const enemyData = getCurrentEnemy();
+            let multiplier = enemyData.abilityId === 'double_penalty' ? 3 : 1.5;
+            const selfDamage = Math.max(3, Math.floor(cardsTakenCount * multiplier));
+            run.playerHP = Math.max(0, run.playerHP - selfDamage);
+
+            if (hasRelic('mirror_ring')) {
+                damageEnemyHP(selfDamage * 2);
+            }
+
+            battle.table = [];
+            battle.defender = 'player';
+            
+            replenishHands(currentDefender);
+            saveRunToLocal();
+            renderAll();
+
+            if (run.playerHP <= 0) {
+                clearLocalSave();
+                showModal("Поражение!", "Вы потеряли всё здоровье. Забег окончен.", () => {
+                    document.getElementById('splash-screen').classList.remove('hidden');
+                });
+            } else {
+                if (!checkRoundEnd()) {
+                    setTimeout(() => executeEnemyAI(), 600);
+                }
+            }
+        }
+
         function executeEnemyAI() {
             if (checkRoundEnd()) return;
 
             const enemyData = getCurrentEnemy();
 
             if (battle.defender === 'enemy') {
-                // If AI has already given up and is taking cards, allow player to toss matching rank cards without AI re-defending
+                const maxAllowed = getMaxAllowedAttacks();
+                const playerHasTossCard = battle.playerHand.some(c => isRankOnTable(c.value));
+
                 if (battle.cardsToTake) {
+                    // Enemy gave up and is taking cards
+                    if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !playerHasTossCard) {
+                        setTimeout(() => handleEnemyTake(), 400);
+                        return;
+                    }
                     renderAll();
                     return;
                 }
 
                 const openPairs = battle.table.filter(p => p.defend === null);
-                if (openPairs.length === 0) return;
+                if (openPairs.length === 0) {
+                    if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !playerHasTossCard) {
+                        setTimeout(() => handleBito(), 400);
+                    }
+                    renderAll();
+                    return;
+                }
 
                 // AI Chaining Transfer Check
                 const attackVal = battle.table[0].attack.value;
@@ -706,11 +832,32 @@
                 if (!allDefended) {
                     battle.cardsToTake = true;
                 }
+
+                renderAll();
+
+                // Auto-resolve check if player cannot throw any more cards
+                const updatedHasToss = battle.playerHand.some(c => isRankOnTable(c.value));
+                if (battle.cardsToTake) {
+                    if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !updatedHasToss) {
+                        setTimeout(() => handleEnemyTake(), 500);
+                    }
+                } else {
+                    if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed) {
+                        setTimeout(() => handleBito(), 500);
+                    }
+                }
+
             } else {
+                // AI is attacking
                 if (battle.enemyHand.length === 0) {
-                    checkRoundEnd();
+                    if (battle.table.filter(p => p.defend === null).length === 0) {
+                        setTimeout(() => handleBito(), 500);
+                    } else {
+                        checkRoundEnd();
+                    }
                     return;
                 }
+
                 const openPairs = battle.table.filter(p => p.defend === null);
                 const maxAllowed = getMaxAllowedAttacks();
                 
@@ -732,10 +879,13 @@
                         battle.enemyHand = battle.enemyHand.filter(c => c.id !== throwCard.id);
                         battle.table.push({ attack: throwCard, defend: null });
                         audio.playCardSound();
+                    } else {
+                        // AI passes! All player defenses were successful
+                        setTimeout(() => handleBito(), 500);
                     }
                 }
+                renderAll();
             }
-            renderAll();
         }
 
         window.onPlayerCardClick = function(index) {
@@ -804,154 +954,8 @@
             renderAll();
         };
 
-        document.getElementById('btn-action').onclick = () => {
-            battle.isTransferActive = false;
-            if (battle.table.length === 0) return;
-
-            // Запоминаем, кто отбивался в этом кону до смены роли
-            const currentDefender = battle.defender;
-
-            if (battle.defender === 'enemy') {
-                if (battle.cardsToTake) {
-                    const cardsCount = battle.table.reduce((acc, p) => acc + (p.attack ? 1 : 0) + (p.defend ? 1 : 0), 0);
-                    for (let pair of battle.table) {
-                        if (pair.attack) battle.enemyHand.push(pair.attack);
-                        if (pair.defend) battle.enemyHand.push(pair.defend);
-                    }
-                    
-                    let damage = cardsCount * 2;
-                    if (hasRelic('ace_sleeve')) damage += 5;
-                    damageEnemyHP(damage);
-
-                    battle.table = [];
-                    battle.cardsToTake = false;
-                    audio.playTakeSound();
-                } else {
-                    if (hasRelic('midas_touch')) {
-                        run.gold += 3;
-                    }
-                    battle.discardPile.push(...battle.table);
-                    battle.table = [];
-                    battle.defender = 'player';
-                }
-            } else {
-                battle.discardPile.push(...battle.table);
-                battle.table = [];
-                battle.defender = 'enemy';
-            }
-
-            replenishHands(currentDefender);
-            saveRunToLocal();
-            renderAll();
-
-            if (!checkRoundEnd()) {
-                if (battle.defender === 'player') {
-                    setTimeout(() => executeEnemyAI(), 500);
-                }
-            }
-        };
-
-        document.getElementById('btn-take').onclick = () => {
-            battle.isTransferActive = false;
-            if (battle.defender !== 'player' || battle.table.length === 0) return;
-
-            const currentDefender = battle.defender;
-            audio.playTakeSound();
-            
-            // Enemy tosses all matching rank cards before player takes
-            const maxAllowed = getMaxAllowedAttacks();
-            while (battle.enemyHand.some(c => isRankOnTable(c.value)) && battle.table.length < maxAllowed) {
-                const playableIdx = battle.enemyHand.findIndex(c => isRankOnTable(c.value));
-                if (playableIdx !== -1) {
-                    const throwCard = battle.enemyHand.splice(playableIdx, 1)[0];
-                    battle.table.push({ attack: throwCard, defend: null });
-                } else {
-                    break;
-                }
-            }
-
-            const cardsTakenCount = battle.table.reduce((acc, p) => acc + (p.attack ? 1 : 0) + (p.defend ? 1 : 0), 0);
-
-            for (let pair of battle.table) {
-                if (pair.attack) battle.playerHand.push(pair.attack);
-                if (pair.defend) battle.playerHand.push(pair.defend);
-            }
-
-            const enemyData = getCurrentEnemy();
-            let multiplier = enemyData.abilityId === 'double_penalty' ? 3 : 1.5;
-            const selfDamage = Math.max(3, Math.floor(cardsTakenCount * multiplier));
-            run.playerHP = Math.max(0, run.playerHP - selfDamage);
-
-            if (hasRelic('mirror_ring')) {
-                damageEnemyHP(selfDamage * 2);
-            }
-
-            battle.table = [];
-            battle.defender = 'player';
-            
-            replenishHands(currentDefender);
-            saveRunToLocal();
-            renderAll();
-
-            if (!checkRoundEnd()) {
-                if (battle.defender === 'player') {
-                    setTimeout(() => executeEnemyAI(), 500);
-                }
-            }
-        };
-
-        document.getElementById('btn-take').onclick = () => {
-            battle.isTransferActive = false;
-            if (battle.defender !== 'player' || battle.table.length === 0) return;
-
-            audio.playTakeSound();
-            
-            // Enemy tosses all matching rank cards before player takes
-            const maxAllowed = getMaxAllowedAttacks();
-            while (battle.enemyHand.some(c => isRankOnTable(c.value)) && battle.table.length < maxAllowed) {
-                const playableIdx = battle.enemyHand.findIndex(c => isRankOnTable(c.value));
-                if (playableIdx !== -1) {
-                    const throwCard = battle.enemyHand.splice(playableIdx, 1)[0];
-                    battle.table.push({ attack: throwCard, defend: null });
-                } else {
-                    break;
-                }
-            }
-
-            const cardsTakenCount = battle.table.reduce((acc, p) => acc + (p.attack ? 1 : 0) + (p.defend ? 1 : 0), 0);
-
-            for (let pair of battle.table) {
-                if (pair.attack) battle.playerHand.push(pair.attack);
-                if (pair.defend) battle.playerHand.push(pair.defend);
-            }
-
-            const enemyData = getCurrentEnemy();
-            let multiplier = enemyData.abilityId === 'double_penalty' ? 3 : 1.5;
-            const selfDamage = Math.max(3, Math.floor(cardsTakenCount * multiplier));
-            run.playerHP = Math.max(0, run.playerHP - selfDamage);
-
-            if (hasRelic('mirror_ring')) {
-                damageEnemyHP(selfDamage * 2);
-            }
-
-            battle.table = [];
-            battle.defender = 'player';
-            
-            replenishHands();
-            saveRunToLocal();
-            renderAll();
-
-            if (run.playerHP <= 0) {
-                clearLocalSave();
-                showModal("Поражение!", "Вы потеряли всё здоровье. Забег окончен.", () => {
-                    document.getElementById('splash-screen').classList.remove('hidden');
-                });
-            } else {
-                if (!checkRoundEnd()) {
-                    setTimeout(() => executeEnemyAI(), 600);
-                }
-            }
-        };
+        document.getElementById('btn-action').onclick = () => handleBito();
+        document.getElementById('btn-take').onclick = () => handlePlayerTake();
 
         // Transfer button toggle click handler
         document.getElementById('btn-transfer').onclick = () => {
@@ -986,7 +990,6 @@
                 return;
             }
 
-            // Toggle sticky transfer state
             battle.isTransferActive = !battle.isTransferActive;
             renderAll();
         };
@@ -1227,7 +1230,6 @@
                 const cardWrap = document.createElement('div');
                 cardWrap.className = 'flex-shrink-0 transition-transform';
                 
-                // Highlight candidate cards if transfer mode is active
                 let extraCardClass = '';
                 if (battle.isTransferActive && card.value === requiredRank) {
                     extraCardClass = 'ring-4 ring-yellow-400 -translate-y-2';
