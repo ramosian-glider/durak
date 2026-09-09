@@ -31,12 +31,29 @@
         .transfer-active {
             animation: pulse-ring 1.5s infinite;
         }
+        .corner-hint {
+            animation: fadeInOut 1.2s forwards;
+        }
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: scale(0.8); }
+            20% { opacity: 1; transform: scale(1); }
+            80% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(0.9); }
+        }
     </style>
 </head>
 <body class="h-full flex flex-col justify-between overflow-hidden felt-bg relative">
 
-    <div id="splash-screen" class="fixed inset-0 z-50 felt-bg flex flex-col items-center justify-center p-4 text-center">
-        <div class="max-w-md w-full bg-black/80 border-2 border-amber-500/60 rounded-3xl p-6 sm:p-8 backdrop-blur-md shadow-2xl flex flex-col items-center gap-5">
+    <!-- Toast feedback for secret corner activation -->
+    <div id="corner-toast" class="pointer-events-none fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-black/90 border border-amber-400 text-amber-300 px-4 py-2 rounded-full font-bold text-xs shadow-2xl opacity-0 transition-opacity duration-300 flex items-center gap-2">
+        <span>🧩</span> <span id="corner-toast-text">Активация</span>
+    </div>
+
+    <div id="splash-screen" class="fixed inset-0 z-40 felt-bg flex flex-col items-center justify-center p-4 text-center">
+        <div class="max-w-md w-full bg-black/80 border-2 border-amber-500/60 rounded-3xl p-6 sm:p-8 backdrop-blur-md shadow-2xl flex flex-col items-center gap-5 relative">
+            <button id="btn-splash-tests" class="hidden absolute top-4 right-4 w-8 h-8 bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/50 text-indigo-300 rounded-full flex items-center justify-center text-sm transition active:scale-90 shadow" title="Запустить юнит-тесты">
+                🧪
+            </button>
             <div class="text-5xl sm:text-6xl animate-bounce">👑</div>
             <div>
                 <h1 class="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 tracking-wider">
@@ -67,37 +84,35 @@
     </div>
 
     <header class="w-full bg-black/60 border-b border-emerald-800/40 px-3 py-2 flex items-center justify-between text-xs sm:text-sm z-30 backdrop-blur-md">
-        <div class="flex items-center gap-2">
-            <button id="btn-open-menu" class="bg-slate-800/80 hover:bg-slate-700 text-amber-300 border border-amber-500/40 px-2.5 py-1 rounded-full font-bold flex items-center gap-1 active:scale-95 transition" title="Меню игры">
-                <span>☰</span> Меню
-            </button>
-            <button id="btn-toggle-audio" class="bg-slate-800/80 hover:bg-slate-700 text-amber-300 border border-amber-500/40 px-2 py-1 rounded-full font-bold active:scale-95 transition" title="Включить / Выключить звук">
-                <span id="audio-icon">🔊</span>
-            </button>
-            <div class="flex items-center gap-1 bg-rose-950/80 border border-rose-700/50 px-2.5 py-1 rounded-full">
-                <span class="text-rose-500 font-bold">♥</span>
-                <span id="player-hp-display" class="font-extrabold text-rose-200">30/30</span>
+        <div class="flex items-center gap-2 sm:gap-3">
+            <div class="bg-emerald-950/80 border border-emerald-700/50 px-2.5 py-1 rounded-full font-semibold text-emerald-300 flex items-center gap-1">
+                <span>🏰</span> <span id="floor-display" class="text-white font-bold">1</span>/5
             </div>
-            <div class="flex items-center gap-1 bg-amber-950/80 border border-amber-700/50 px-2.5 py-1 rounded-full">
-                <span class="text-amber-400 font-bold">🪙</span>
-                <span id="player-gold-display" class="font-extrabold text-amber-200">15$</span>
+            <div class="bg-rose-950/80 border border-rose-700/50 px-2.5 py-1 rounded-full font-semibold text-rose-300 flex items-center gap-1">
+                <span>❤️</span> <span id="player-hp-display" class="text-white font-bold">30/30</span>
+            </div>
+            <div class="bg-amber-950/80 border border-amber-700/50 px-2.5 py-1 rounded-full font-semibold text-amber-300 flex items-center gap-1">
+                <span>🪙</span> <span id="player-gold-display" class="text-white font-bold">15$</span>
             </div>
         </div>
-
-        <div class="flex items-center gap-2">
-            <div class="bg-emerald-950/80 border border-emerald-700/50 px-2.5 py-1 rounded-full font-semibold text-emerald-300">
-                Этаж <span id="floor-display" class="text-white font-bold">1</span>/5
-            </div>
+        <div class="flex items-center gap-1.5 sm:gap-2">
             <div id="save-status-badge" class="hidden sm:flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-900/30 border border-emerald-600/30 px-2 py-0.5 rounded-full">
                 <span class="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
                 <span id="save-status-text">Сохранено</span>
             </div>
+            <button id="btn-run-tests" class="hidden bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/50 text-indigo-300 w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm active:scale-95 transition shadow" title="Запустить юнит-тесты">
+                🧪
+            </button>
+            <button id="btn-toggle-audio" class="w-7 h-7 sm:w-8 sm:h-8 bg-slate-800/80 hover:bg-slate-700 border border-slate-600/50 text-slate-200 rounded-full flex items-center justify-center text-xs sm:text-sm active:scale-95 transition shadow" title="Переключить звук">
+                <span id="audio-icon">🔊</span>
+            </button>
+            <button id="btn-open-menu" class="w-7 h-7 sm:w-8 sm:h-8 bg-slate-800/80 hover:bg-slate-700 border border-slate-600/50 text-slate-200 rounded-full flex items-center justify-center text-xs sm:text-sm active:scale-95 transition shadow" title="Главное меню">
+                ⚙️
+            </button>
         </div>
     </header>
 
     <main class="flex-1 flex flex-col justify-between p-2 max-w-md md:max-w-2xl lg:max-w-4xl mx-auto w-full relative z-10 min-h-0 overflow-hidden">
-        
-        <!-- Enemy Area -->
         <section class="bg-black/40 border border-emerald-900/40 rounded-xl p-2.5 flex items-center justify-between shadow-lg backdrop-blur-sm flex-shrink-0">
             <div class="flex items-center gap-2.5">
                 <div class="w-10 h-10 rounded-full bg-slate-800 border-2 border-emerald-500 flex items-center justify-center text-xl shadow" id="enemy-avatar">
@@ -109,55 +124,40 @@
                         <span class="text-rose-400 font-medium">HP: <span id="enemy-hp">20</span></span>
                         <span class="text-slate-400">| Карт: <span id="enemy-card-count" class="text-amber-300 font-semibold">6</span></span>
                     </div>
-                    <!-- Boss Passive Rule Badge -->
                     <div id="boss-ability-badge" class="mt-1 text-[10px] font-semibold text-amber-300 bg-amber-950/60 border border-amber-600/40 px-2 py-0.5 rounded-md inline-block">
                         Особенность: Нет
                     </div>
                 </div>
             </div>
             <div id="enemy-hand-visual" class="flex -space-x-4 overflow-hidden py-1">
-                <!-- Dynamic enemy cards -->
             </div>
         </section>
 
-        <!-- Battle Table Area -->
         <section class="flex-1 my-2 flex flex-col justify-center items-center relative rounded-2xl border border-dashed border-emerald-700/30 bg-emerald-950/20 p-2 min-h-0 overflow-y-auto">
-            
-            <!-- Deck & Trump Badge -->
             <div id="deck-container" class="absolute left-3 top-3 flex items-center z-20">
-                <!-- Deck elements rendered dynamically -->
             </div>
 
-            <!-- Status Banner -->
             <div id="turn-banner" class="mb-2 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm animate-pulse z-10">
                 Ваш ход: Атака
             </div>
 
-            <!-- Table Card Pairs Container -->
             <div id="table-pairs" class="flex flex-wrap items-center justify-center gap-2 sm:gap-3 max-w-full min-h-[110px] my-auto">
-                <!-- Played cards appear here -->
             </div>
         </section>
 
-        <!-- Relics / Jokers Slot Bar -->
         <section class="mb-1 flex-shrink-0">
             <div class="flex items-center justify-between px-1 mb-1 text-[11px] font-semibold text-emerald-400/80">
                 <span>ШУЛЕРСКИЕ АРТЕФАКТЫ (JOKERS)</span>
                 <span id="relic-count">0/5</span>
             </div>
             <div id="relics-bar" class="grid grid-cols-5 gap-1.5 bg-black/50 p-1.5 rounded-xl border border-emerald-900/50">
-                <!-- 5 Slots -->
             </div>
         </section>
 
-        <!-- Player Zone (Hand & Actions) -->
         <section class="flex flex-col gap-2 flex-shrink-0">
-            <!-- Player Hand -->
             <div id="player-hand" class="hand-scroll flex items-center justify-start sm:justify-center -space-x-6 overflow-x-auto min-h-[105px] px-4 py-2">
-                <!-- Player cards dynamically inserted -->
             </div>
 
-            <!-- Action Buttons -->
             <div class="grid grid-cols-3 gap-2">
                 <button id="btn-action" class="py-3 px-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg border border-emerald-400/30 transition disabled:opacity-40 disabled:pointer-events-none">
                     БИТО
@@ -183,15 +183,12 @@
         </div>
 
         <div class="flex-1 overflow-y-auto py-3 flex flex-col gap-4">
-            <!-- Relics Shop Section -->
             <div>
                 <h3 class="text-xs font-bold text-emerald-400 mb-2 uppercase tracking-wider">Шулерские Артефакты</h3>
                 <div id="shop-relics-list" class="grid grid-cols-1 gap-2">
-                    <!-- Shop Items -->
                 </div>
             </div>
 
-            <!-- Card Removal Section -->
             <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
                 <div class="flex justify-between items-center mb-1">
                     <span class="text-xs font-bold text-rose-400">Сбросить слабую карту</span>
@@ -224,12 +221,58 @@
         </div>
     </div>
 
+    <div id="unit-test-modal" class="fixed inset-0 bg-slate-950/95 backdrop-blur-xl z-[100] hidden flex-col p-4 sm:p-6 overflow-y-auto">
+        <div class="max-w-3xl w-full mx-auto flex-1 flex flex-col gap-4">
+            <div class="flex items-center justify-between border-b border-indigo-500/30 pb-4">
+                <div class="flex items-center gap-3">
+                    <span class="text-3xl">🧪</span>
+                    <div>
+                        <h2 class="text-xl font-black text-indigo-300 tracking-wide">Панель Юнит-Тестирования</h2>
+                        <p class="text-xs text-slate-400">Автоматическая проверка логики и игровых механик</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="btn-close-tests" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-600 transition">
+                        ✕ Закрыть
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-3">
+                <div class="bg-slate-900 border border-slate-800 p-3 rounded-2xl text-center">
+                    <div class="text-2xl font-black text-slate-200" id="test-stat-total">0</div>
+                    <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Всего тестов</div>
+                </div>
+                <div class="bg-emerald-950/50 border border-emerald-600/40 p-3 rounded-2xl text-center">
+                    <div class="text-2xl font-black text-emerald-400" id="test-stat-passed">0</div>
+                    <div class="text-[11px] font-bold text-emerald-300 uppercase tracking-wider">Успешно</div>
+                </div>
+                <div class="bg-rose-950/50 border border-rose-600/40 p-3 rounded-2xl text-center">
+                    <div class="text-2xl font-black text-rose-400" id="test-stat-failed">0</div>
+                    <div class="text-[11px] font-bold text-rose-300 uppercase tracking-wider">Провалено</div>
+                </div>
+            </div>
+
+            <div id="test-suites-list" class="flex-1 flex flex-col gap-3 py-2">
+            </div>
+        </div>
+    </div>
+
     <script>
         const SAVE_KEY = 'fools_deck_local_run';
 
+        function setElText(id, text) {
+            const el = document.getElementById(id);
+            if (el) el.innerText = text;
+        }
+
+        function bindClick(id, handler) {
+            const el = document.getElementById(id);
+            if (el) el.onclick = handler;
+        }
+
         function updateSaveStatus(text) {
-            const badgeText = document.getElementById('save-status-text');
-            if (badgeText) badgeText.innerText = text;
+            setElText('save-status-text', text);
         }
 
         function saveRunToLocal() {
@@ -290,50 +333,56 @@
                 if (this.isMuted) return;
                 this.init();
                 if (!this.ctx) return;
-                const osc = this.ctx.createOscillator();
-                const gain = this.ctx.createGain();
-                osc.type = 'triangle';
-                osc.frequency.setValueAtTime(220, this.ctx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(70, this.ctx.currentTime + 0.09);
-                gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
-                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.09);
-                osc.connect(gain);
-                gain.connect(this.ctx.destination);
-                osc.start();
-                osc.stop(this.ctx.currentTime + 0.09);
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(220, this.ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(70, this.ctx.currentTime + 0.09);
+                    gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.09);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.09);
+                } catch(e) {}
             }
             playWinSound() {
                 if (this.isMuted) return;
                 this.init();
                 if (!this.ctx) return;
                 [261.63, 329.63, 392.00, 523.25].forEach((freq, idx) => {
-                    const osc = this.ctx.createOscillator();
-                    const gain = this.ctx.createGain();
-                    osc.type = 'triangle';
-                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.1);
-                    gain.gain.setValueAtTime(0.3, this.ctx.currentTime + idx * 0.1);
-                    gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + idx * 0.1 + 0.25);
-                    osc.connect(gain);
-                    gain.connect(this.ctx.destination);
-                    osc.start(this.ctx.currentTime + idx * 0.1);
-                    osc.stop(this.ctx.currentTime + idx * 0.1 + 0.25);
+                    try {
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.1);
+                        gain.gain.setValueAtTime(0.3, this.ctx.currentTime + idx * 0.1);
+                        gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + idx * 0.1 + 0.25);
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start(this.ctx.currentTime + idx * 0.1);
+                        osc.stop(this.ctx.currentTime + idx * 0.1 + 0.25);
+                    } catch(e) {}
                 });
             }
             playTakeSound() {
                 if (this.isMuted) return;
                 this.init();
                 if (!this.ctx) return;
-                const osc = this.ctx.createOscillator();
-                const gain = this.ctx.createGain();
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(160, this.ctx.currentTime);
-                osc.frequency.linearRampToValueAtTime(75, this.ctx.currentTime + 0.18);
-                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
-                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.18);
-                osc.connect(gain);
-                gain.connect(this.ctx.destination);
-                osc.start();
-                osc.stop(this.ctx.currentTime + 0.18);
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(160, this.ctx.currentTime);
+                    osc.frequency.linearRampToValueAtTime(75, this.ctx.currentTime + 0.18);
+                    gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.18);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.18);
+                } catch(e) {}
             }
             startMusic(loop = false) {
                 this.init();
@@ -459,7 +508,7 @@
             trumpCard: null,
             trumpSuit: null,
             table: [], 
-            defender: 'enemy', // 'player' or 'enemy'
+            defender: 'enemy',
             selectedCardIndex: null,
             cardsToTake: false,
             isTransferActive: false
@@ -494,10 +543,10 @@
 
         function startFloorBattle() {
             const enemyData = getCurrentEnemy();
-            document.getElementById('enemy-name').innerText = enemyData.name;
-            document.getElementById('enemy-avatar').innerText = enemyData.avatar;
-            document.getElementById('enemy-hp').innerText = enemyData.hp;
-            document.getElementById('boss-ability-badge').innerText = `Особенность: ${enemyData.abilityDesc}`;
+            setElText('enemy-name', enemyData.name);
+            setElText('enemy-avatar', enemyData.avatar);
+            setElText('enemy-hp', enemyData.hp);
+            setElText('boss-ability-badge', `Особенность: ${enemyData.abilityDesc}`);
 
             startNewRound();
         }
@@ -564,7 +613,8 @@
                 const damage = 6 + (enemyCardsLeft * 4);
                 showModal("Раунд Выигран!", `Вы первыми скинули все карты! Противник остается в дураках и получает ${damage} ед. урона.`, () => {
                     damageEnemyHP(damage);
-                    const currentHP = parseInt(document.getElementById('enemy-hp').innerText);
+                    const enemyHpEl = document.getElementById('enemy-hp');
+                    const currentHP = enemyHpEl ? parseInt(enemyHpEl.innerText) : 0;
                     if (currentHP > 0) {
                         startNewRound();
                     }
@@ -581,7 +631,8 @@
                 if (run.playerHP <= 0) {
                     clearLocalSave();
                     showModal("Поражение!", `Соперник первым скинул все карты. Вы получили ${damage} ед. урона и погибли.`, () => {
-                        document.getElementById('splash-screen').classList.remove('hidden');
+                        const splash = document.getElementById('splash-screen');
+                        if (splash) splash.classList.remove('hidden');
                     });
                 } else {
                     showModal("Раунд Проигран!", `Соперник первым скинул все карты! Вы остались в дураках с ${playerCardsLeft} картами и получили ${damage} ед. урона.`, () => {
@@ -606,7 +657,7 @@
 
         function isRankOnTable(value) {
             for (let pair of battle.table) {
-                if (pair.attack.value === value) return true;
+                if (pair.attack && pair.attack.value === value) return true;
                 if (pair.defend && pair.defend.value === value) return true;
             }
             return false;
@@ -750,7 +801,8 @@
             if (run.playerHP <= 0) {
                 clearLocalSave();
                 showModal("Поражение!", "Вы потеряли всё здоровье. Забег окончен.", () => {
-                    document.getElementById('splash-screen').classList.remove('hidden');
+                    const splash = document.getElementById('splash-screen');
+                    if (splash) splash.classList.remove('hidden');
                 });
             } else {
                 if (!checkRoundEnd()) {
@@ -769,7 +821,6 @@
                 const playerHasTossCard = battle.playerHand.some(c => isRankOnTable(c.value));
 
                 if (battle.cardsToTake) {
-                    // Enemy gave up and is taking cards
                     if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !playerHasTossCard) {
                         setTimeout(() => handleEnemyTake(), 400);
                         return;
@@ -787,7 +838,6 @@
                     return;
                 }
 
-                // AI Chaining Transfer Check
                 const attackVal = battle.table[0].attack.value;
                 const allSameRank = battle.table.every(p => p.attack.value === attackVal);
 
@@ -835,7 +885,6 @@
 
                 renderAll();
 
-                // Auto-resolve check if player cannot throw any more cards
                 const updatedHasToss = battle.playerHand.some(c => isRankOnTable(c.value));
                 if (battle.cardsToTake) {
                     if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !updatedHasToss) {
@@ -848,7 +897,6 @@
                 }
 
             } else {
-                // AI is attacking
                 if (battle.enemyHand.length === 0) {
                     if (battle.table.filter(p => p.defend === null).length === 0) {
                         setTimeout(() => handleBito(), 500);
@@ -880,7 +928,6 @@
                         battle.table.push({ attack: throwCard, defend: null });
                         audio.playCardSound();
                     } else {
-                        // AI passes! All player defenses were successful
                         setTimeout(() => handleBito(), 500);
                     }
                 }
@@ -913,7 +960,6 @@
                     }
                 }
             } else {
-                // Defender mode
                 if (battle.isTransferActive) {
                     const requiredRank = battle.table[0].attack.value;
                     if (card.value === requiredRank) {
@@ -937,7 +983,6 @@
                     }
                 }
 
-                // Regular defense against undefended cards
                 const undefendedPair = battle.table.find(p => p.defend === null);
                 if (undefendedPair) {
                     if (canBeat(undefendedPair.attack, card)) {
@@ -954,11 +999,10 @@
             renderAll();
         };
 
-        document.getElementById('btn-action').onclick = () => handleBito();
-        document.getElementById('btn-take').onclick = () => handlePlayerTake();
+        bindClick('btn-action', () => handleBito());
+        bindClick('btn-take', () => handlePlayerTake());
 
-        // Transfer button toggle click handler
-        document.getElementById('btn-transfer').onclick = () => {
+        bindClick('btn-transfer', () => {
             const enemyData = getCurrentEnemy();
             if (enemyData.abilityId === 'no_transfer') {
                 showModal("Перевод заблокирован", "Трактирщик запрещает переводить карты на этом этаже!");
@@ -992,10 +1036,11 @@
 
             battle.isTransferActive = !battle.isTransferActive;
             renderAll();
-        };
+        });
 
         function damageEnemyHP(amount) {
             const enemyHpEl = document.getElementById('enemy-hp');
+            if (!enemyHpEl) return;
             let current = parseInt(enemyHpEl.innerText);
             current = Math.max(0, current - amount);
             enemyHpEl.innerText = current;
@@ -1014,33 +1059,35 @@
         }
 
         function openShop() {
-            document.getElementById('shop-modal').classList.remove('hidden');
-            document.getElementById('shop-modal').classList.add('flex');
+            const shopModal = document.getElementById('shop-modal');
+            if (!shopModal) return;
+            shopModal.classList.remove('hidden');
+            shopModal.classList.add('flex');
             
-            const shopGoldEl = document.getElementById('shop-gold-display');
-            if (shopGoldEl) shopGoldEl.innerText = `${run.gold}$`;
+            setElText('shop-gold-display', `${run.gold}$`);
 
             const shopList = document.getElementById('shop-relics-list');
-            shopList.innerHTML = '';
-
-            const available = ALL_RELICS.filter(r => !hasRelic(r.id));
-            available.forEach(relic => {
-                const item = document.createElement('div');
-                item.className = "flex items-center justify-between p-2.5 bg-slate-900 border border-emerald-800/60 rounded-xl";
-                item.innerHTML = `
-                    <div class="flex items-center gap-2.5">
-                        <span class="text-2xl">${relic.icon}</span>
-                        <div>
-                            <div class="text-xs font-bold text-amber-300">${relic.name}</div>
-                            <div class="text-[10px] text-slate-400 leading-tight">${relic.desc}</div>
+            if (shopList) {
+                shopList.innerHTML = '';
+                const available = ALL_RELICS.filter(r => !hasRelic(r.id));
+                available.forEach(relic => {
+                    const item = document.createElement('div');
+                    item.className = "flex items-center justify-between p-2.5 bg-slate-900 border border-emerald-800/60 rounded-xl";
+                    item.innerHTML = `
+                        <div class="flex items-center gap-2.5">
+                            <span class="text-2xl">${relic.icon}</span>
+                            <div>
+                                <div class="text-xs font-bold text-amber-300">${relic.name}</div>
+                                <div class="text-[10px] text-slate-400 leading-tight">${relic.desc}</div>
+                            </div>
                         </div>
-                    </div>
-                    <button class="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-lg shadow border border-amber-300" onclick="buyRelic('${relic.id}')">
-                        ${relic.price}$
-                    </button>
-                `;
-                shopList.appendChild(item);
-            });
+                        <button class="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-lg shadow border border-amber-300" onclick="buyRelic('${relic.id}')">
+                            ${relic.price}$
+                        </button>
+                    `;
+                    shopList.appendChild(item);
+                });
+            }
 
             saveRunToLocal();
         }
@@ -1064,7 +1111,7 @@
             }
         };
 
-        document.getElementById('btn-prune-card').onclick = () => {
+        bindClick('btn-prune-card', () => {
             if (run.gold >= 10) {
                 const weakCardIndex = run.deck.findIndex(c => c.value === 6 || c.value === 7);
                 if (weakCardIndex !== -1) {
@@ -1079,23 +1126,27 @@
             } else {
                 showModal("Недостаточно денег", "Удаление карты стоит 10$");
             }
-        };
+        });
 
-        document.getElementById('btn-next-floor').onclick = () => {
-            document.getElementById('shop-modal').classList.add('hidden');
-            document.getElementById('shop-modal').classList.remove('flex');
+        bindClick('btn-next-floor', () => {
+            const shopModal = document.getElementById('shop-modal');
+            if (shopModal) {
+                shopModal.classList.add('hidden');
+                shopModal.classList.remove('flex');
+            }
 
             run.floor++;
             if (run.floor > 5) {
                 clearLocalSave();
                 showModal("ПОБЕДА В ЗАБЕГЕ!", "Вы прошли все 5 этажей и стали Легендой Дурака!", () => {
-                    document.getElementById('splash-screen').classList.remove('hidden');
+                    const splash = document.getElementById('splash-screen');
+                    if (splash) splash.classList.remove('hidden');
                 });
             } else {
                 saveRunToLocal();
                 startFloorBattle();
             }
-        };
+        });
 
         function renderCardHTML(card, extraClass = '') {
             const color = SUIT_COLORS[card.suit];
@@ -1115,218 +1166,615 @@
         }
 
         function renderAll() {
-            document.getElementById('player-hp-display').innerText = `${run.playerHP}/${run.maxHP}`;
-            document.getElementById('player-gold-display').innerText = `${run.gold}$`;
-            document.getElementById('floor-display').innerText = run.floor;
+            setElText('player-hp-display', `${run.playerHP}/${run.maxHP}`);
+            setElText('player-gold-display', `${run.gold}$`);
+            setElText('floor-display', run.floor);
 
             const banner = document.getElementById('turn-banner');
-            if (battle.defender === 'enemy') {
-                banner.innerText = battle.cardsToTake ? "Соперник забирает карты! (Жмите БИТО)" : "Ваш ход: Атака";
-                banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm animate-pulse z-10";
-            } else {
-                if (battle.isTransferActive) {
-                    banner.innerText = "Выберите карту для Перевода!";
-                    banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/60 shadow-sm animate-pulse z-10";
+            if (banner) {
+                if (battle.defender === 'enemy') {
+                    banner.innerText = battle.cardsToTake ? "Соперник забирает карты! (Жмите БИТО)" : "Ваш ход: Атака";
+                    banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm animate-pulse z-10";
                 } else {
-                    banner.innerText = "Ход соперника: Защищайтесь!";
-                    banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm animate-pulse z-10";
+                    if (battle.isTransferActive) {
+                        banner.innerText = "Выберите карту для Перевода!";
+                        banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/60 shadow-sm animate-pulse z-10";
+                    } else {
+                        banner.innerText = "Ход соперника: Защищайтесь!";
+                        banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm animate-pulse z-10";
+                    }
                 }
             }
 
             const enemyHandVis = document.getElementById('enemy-hand-visual');
-            enemyHandVis.innerHTML = '';
+            if (enemyHandVis) {
+                enemyHandVis.innerHTML = '';
 
-            let lowestEnemyCard = null;
-            if (hasRelic('cheat_eye') && battle.enemyHand.length > 0) {
-                lowestEnemyCard = battle.enemyHand.reduce((minCard, currentCard) => {
-                    const minPower = (minCard.suit === battle.trumpSuit ? 100 : 0) + minCard.value;
-                    const currPower = (currentCard.suit === battle.trumpSuit ? 100 : 0) + currentCard.value;
-                    return currPower < minPower ? currentCard : minCard;
-                }, battle.enemyHand[0]);
-            }
+                let lowestEnemyCard = null;
+                if (hasRelic('cheat_eye') && battle.enemyHand.length > 0) {
+                    lowestEnemyCard = battle.enemyHand.reduce((minCard, currentCard) => {
+                        const minPower = (minCard.suit === battle.trumpSuit ? 100 : 0) + minCard.value;
+                        const currPower = (currentCard.suit === battle.trumpSuit ? 100 : 0) + currentCard.value;
+                        return currPower < minPower ? currentCard : minCard;
+                    }, battle.enemyHand[0]);
+                }
 
-            for (let i = 0; i < battle.enemyHand.length; i++) {
-                const card = battle.enemyHand[i];
-                if (lowestEnemyCard && card.id === lowestEnemyCard.id) {
-                    const color = SUIT_COLORS[card.suit];
-                    const isTrump = card.suit === battle.trumpSuit;
-                    const eyeCard = document.createElement('div');
-                    eyeCard.className = `w-7 h-10 sm:w-9 sm:h-12 bg-amber-50 border-2 ${isTrump ? 'border-amber-400 ring-2 ring-amber-400/60' : 'border-amber-300'} rounded shadow-md flex flex-col justify-between p-0.5 relative flex-shrink-0 ${color}`;
-                    eyeCard.innerHTML = `
-                        <span class="absolute -top-1.5 -right-1.5 text-[10px] leading-none bg-black/80 rounded-full p-0.5 border border-amber-400" title="Шулерский глаз">👁️</span>
-                        <div class="text-[9px] font-black leading-none">${VALUES[card.value]}</div>
-                        <div class="text-center text-xs font-bold leading-none">${SUITS[card.suit]}</div>
-                        <div class="text-[9px] font-black leading-none self-end transform rotate-180">${VALUES[card.value]}</div>
-                    `;
-                    enemyHandVis.appendChild(eyeCard);
-                } else {
-                    const cardBack = document.createElement('div');
-                    cardBack.className = 'w-6 h-9 sm:w-8 sm:h-11 bg-gradient-to-br from-rose-900 to-red-950 border border-white/40 rounded shadow-sm flex-shrink-0';
-                    enemyHandVis.appendChild(cardBack);
+                for (let i = 0; i < battle.enemyHand.length; i++) {
+                    const card = battle.enemyHand[i];
+                    if (lowestEnemyCard && card.id === lowestEnemyCard.id) {
+                        const color = SUIT_COLORS[card.suit];
+                        const isTrump = card.suit === battle.trumpSuit;
+                        const eyeCard = document.createElement('div');
+                        eyeCard.className = `w-7 h-10 sm:w-9 sm:h-12 bg-amber-50 border-2 ${isTrump ? 'border-amber-400 ring-2 ring-amber-400/60' : 'border-amber-300'} rounded shadow-md flex flex-col justify-between p-0.5 relative flex-shrink-0 ${color}`;
+                        eyeCard.innerHTML = `
+                            <span class="absolute -top-1.5 -right-1.5 text-[10px] leading-none bg-black/80 rounded-full p-0.5 border border-amber-400" title="Шулерский глаз">👁️</span>
+                            <div class="text-[9px] font-black leading-none">${VALUES[card.value]}</div>
+                            <div class="text-center text-xs font-bold leading-none">${SUITS[card.suit]}</div>
+                            <div class="text-[9px] font-black leading-none self-end transform rotate-180">${VALUES[card.value]}</div>
+                        `;
+                        enemyHandVis.appendChild(eyeCard);
+                    } else {
+                        const cardBack = document.createElement('div');
+                        cardBack.className = 'w-6 h-9 sm:w-8 sm:h-11 bg-gradient-to-br from-rose-900 to-red-950 border border-white/40 rounded shadow-sm flex-shrink-0';
+                        enemyHandVis.appendChild(cardBack);
+                    }
                 }
             }
-            document.getElementById('enemy-card-count').innerText = battle.enemyHand.length;
+            setElText('enemy-card-count', battle.enemyHand.length);
 
             const deckContainer = document.getElementById('deck-container');
-            if (battle.drawDeck.length > 0) {
-                deckContainer.innerHTML = `
-                    <div class="relative flex items-center">
-                        <div class="transform rotate-90 translate-x-2 z-0 opacity-90">
-                            ${renderCardHTML(battle.trumpCard)}
+            if (deckContainer) {
+                if (battle.drawDeck.length > 0) {
+                    deckContainer.innerHTML = `
+                        <div class="relative flex items-center">
+                            <div class="transform rotate-90 translate-x-2 z-0 opacity-90">
+                                ${renderCardHTML(battle.trumpCard)}
+                            </div>
+                            <div class="w-12 h-18 sm:w-14 sm:h-20 bg-rose-950 border-2 border-slate-200 rounded-lg shadow-md z-10 flex items-center justify-center font-extrabold text-xs text-amber-300">
+                                ${battle.drawDeck.length} шт
+                            </div>
                         </div>
-                        <div class="w-12 h-18 sm:w-14 sm:h-20 bg-rose-950 border-2 border-slate-200 rounded-lg shadow-md z-10 flex items-center justify-center font-extrabold text-xs text-amber-300">
-                            ${battle.drawDeck.length} шт
+                    `;
+                } else if (battle.trumpCard) {
+                    const isRed = battle.trumpSuit === 'Hearts' || battle.trumpSuit === 'Tiles';
+                    deckContainer.innerHTML = `
+                        <div class="flex items-center gap-1.5 bg-amber-950/90 border border-amber-500/60 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-300 shadow-md backdrop-blur-sm">
+                            <span>Козырь:</span>
+                            <span class="${isRed ? 'text-rose-400' : 'text-slate-100'} text-base font-extrabold">${SUITS[battle.trumpCard.suit]}</span>
                         </div>
-                    </div>
-                `;
-            } else if (battle.trumpCard) {
-                const isRed = battle.trumpSuit === 'Hearts' || battle.trumpSuit === 'Tiles';
-                deckContainer.innerHTML = `
-                    <div class="flex items-center gap-1.5 bg-amber-950/90 border border-amber-500/60 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-300 shadow-md backdrop-blur-sm">
-                        <span>Козырь:</span>
-                        <span class="${isRed ? 'text-rose-400' : 'text-slate-100'} text-base font-extrabold">${SUITS[battle.trumpCard.suit]}</span>
-                    </div>
-                `;
+                    `;
+                }
             }
 
             const relicsBar = document.getElementById('relics-bar');
-            relicsBar.innerHTML = '';
-            for (let i = 0; i < 5; i++) {
-                const slot = document.createElement('div');
-                if (run.relics[i]) {
-                    const r = run.relics[i];
-                    slot.className = "w-full h-8 bg-amber-500/20 border border-amber-400/60 rounded-lg flex items-center justify-center text-lg shadow-sm cursor-help";
-                    slot.title = `${r.name}: ${r.desc}`;
-                    slot.innerText = r.icon;
-                } else {
-                    slot.className = "w-full h-8 border border-dashed border-emerald-800/60 rounded-lg flex items-center justify-center text-xs text-emerald-700";
-                    slot.innerText = "+";
+            if (relicsBar) {
+                relicsBar.innerHTML = '';
+                for (let i = 0; i < 5; i++) {
+                    const slot = document.createElement('div');
+                    if (run.relics[i]) {
+                        const r = run.relics[i];
+                        slot.className = "w-full h-8 bg-amber-500/20 border border-amber-400/60 rounded-lg flex items-center justify-center text-lg shadow-sm cursor-help";
+                        slot.title = `${r.name}: ${r.desc}`;
+                        slot.innerText = r.icon;
+                    } else {
+                        slot.className = "w-full h-8 border border-dashed border-emerald-800/60 rounded-lg flex items-center justify-center text-xs text-emerald-700";
+                        slot.innerText = "+";
+                    }
+                    relicsBar.appendChild(slot);
                 }
-                relicsBar.appendChild(slot);
             }
-            document.getElementById('relic-count').innerText = `${run.relics.length}/5`;
+            setElText('relic-count', `${run.relics.length}/5`);
 
             const tablePairsEl = document.getElementById('table-pairs');
-            tablePairsEl.innerHTML = '';
-            battle.table.forEach((pair) => {
-                const pairWrap = document.createElement('div');
-                pairWrap.className = 'relative w-14 h-20 sm:w-16 sm:h-24';
-                pairWrap.innerHTML = renderCardHTML(pair.attack);
-                if (pair.defend) {
-                    const defEl = document.createElement('div');
-                    defEl.className = 'absolute top-3 left-3 z-10';
-                    defEl.innerHTML = renderCardHTML(pair.defend);
-                    pairWrap.appendChild(defEl);
-                }
-                tablePairsEl.appendChild(pairWrap);
-            });
+            if (tablePairsEl) {
+                tablePairsEl.innerHTML = '';
+                battle.table.forEach((pair) => {
+                    const pairWrap = document.createElement('div');
+                    pairWrap.className = 'relative w-14 h-20 sm:w-16 sm:h-24';
+                    pairWrap.innerHTML = renderCardHTML(pair.attack);
+                    if (pair.defend) {
+                        const defEl = document.createElement('div');
+                        defEl.className = 'absolute top-3 left-3 z-10';
+                        defEl.innerHTML = renderCardHTML(pair.defend);
+                        pairWrap.appendChild(defEl);
+                    }
+                    tablePairsEl.appendChild(pairWrap);
+                });
+            }
 
             const handEl = document.getElementById('player-hand');
-            handEl.innerHTML = '';
-            
-            const requiredRank = (battle.defender === 'player' && battle.table.length > 0) ? battle.table[0].attack.value : null;
+            if (handEl) {
+                handEl.innerHTML = '';
+                const requiredRank = (battle.defender === 'player' && battle.table.length > 0) ? battle.table[0].attack.value : null;
 
-            battle.playerHand.forEach((card, idx) => {
-                const cardWrap = document.createElement('div');
-                cardWrap.className = 'flex-shrink-0 transition-transform';
-                
-                let extraCardClass = '';
-                if (battle.isTransferActive && card.value === requiredRank) {
-                    extraCardClass = 'ring-4 ring-yellow-400 -translate-y-2';
-                }
-                
-                cardWrap.innerHTML = renderCardHTML(card, extraCardClass);
-                cardWrap.onclick = () => window.onPlayerCardClick(idx);
-                handEl.appendChild(cardWrap);
-            });
+                battle.playerHand.forEach((card, idx) => {
+                    const cardWrap = document.createElement('div');
+                    cardWrap.className = 'flex-shrink-0 transition-transform';
+                    
+                    let extraCardClass = '';
+                    if (battle.isTransferActive && card.value === requiredRank) {
+                        extraCardClass = 'ring-4 ring-yellow-400 -translate-y-2';
+                    }
+                    
+                    cardWrap.innerHTML = renderCardHTML(card, extraCardClass);
+                    cardWrap.onclick = () => window.onPlayerCardClick(idx);
+                    handEl.appendChild(cardWrap);
+                });
+            }
 
             const btnAction = document.getElementById('btn-action');
             const btnTake = document.getElementById('btn-take');
             const btnTransfer = document.getElementById('btn-transfer');
 
-            if (battle.defender === 'enemy') {
-                btnAction.innerText = battle.cardsToTake ? "БИТО (Враг взял)" : "БИТО";
-                btnAction.disabled = battle.table.length === 0;
-                btnTake.disabled = true;
-                btnTransfer.disabled = true;
-                btnTransfer.className = "py-3 px-2 bg-gradient-to-r from-indigo-600 to-blue-600 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg border border-indigo-400/30 transition disabled:opacity-40 disabled:pointer-events-none";
-            } else {
-                btnAction.innerText = "БИТО";
-                btnAction.disabled = battle.table.length === 0 || battle.table.some(p => p.defend === null);
-                btnTake.disabled = battle.table.length === 0;
-                
-                const canTransfer = isTransferAllowedForPlayer();
-                btnTransfer.disabled = !canTransfer;
-
-                if (battle.isTransferActive) {
-                    btnTransfer.innerText = "ОТМЕНА";
-                    btnTransfer.className = "py-3 px-2 bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-xl border-2 border-yellow-300 transfer-active transition";
+            if (btnAction && btnTake && btnTransfer) {
+                if (battle.defender === 'enemy') {
+                    btnAction.innerText = battle.cardsToTake ? "БИТО (Враг взял)" : "БИТО";
+                    btnAction.disabled = battle.table.length === 0;
+                    btnTake.disabled = true;
+                    btnTransfer.disabled = true;
+                    btnTransfer.className = "py-3 px-2 bg-gradient-to-r from-indigo-600 to-blue-600 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg border border-indigo-400/30 transition disabled:opacity-40 disabled:pointer-events-none";
                 } else {
-                    btnTransfer.innerText = "ПЕРЕВОД";
-                    btnTransfer.className = "py-3 px-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg border border-indigo-400/30 transition disabled:opacity-40 disabled:pointer-events-none";
+                    btnAction.innerText = "БИТО";
+                    btnAction.disabled = battle.table.length === 0 || battle.table.some(p => p.defend === null);
+                    btnTake.disabled = battle.table.length === 0;
+                    
+                    const canTransfer = isTransferAllowedForPlayer();
+                    btnTransfer.disabled = !canTransfer;
+
+                    if (battle.isTransferActive) {
+                        btnTransfer.innerText = "ОТМЕНА";
+                        btnTransfer.className = "py-3 px-2 bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-xl border-2 border-yellow-300 transfer-active transition";
+                    } else {
+                        btnTransfer.innerText = "ПЕРЕВОД";
+                        btnTransfer.className = "py-3 px-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg border border-indigo-400/30 transition disabled:opacity-40 disabled:pointer-events-none";
+                    }
                 }
             }
         }
 
         function showModal(title, text, onClose) {
             const modal = document.getElementById('msg-box');
-            document.getElementById('msg-title').innerText = title;
-            document.getElementById('msg-body').innerText = text;
+            if (!modal) return;
+            setElText('msg-title', title);
+            setElText('msg-body', text);
             
             const cancelBtn = document.getElementById('msg-btn-cancel');
             if (cancelBtn) cancelBtn.classList.add('hidden');
 
             const confirmBtn = document.getElementById('msg-btn');
-            confirmBtn.innerText = "ПОНЯТНО";
+            if (confirmBtn) {
+                confirmBtn.innerText = "ПОНЯТНО";
+                confirmBtn.onclick = () => {
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                    if (onClose) onClose();
+                };
+            }
 
             modal.classList.remove('hidden');
             modal.classList.add('flex');
-
-            confirmBtn.onclick = () => {
-                modal.classList.add('hidden');
-                modal.classList.remove('flex');
-                if (onClose) onClose();
-            };
         }
 
-        document.getElementById('btn-open-menu').onclick = () => {
-            document.getElementById('splash-screen').classList.remove('hidden');
-        };
+        bindClick('btn-open-menu', () => {
+            const splash = document.getElementById('splash-screen');
+            if (splash) splash.classList.remove('hidden');
+        });
 
-        document.getElementById('btn-toggle-audio').onclick = () => {
+        bindClick('btn-toggle-audio', () => {
             audio.isMuted = !audio.isMuted;
             const icon = document.getElementById('audio-icon');
             if (audio.isMuted) {
-                icon.innerText = '🔇';
+                if (icon) icon.innerText = '🔇';
                 audio.stopMusic();
             } else {
-                icon.innerText = '🔊';
+                if (icon) icon.innerText = '🔊';
                 audio.startMusic(false);
             }
-        };
+        });
 
-        document.getElementById('btn-start-game').onclick = () => {
+        bindClick('btn-start-game', () => {
             audio.init();
             audio.startMusic(false);
-            document.getElementById('splash-screen').classList.add('hidden');
+            const splash = document.getElementById('splash-screen');
+            if (splash) splash.classList.add('hidden');
             if (!loadRunFromLocal()) {
                 initNewRun();
             } else {
                 startFloorBattle();
             }
-        };
+        });
 
-        document.getElementById('btn-new-run').onclick = () => {
+        bindClick('btn-new-run', () => {
             audio.init();
             audio.startMusic(false);
             clearLocalSave();
             initNewRun();
-            document.getElementById('splash-screen').classList.add('hidden');
+            const splash = document.getElementById('splash-screen');
+            if (splash) splash.classList.add('hidden');
+        });
+
+        const assert = {
+            equal(actual, expected, msg = '') {
+                if (actual !== expected) {
+                    throw new Error(msg || `Ожидалось: ${JSON.stringify(expected)}, получено: ${JSON.stringify(actual)}`);
+                }
+            },
+            isTrue(value, msg = '') {
+                if (value !== true) {
+                    throw new Error(msg || `Ожидалось true, получено: ${value}`);
+                }
+            },
+            isFalse(value, msg = '') {
+                if (value !== false) {
+                    throw new Error(msg || `Ожидалось false, получено: ${value}`);
+                }
+            },
+            arrayLength(arr, length, msg = '') {
+                if (!Array.isArray(arr) || arr.length !== length) {
+                    throw new Error(msg || `Ожидалась длина массива ${length}, получена: ${arr ? arr.length : 'не массив'}`);
+                }
+            }
         };
 
+        class TinyTestRunner {
+            constructor() {
+                this.suites = [];
+            }
+            describe(suiteName, suiteFn) {
+                this.suites.push({ name: suiteName, fn: suiteFn });
+            }
+            run() {
+                let total = 0, passed = 0, failed = 0;
+                const details = [];
+
+                this.suites.forEach(suite => {
+                    const suiteResult = { name: suite.name, tests: [] };
+                    const it = (testName, testFn) => {
+                        total++;
+                        try {
+                            testFn();
+                            passed++;
+                            suiteResult.tests.push({ name: testName, success: true });
+                        } catch (err) {
+                            failed++;
+                            suiteResult.tests.push({ name: testName, success: false, error: err.message });
+                        }
+                    };
+
+                    try {
+                        suite.fn(it, assert);
+                    } catch (e) {
+                        suiteResult.tests.push({ name: "Ошибка исполнения сюита", success: false, error: e.message });
+                    }
+                    details.push(suiteResult);
+                });
+
+                return { total, passed, failed, details };
+            }
+        }
+
+        function runGameUnitTests() {
+            const runner = new TinyTestRunner();
+
+            runner.describe('1. Сравнение карт (canBeat)', (it, assert) => {
+                const oldTrump = battle.trumpSuit;
+                battle.trumpSuit = 'Hearts';
+
+                it('Карта той же масти и старшего достоинства побивает атаку', () => {
+                    const attack = { suit: 'Pikes', value: 8 };
+                    const defend = { suit: 'Pikes', value: 10 };
+                    assert.isTrue(canBeat(attack, defend));
+                });
+
+                it('Карта той же масти и младшего достоинства НЕ побивает атаку', () => {
+                    const attack = { suit: 'Pikes', value: 10 };
+                    const defend = { suit: 'Pikes', value: 8 };
+                    assert.isFalse(canBeat(attack, defend));
+                });
+
+                it('Козырь побивает некозырную карту любой величины', () => {
+                    const attack = { suit: 'Pikes', value: 14 };
+                    const defend = { suit: 'Hearts', value: 6 };
+                    assert.isTrue(canBeat(attack, defend));
+                });
+
+                it('Старший козырь побивает младший козырь', () => {
+                    const attack = { suit: 'Hearts', value: 9 };
+                    const defend = { suit: 'Hearts', value: 12 };
+                    assert.isTrue(canBeat(attack, defend));
+                });
+
+                it('Некозырная карта другой масти НЕ побивает атаку', () => {
+                    const attack = { suit: 'Pikes', value: 7 };
+                    const defend = { suit: 'Tiles', value: 10 };
+                    assert.isFalse(canBeat(attack, defend));
+                });
+
+                battle.trumpSuit = oldTrump;
+            });
+
+            runner.describe('2. Генерация колоды (generateStandardDeck)', (it, assert) => {
+                it('Создает ровно 36 карт', () => {
+                    const deck = generateStandardDeck();
+                    assert.arrayLength(deck, 36);
+                });
+
+                it('Содержит 4 масти и номиналы от 6 до 14', () => {
+                    const deck = generateStandardDeck();
+                    const suitsCount = {};
+                    deck.forEach(c => {
+                        suitsCount[c.suit] = (suitsCount[c.suit] || 0) + 1;
+                        assert.isTrue(c.value >= 6 && c.value <= 14, `Неверное значение: ${c.value}`);
+                    });
+                    assert.equal(Object.keys(suitsCount).length, 4, 'Должно быть 4 масти');
+                    Object.values(suitsCount).forEach(count => {
+                        assert.equal(count, 9, 'Каждой масти должно быть по 9 карт');
+                    });
+                });
+            });
+
+            runner.describe('3. Система артефактов (hasRelic)', (it, assert) => {
+                const oldRelics = run.relics;
+                run.relics = [{ id: 'ace_sleeve' }, { id: 'midas_touch' }];
+
+                it('Возвращает true если артефакт экипирован', () => {
+                    assert.isTrue(hasRelic('ace_sleeve'));
+                    assert.isTrue(hasRelic('midas_touch'));
+                });
+
+                it('Возвращает false если артефакта нет', () => {
+                    assert.isFalse(hasRelic('cheat_eye'));
+                });
+
+                run.relics = oldRelics;
+            });
+
+            runner.describe('4. Проверка номиналов на столе (isRankOnTable)', (it, assert) => {
+                const oldTable = battle.table;
+                battle.table = [
+                    { attack: { suit: 'Pikes', value: 8 }, defend: { suit: 'Pikes', value: 10 } },
+                    { attack: { suit: 'Hearts', value: 14 }, defend: null }
+                ];
+
+                it('Находит номинал атакующей карты', () => {
+                    assert.isTrue(isRankOnTable(14));
+                    assert.isTrue(isRankOnTable(8));
+                });
+
+                it('Находит номинал защищающейся карты', () => {
+                    assert.isTrue(isRankOnTable(10));
+                });
+
+                it('Возвращает false для отсутствующих номиналов', () => {
+                    assert.isFalse(isRankOnTable(6));
+                    assert.isFalse(isRankOnTable(12));
+                });
+
+                battle.table = oldTable;
+            });
+
+            runner.describe('5. Максимальное число атак (getMaxAllowedAttacks)', (it, assert) => {
+                const oldRelics = run.relics;
+                const oldFloor = run.floor;
+                const oldDefender = battle.defender;
+                const oldEnemyHand = battle.enemyHand;
+                const oldTable = battle.table;
+
+                run.floor = 1;
+                run.relics = [];
+                battle.defender = 'enemy';
+                battle.enemyHand = [{}, {}, {}, {}, {}, {}];
+                battle.table = [];
+
+                it('Базовый лимит атак ограничен картами противника (6)', () => {
+                    assert.equal(getMaxAllowedAttacks(), 6);
+                });
+
+                it('С артефактом bully_throw порог повышается до 12, ограничиваясь картами врага', () => {
+                    run.relics = [{ id: 'bully_throw' }];
+                    battle.enemyHand = [{}, {}, {}, {}, {}, {}, {}, {}];
+                    assert.equal(getMaxAllowedAttacks(), 8);
+                });
+
+                run.relics = oldRelics;
+                run.floor = oldFloor;
+                battle.defender = oldDefender;
+                battle.enemyHand = oldEnemyHand;
+                battle.table = oldTable;
+            });
+
+            runner.describe('6. Правила Перевода карт (isTransferAllowedForPlayer)', (it, assert) => {
+                const oldFloor = run.floor;
+                const oldDefender = battle.defender;
+                const oldTable = battle.table;
+                const oldPlayerHand = battle.playerHand;
+                const oldEnemyHand = battle.enemyHand;
+
+                it('Запрещено, если защищается соперник', () => {
+                    battle.defender = 'enemy';
+                    assert.isFalse(isTransferAllowedForPlayer());
+                });
+
+                it('Разрешено при наличии совпадения номинала и свободных карт у противника', () => {
+                    run.floor = 1;
+                    battle.defender = 'player';
+                    battle.table = [{ attack: { suit: 'Pikes', value: 8 }, defend: null }];
+                    battle.playerHand = [{ suit: 'Hearts', value: 8 }];
+                    battle.enemyHand = [{}, {}, {}];
+                    assert.isTrue(isTransferAllowedForPlayer());
+                });
+
+                it('Запрещено на 2 этаже (Босс Трактирщик блокирует перевод)', () => {
+                    run.floor = 2;
+                    battle.defender = 'player';
+                    battle.table = [{ attack: { suit: 'Pikes', value: 8 }, defend: null }];
+                    battle.playerHand = [{ suit: 'Hearts', value: 8 }];
+                    battle.enemyHand = [{}, {}, {}];
+                    assert.isFalse(isTransferAllowedForPlayer());
+                });
+
+                run.floor = oldFloor;
+                battle.defender = oldDefender;
+                battle.table = oldTable;
+                battle.playerHand = oldPlayerHand;
+                battle.enemyHand = oldEnemyHand;
+            });
+
+            runner.describe('7. Сохранение прогресса (LocalStorage)', (it, assert) => {
+                const oldFloor = run.floor;
+                run.floor = 4;
+                saveRunToLocal();
+
+                it('Успешно сохраняет и восстанавливает состояние забега', () => {
+                    run.floor = 1;
+                    const loaded = loadRunFromLocal();
+                    assert.isTrue(loaded);
+                    assert.equal(run.floor, 4);
+                });
+
+                it('Успешно очищает сохранение', () => {
+                    clearLocalSave();
+                    const loaded = loadRunFromLocal();
+                    assert.isFalse(loaded);
+                });
+
+                run.floor = oldFloor;
+            });
+
+            return runner.run();
+        }
+
+        function renderTestResultsUI(results) {
+            const modal = document.getElementById('unit-test-modal');
+            if (!modal) return;
+            const closeBtn = document.getElementById('btn-close-tests');
+            if (closeBtn) {
+                closeBtn.onclick = () => {
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                };
+            }
+
+            setElText('test-stat-total', results.total);
+            setElText('test-stat-passed', results.passed);
+            setElText('test-stat-failed', results.failed);
+
+            const suitesList = document.getElementById('test-suites-list');
+            if (suitesList) {
+                suitesList.innerHTML = '';
+
+                results.details.forEach(suite => {
+                    const suiteBox = document.createElement('div');
+                    suiteBox.className = 'bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg';
+                    
+                    let testsHtml = '';
+                    suite.tests.forEach(test => {
+                        if (test.success) {
+                            testsHtml += `
+                                <div class="flex items-center justify-between py-1.5 border-b border-slate-800/60 text-xs">
+                                    <span class="text-slate-300 font-medium flex items-center gap-2">
+                                        <span class="text-emerald-400 font-bold">✓</span> ${test.name}
+                                    </span>
+                                    <span class="text-[10px] bg-emerald-950/80 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-700/40 font-bold">PASSED</span>
+                                </div>
+                            `;
+                        } else {
+                            testsHtml += `
+                                <div class="flex flex-col gap-1 py-2 border-b border-rose-900/40 text-xs">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-rose-200 font-semibold flex items-center gap-2">
+                                            <span class="text-rose-500 font-bold">✕</span> ${test.name}
+                                        </span>
+                                        <span class="text-[10px] bg-rose-950 text-rose-400 px-2 py-0.5 rounded-full border border-rose-700/40 font-bold">FAILED</span>
+                                    </div>
+                                    <div class="text-[11px] text-rose-300 bg-rose-950/40 p-2 rounded-lg font-mono border border-rose-800/30">
+                                        ${test.error}
+                                    </div>
+                                </div>
+                            `;
+                        }
+                    });
+
+                    suiteBox.innerHTML = `
+                        <h3 class="text-sm font-black text-amber-400 mb-2">${suite.name}</h3>
+                        <div class="flex flex-col gap-0.5">${testsHtml}</div>
+                    `;
+                    suitesList.appendChild(suiteBox);
+                });
+            }
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
         window.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const isTestMode = urlParams.has('test') || urlParams.has('tests') || urlParams.has('unit_test');
+
+            const runTestsAction = () => {
+                const results = runGameUnitTests();
+                renderTestResultsUI(results);
+            };
+
+            const btnHeaderTests = document.getElementById('btn-run-tests');
+            if (btnHeaderTests) btnHeaderTests.onclick = runTestsAction;
+
+            const btnSplashTests = document.getElementById('btn-splash-tests');
+            if (btnSplashTests) btnSplashTests.onclick = runTestsAction;
+
+            const secretCornerSequence = ['BL', 'TL', 'TR', 'BR'];
+            let secretStep = 0;
+
+            function revealAndRunTests() {
+                if (btnHeaderTests) btnHeaderTests.classList.remove('hidden');
+                if (btnSplashTests) btnSplashTests.classList.remove('hidden');
+                setTimeout(() => runTestsAction(), 300);
+            }
+
+            function checkCornerClick(x, y) {
+                const w = window.innerWidth;
+                const h = window.innerHeight;
+                const zoneSize = Math.max(100, Math.min(w, h) * 0.28);
+
+                let corner = null;
+                if (x <= zoneSize && y >= h - zoneSize) corner = 'BL';
+                else if (x <= zoneSize && y <= zoneSize) corner = 'TL';
+                else if (x >= w - zoneSize && y <= zoneSize) corner = 'TR';
+                else if (x >= w - zoneSize && y >= h - zoneSize) corner = 'BR';
+
+                if (!corner) {
+                    return;
+                }
+
+                if (corner === secretCornerSequence[secretStep]) {
+                    secretStep++;
+                    if (secretStep === secretCornerSequence.length) {
+                        secretStep = 0;
+                        revealAndRunTests();
+                    }
+                } else {
+                    if (corner === secretCornerSequence[0]) {
+                        secretStep = 1;
+                    } else {
+                        secretStep = 0;
+                    }
+                }
+            }
+
+            window.addEventListener('pointerdown', (e) => {
+                checkCornerClick(e.clientX, e.clientY);
+            });
+
+            if (isTestMode) {
+                revealAndRunTests();
+            }
+
             if (loadRunFromLocal()) {
-                document.getElementById('btn-start-game').querySelector('span').innerText = "▶ ПРОДОЛЖИТЬ ИГРУ";
+                const btnStart = document.getElementById('btn-start-game');
+                if (btnStart) {
+                    const span = btnStart.querySelector('span');
+                    if (span) span.innerText = "▶ ПРОДОЛЖИТЬ ИГРУ";
+                }
             }
         });
     </script>
