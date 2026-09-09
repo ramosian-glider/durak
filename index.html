@@ -40,6 +40,218 @@
             80% { opacity: 1; transform: scale(1); }
             100% { opacity: 0; transform: scale(0.9); }
         }
+
+        /* 1. Индикаторы шапки (Бэйджи) */
+        .stat-badge {
+            padding: 0.25rem 0.625rem;
+            border-radius: 9999px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            border-width: 1px;
+        }
+        .stat-badge-emerald {
+            background-color: rgba(2, 44, 34, 0.8);
+            border-color: rgba(15, 118, 110, 0.5);
+            color: #6ee7b7;
+        }
+        .stat-badge-rose {
+            background-color: rgba(76, 5, 25, 0.8);
+            border-color: rgba(190, 18, 60, 0.5);
+            color: #fca5a5;
+        }
+        .stat-badge-amber {
+            background-color: rgba(69, 26, 3, 0.8);
+            border-color: rgba(180, 83, 9, 0.5);
+            color: #fcd34d;
+        }
+
+        /* 2. Кнопки в заголовке */
+        .btn-icon-header {
+            width: 1.75rem;
+            height: 1.75rem;
+            border-radius: 9999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            transition-property: color, background-color, border-color, transform, box-shadow;
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+            transition-duration: 150ms;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+            border-width: 1px;
+        }
+        @media (min-width: 640px) {
+            .btn-icon-header {
+                width: 2rem;
+                height: 2rem;
+                font-size: 0.875rem;
+            }
+        }
+        .btn-icon-header:active {
+            transform: scale(0.95);
+        }
+        .btn-icon-slate {
+            background-color: rgba(30, 41, 59, 0.8);
+            border-color: rgba(71, 85, 105, 0.5);
+            color: #e2e8f0;
+        }
+        .btn-icon-slate:hover {
+            background-color: #334155;
+        }
+        .btn-icon-indigo {
+            background-color: rgba(30, 27, 75, 0.8);
+            border-color: rgba(99, 102, 241, 0.5);
+            color: #a5b4fc;
+        }
+        .btn-icon-indigo:hover {
+            background-color: #312e81;
+        }
+
+        /* 3. Игровые кнопки действий */
+        .btn-action-base {
+            padding: 0.75rem 0.5rem;
+            border-radius: 0.75rem;
+            font-weight: 800;
+            font-size: 0.75rem;
+            transition-property: all;
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+            transition-duration: 150ms;
+            border-width: 1px;
+            text-align: center;
+        }
+        @media (min-width: 640px) {
+            .btn-action-base {
+                font-size: 0.875rem;
+            }
+        }
+        .btn-action-base:active {
+            transform: scale(0.95);
+        }
+        .btn-action-base:disabled {
+            opacity: 0.4;
+            pointer-events: none;
+        }
+        .btn-action-emerald {
+            background-image: linear-gradient(to right, #059669, #0d9488);
+            color: #ffffff;
+            border-color: rgba(52, 211, 153, 0.3);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .btn-action-emerald:hover {
+            background-image: linear-gradient(to right, #10b981, #14b8a6);
+        }
+        .btn-action-indigo {
+            background-image: linear-gradient(to right, #4f46e5, #2563eb);
+            color: #ffffff;
+            border-color: rgba(129, 140, 248, 0.3);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .btn-action-indigo:hover {
+            background-image: linear-gradient(to right, #6366f1, #3b82f6);
+        }
+        .btn-action-rose {
+            background-image: linear-gradient(to right, #e11d48, #dc2626);
+            color: #ffffff;
+            border-color: rgba(251, 113, 133, 0.3);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .btn-action-rose:hover {
+            background-image: linear-gradient(to right, #f43f5e, #ef4444);
+        }
+        .btn-action-amber {
+            background-image: linear-gradient(to right, #f59e0b, #eab308);
+            color: #020617;
+            font-weight: 900;
+            border-width: 2px;
+            border-color: #fde047;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+
+        /* 4. Карты и Козыри */
+        .card-base {
+            width: 3.5rem;
+            height: 5rem;
+            border-radius: 0.5rem;
+            border-width: 2px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 0.375rem;
+            cursor: pointer;
+            position: relative;
+            transition-property: transform, box-shadow, border-color, background-color;
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+            transition-duration: 150ms;
+        }
+        @media (min-width: 640px) {
+            .card-base {
+                width: 4rem;
+                height: 6rem;
+            }
+        }
+        .card-normal {
+            border-color: #cbd5e1;
+            background-image: linear-gradient(to bottom, #ffffff, #f1f5f9);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.2);
+        }
+        .card-trump {
+            border-color: #fbbf24;
+            background-image: linear-gradient(to bottom, #fffbeb, #f1f5f9, rgba(254, 243, 199, 0.5));
+            box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.8), 0 0 12px rgba(251, 191, 36, 0.7), 0 4px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        /* 5. Баннеры подсказок и слоты артефактов */
+        .turn-banner-base {
+            margin-bottom: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            z-index: 10;
+            border-width: 1px;
+        }
+        .turn-banner-amber {
+            background-color: rgba(245, 158, 11, 0.2);
+            color: #fcd34d;
+            border-color: rgba(245, 158, 11, 0.4);
+        }
+        .turn-banner-indigo {
+            background-color: rgba(99, 102, 241, 0.3);
+            color: #c7d2fe;
+            border-color: rgba(129, 140, 248, 0.6);
+        }
+        .turn-banner-rose {
+            background-color: rgba(244, 63, 94, 0.2);
+            color: #fca5a5;
+            border-color: rgba(244, 63, 94, 0.4);
+        }
+
+        .relic-slot-base {
+            width: 100%;
+            height: 2rem;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-width: 1px;
+        }
+        .relic-slot-filled {
+            background-color: rgba(245, 158, 11, 0.2);
+            border-color: rgba(251, 191, 36, 0.6);
+            font-size: 1.125rem;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            cursor: help;
+        }
+        .relic-slot-empty {
+            border-style: dashed;
+            border-color: rgba(6, 78, 59, 0.6);
+            font-size: 0.75rem;
+            color: #047857;
+        }
     </style>
 </head>
 <body class="h-full flex flex-col justify-between overflow-hidden felt-bg relative">
@@ -51,7 +263,7 @@
 
     <div id="splash-screen" class="fixed inset-0 z-40 felt-bg flex flex-col items-center justify-center p-4 text-center">
         <div class="max-w-md w-full bg-black/80 border-2 border-amber-500/60 rounded-3xl p-6 sm:p-8 backdrop-blur-md shadow-2xl flex flex-col items-center gap-5 relative">
-            <button id="btn-splash-tests" class="hidden absolute top-4 right-4 w-8 h-8 bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/50 text-indigo-300 rounded-full flex items-center justify-center text-sm transition active:scale-90 shadow" title="Запустить юнит-тесты">
+            <button id="btn-splash-tests" class="hidden absolute top-4 right-4 btn-icon-header btn-icon-indigo" title="Запустить юнит-тесты">
                 🧪
             </button>
             <div class="text-5xl sm:text-6xl animate-bounce">👑</div>
@@ -85,13 +297,13 @@
 
     <header class="w-full bg-black/60 border-b border-emerald-800/40 px-3 py-2 flex items-center justify-between text-xs sm:text-sm z-30 backdrop-blur-md">
         <div class="flex items-center gap-2 sm:gap-3">
-            <div class="bg-emerald-950/80 border border-emerald-700/50 px-2.5 py-1 rounded-full font-semibold text-emerald-300 flex items-center gap-1">
+            <div class="stat-badge stat-badge-emerald">
                 <span>🏰</span> <span id="floor-display" class="text-white font-bold">1</span>/5
             </div>
-            <div class="bg-rose-950/80 border border-rose-700/50 px-2.5 py-1 rounded-full font-semibold text-rose-300 flex items-center gap-1">
+            <div class="stat-badge stat-badge-rose">
                 <span>❤️</span> <span id="player-hp-display" class="text-white font-bold">30/30</span>
             </div>
-            <div class="bg-amber-950/80 border border-amber-700/50 px-2.5 py-1 rounded-full font-semibold text-amber-300 flex items-center gap-1">
+            <div class="stat-badge stat-badge-amber">
                 <span>🪙</span> <span id="player-gold-display" class="text-white font-bold">15$</span>
             </div>
         </div>
@@ -100,13 +312,13 @@
                 <span class="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
                 <span id="save-status-text">Сохранено</span>
             </div>
-            <button id="btn-run-tests" class="hidden bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/50 text-indigo-300 w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm active:scale-95 transition shadow" title="Запустить юнит-тесты">
+            <button id="btn-run-tests" class="hidden btn-icon-header btn-icon-indigo" title="Запустить юнит-тесты">
                 🧪
             </button>
-            <button id="btn-toggle-audio" class="w-7 h-7 sm:w-8 sm:h-8 bg-slate-800/80 hover:bg-slate-700 border border-slate-600/50 text-slate-200 rounded-full flex items-center justify-center text-xs sm:text-sm active:scale-95 transition shadow" title="Переключить звук">
+            <button id="btn-toggle-audio" class="btn-icon-header btn-icon-slate" title="Переключить звук">
                 <span id="audio-icon">🔊</span>
             </button>
-            <button id="btn-open-menu" class="w-7 h-7 sm:w-8 sm:h-8 bg-slate-800/80 hover:bg-slate-700 border border-slate-600/50 text-slate-200 rounded-full flex items-center justify-center text-xs sm:text-sm active:scale-95 transition shadow" title="Главное меню">
+            <button id="btn-open-menu" class="btn-icon-header btn-icon-slate" title="Главное меню">
                 ⚙️
             </button>
         </div>
@@ -137,7 +349,7 @@
             <div id="deck-container" class="absolute left-3 top-3 flex items-center z-20">
             </div>
 
-            <div id="turn-banner" class="mb-2 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm animate-pulse z-10">
+            <div id="turn-banner" class="turn-banner-base turn-banner-amber">
                 Ваш ход: Атака
             </div>
 
@@ -159,13 +371,13 @@
             </div>
 
             <div class="grid grid-cols-3 gap-2">
-                <button id="btn-action" class="py-3 px-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg border border-emerald-400/30 transition disabled:opacity-40 disabled:pointer-events-none">
+                <button id="btn-action" class="btn-action-base btn-action-emerald">
                     БИТО
                 </button>
-                <button id="btn-transfer" class="py-3 px-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg border border-indigo-400/30 transition disabled:opacity-40 disabled:pointer-events-none">
+                <button id="btn-transfer" class="btn-action-base btn-action-indigo">
                     ПЕРЕВОД
                 </button>
-                <button id="btn-take" class="py-3 px-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg border border-rose-400/30 transition disabled:opacity-40 disabled:pointer-events-none">
+                <button id="btn-take" class="btn-action-base btn-action-rose">
                     ВЗЯТЬ
                 </button>
             </div>
@@ -1148,15 +1360,14 @@
             }
         });
 
+        /* 4. Оптимизированная генерация карт */
         function renderCardHTML(card, extraClass = '') {
             const color = SUIT_COLORS[card.suit];
             const isTrump = battle && battle.trumpSuit && card.suit === battle.trumpSuit;
-            const trumpStyle = isTrump 
-                ? 'border-amber-400 ring-2 ring-amber-400/80 trump-glow bg-gradient-to-b from-amber-50 via-slate-100 to-amber-100/50' 
-                : 'border-slate-300 bg-gradient-to-b from-white to-slate-100';
+            const cardStyle = isTrump ? 'card-trump' : 'card-normal';
 
             return `
-                <div class="w-14 h-20 sm:w-16 sm:h-24 ${trumpStyle} rounded-lg border-2 card-shadow flex flex-col justify-between p-1.5 cursor-pointer transform transition relative ${color} ${extraClass}">
+                <div class="card-base ${cardStyle} ${color} ${extraClass}">
                     ${isTrump ? '<span class="absolute top-0.5 right-0.5 text-[10px] leading-none select-none text-amber-500 font-black" title="Козырь">👑</span>' : ''}
                     <div class="text-xs font-black leading-none">${VALUES[card.value]}</div>
                     <div class="text-center text-xl font-bold leading-none select-none">${SUITS[card.suit]}</div>
@@ -1170,18 +1381,19 @@
             setElText('player-gold-display', `${run.gold}$`);
             setElText('floor-display', run.floor);
 
+            /* 5. Обновление баннера подсказок */
             const banner = document.getElementById('turn-banner');
             if (banner) {
                 if (battle.defender === 'enemy') {
                     banner.innerText = battle.cardsToTake ? "Соперник забирает карты! (Жмите БИТО)" : "Ваш ход: Атака";
-                    banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm animate-pulse z-10";
+                    banner.className = "turn-banner-base turn-banner-amber";
                 } else {
                     if (battle.isTransferActive) {
                         banner.innerText = "Выберите карту для Перевода!";
-                        banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/60 shadow-sm animate-pulse z-10";
+                        banner.className = "turn-banner-base turn-banner-indigo";
                     } else {
                         banner.innerText = "Ход соперника: Защищайтесь!";
-                        banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm animate-pulse z-10";
+                        banner.className = "turn-banner-base turn-banner-rose";
                     }
                 }
             }
@@ -1246,6 +1458,7 @@
                 }
             }
 
+            /* 5. Оптимизация слотов артефактов */
             const relicsBar = document.getElementById('relics-bar');
             if (relicsBar) {
                 relicsBar.innerHTML = '';
@@ -1253,11 +1466,11 @@
                     const slot = document.createElement('div');
                     if (run.relics[i]) {
                         const r = run.relics[i];
-                        slot.className = "w-full h-8 bg-amber-500/20 border border-amber-400/60 rounded-lg flex items-center justify-center text-lg shadow-sm cursor-help";
+                        slot.className = "relic-slot-base relic-slot-filled";
                         slot.title = `${r.name}: ${r.desc}`;
                         slot.innerText = r.icon;
                     } else {
-                        slot.className = "w-full h-8 border border-dashed border-emerald-800/60 rounded-lg flex items-center justify-center text-xs text-emerald-700";
+                        slot.className = "relic-slot-base relic-slot-empty";
                         slot.innerText = "+";
                     }
                     relicsBar.appendChild(slot);
@@ -1302,6 +1515,7 @@
                 });
             }
 
+            /* 3. Динамическое управление состояниями и стилями кнопок */
             const btnAction = document.getElementById('btn-action');
             const btnTake = document.getElementById('btn-take');
             const btnTransfer = document.getElementById('btn-transfer');
@@ -1312,7 +1526,7 @@
                     btnAction.disabled = battle.table.length === 0;
                     btnTake.disabled = true;
                     btnTransfer.disabled = true;
-                    btnTransfer.className = "py-3 px-2 bg-gradient-to-r from-indigo-600 to-blue-600 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg border border-indigo-400/30 transition disabled:opacity-40 disabled:pointer-events-none";
+                    btnTransfer.className = "btn-action-base btn-action-indigo";
                 } else {
                     btnAction.innerText = "БИТО";
                     btnAction.disabled = battle.table.length === 0 || battle.table.some(p => p.defend === null);
@@ -1323,10 +1537,10 @@
 
                     if (battle.isTransferActive) {
                         btnTransfer.innerText = "ОТМЕНА";
-                        btnTransfer.className = "py-3 px-2 bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-xl border-2 border-yellow-300 transfer-active transition";
+                        btnTransfer.className = "btn-action-base btn-action-amber transfer-active";
                     } else {
                         btnTransfer.innerText = "ПЕРЕВОД";
-                        btnTransfer.className = "py-3 px-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg border border-indigo-400/30 transition disabled:opacity-40 disabled:pointer-events-none";
+                        btnTransfer.className = "btn-action-base btn-action-indigo";
                     }
                 }
             }
