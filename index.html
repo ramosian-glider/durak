@@ -95,10 +95,10 @@
         </div>
     </header>
 
-    <main class="flex-1 flex flex-col justify-between p-2 max-w-md mx-auto w-full relative z-10">
+    <main class="flex-1 flex flex-col justify-between p-2 max-w-md md:max-w-2xl lg:max-w-4xl mx-auto w-full relative z-10 min-h-0 overflow-hidden">
         
         <!-- Enemy Area -->
-        <section class="bg-black/40 border border-emerald-900/40 rounded-xl p-2.5 flex items-center justify-between shadow-lg backdrop-blur-sm">
+        <section class="bg-black/40 border border-emerald-900/40 rounded-xl p-2.5 flex items-center justify-between shadow-lg backdrop-blur-sm flex-shrink-0">
             <div class="flex items-center gap-2.5">
                 <div class="w-10 h-10 rounded-full bg-slate-800 border-2 border-emerald-500 flex items-center justify-center text-xl shadow" id="enemy-avatar">
                     🧔
@@ -121,26 +121,26 @@
         </section>
 
         <!-- Battle Table Area -->
-        <section class="flex-1 my-2 flex flex-col justify-center items-center relative rounded-2xl border border-dashed border-emerald-700/30 bg-emerald-950/20 p-2">
+        <section class="flex-1 my-2 flex flex-col justify-center items-center relative rounded-2xl border border-dashed border-emerald-700/30 bg-emerald-950/20 p-2 min-h-0 overflow-y-auto">
             
             <!-- Deck & Trump Badge -->
-            <div id="deck-container" class="absolute left-3 top-3 flex items-center">
+            <div id="deck-container" class="absolute left-3 top-3 flex items-center z-20">
                 <!-- Deck elements rendered dynamically -->
             </div>
 
             <!-- Status Banner -->
-            <div id="turn-banner" class="mb-2 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm animate-pulse">
+            <div id="turn-banner" class="mb-2 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm animate-pulse z-10">
                 Ваш ход: Атака
             </div>
 
             <!-- Table Card Pairs Container -->
-            <div id="table-pairs" class="flex flex-wrap items-center justify-center gap-2 sm:gap-3 max-w-full min-h-[110px]">
+            <div id="table-pairs" class="flex flex-wrap items-center justify-center gap-2 sm:gap-3 max-w-full min-h-[110px] my-auto">
                 <!-- Played cards appear here -->
             </div>
         </section>
 
         <!-- Relics / Jokers Slot Bar -->
-        <section class="mb-1">
+        <section class="mb-1 flex-shrink-0">
             <div class="flex items-center justify-between px-1 mb-1 text-[11px] font-semibold text-emerald-400/80">
                 <span>ШУЛЕРСКИЕ АРТЕФАКТЫ (JOKERS)</span>
                 <span id="relic-count">0/5</span>
@@ -151,7 +151,7 @@
         </section>
 
         <!-- Player Zone (Hand & Actions) -->
-        <section class="flex flex-col gap-2">
+        <section class="flex flex-col gap-2 flex-shrink-0">
             <!-- Player Hand -->
             <div id="player-hand" class="hand-scroll flex items-center justify-start sm:justify-center -space-x-6 overflow-x-auto min-h-[105px] px-4 py-2">
                 <!-- Player cards dynamically inserted -->
@@ -1122,14 +1122,14 @@
             const banner = document.getElementById('turn-banner');
             if (battle.defender === 'enemy') {
                 banner.innerText = battle.cardsToTake ? "Соперник забирает карты! (Жмите БИТО)" : "Ваш ход: Атака";
-                banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm animate-pulse";
+                banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm animate-pulse z-10";
             } else {
                 if (battle.isTransferActive) {
                     banner.innerText = "Выберите карту для Перевода!";
-                    banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/60 shadow-sm animate-pulse";
+                    banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/60 shadow-sm animate-pulse z-10";
                 } else {
                     banner.innerText = "Ход соперника: Защищайтесь!";
-                    banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm animate-pulse";
+                    banner.className = "mb-2 px-3 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm animate-pulse z-10";
                 }
             }
 
