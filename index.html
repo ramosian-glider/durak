@@ -277,7 +277,7 @@
             </div>
             
             <p class="text-xs text-slate-300 leading-relaxed px-2">
-                Пройдите 5 этажей подземелья, побеждайте боссов, покупайте шулерские артефакты и улучшайте колоду!
+                Пройдите 5 этажей подземелья, побеждайте боссов, покупайте шулерские артефакты и собирайте мощную комбинацию!
             </p>
 
             <div class="w-full flex flex-col gap-3 mt-2">
@@ -387,7 +387,7 @@
     <div id="shop-modal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 hidden flex-col justify-between p-4 max-w-md mx-auto">
         <div class="text-center py-2 border-b border-amber-500/30">
             <h2 class="text-xl font-extrabold text-amber-400 tracking-wide">ВОРОВСКОЙ ПРИТОН</h2>
-            <p class="text-xs text-slate-400">Покупайте артефакты и улучшайте колоду перед следующим боссом</p>
+            <p class="text-xs text-slate-400">Покупайте артефакты перед следующим боссом</p>
             <div class="mt-2 inline-flex items-center gap-1.5 bg-amber-950/80 border border-amber-700/50 px-3 py-1 rounded-full text-xs">
                 <span class="text-amber-400 font-bold">🪙 Золото:</span>
                 <span id="shop-gold-display" class="font-extrabold text-amber-200">15$</span>
@@ -399,17 +399,6 @@
                 <h3 class="text-xs font-bold text-emerald-400 mb-2 uppercase tracking-wider">Шулерские Артефакты</h3>
                 <div id="shop-relics-list" class="grid grid-cols-1 gap-2">
                 </div>
-            </div>
-
-            <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
-                <div class="flex justify-between items-center mb-1">
-                    <span class="text-xs font-bold text-rose-400">Сбросить слабую карту</span>
-                    <span class="text-xs font-bold text-amber-300">10$</span>
-                </div>
-                <p class="text-[11px] text-slate-400 mb-2">Удалите шестерку или семерку из колоды навсегда.</p>
-                <button id="btn-prune-card" class="w-full py-2 bg-rose-900/60 border border-rose-600/50 hover:bg-rose-800 text-rose-200 text-xs font-bold rounded-lg transition">
-                    Очистить колоду
-                </button>
             </div>
         </div>
 
@@ -1322,23 +1311,6 @@
                 showModal("Недостаточно денег", "Побеждайте в боях, чтобы зарабатывать золотые монеты.");
             }
         };
-
-        bindClick('btn-prune-card', () => {
-            if (run.gold >= 10) {
-                const weakCardIndex = run.deck.findIndex(c => c.value === 6 || c.value === 7);
-                if (weakCardIndex !== -1) {
-                    run.gold -= 10;
-                    const removed = run.deck.splice(weakCardIndex, 1)[0];
-                    showModal("Карта Удалена", `Из вашей колоды навсегда удалена ${VALUES[removed.value]} ${SUITS[removed.suit]}`);
-                    openShop();
-                    renderAll();
-                } else {
-                    showModal("Очистка недоступна", "В вашей колоде больше нет 6-ок и 7-ок!");
-                }
-            } else {
-                showModal("Недостаточно денег", "Удаление карты стоит 10$");
-            }
-        });
 
         bindClick('btn-next-floor', () => {
             const shopModal = document.getElementById('shop-modal');
