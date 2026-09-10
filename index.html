@@ -1209,21 +1209,25 @@
                 }
 
                 if (!allDefended) {
+                    // Враг не может отбить хотя бы одну карту: он обязан забрать весь стол.
+                    // Раньше здесь переход в PLAYER_ATTACK происходил через finishAIPhase(),
+                    // если у игрока оставалась карта для подкидывания. В результате AI
+                    // фактически прекращал свой ответ, а кнопка «БИТО» оставалась активной.
                     battle.cardsToTake = true;
+                    renderAll();
+                    scheduleEnemyAction(() => handleEnemyTake(), AI_STANDARD_DELAY_MS);
+                    return;
                 }
 
+                battle.cardsToTake = false;
                 renderAll();
 
-                const updatedHasToss = battle.playerHand.some(c => isRankOnTable(c.value));
-                if (battle.cardsToTake) {
-                    if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !updatedHasToss) {
-                        scheduleEnemyAction(() => handleEnemyTake(), AI_STANDARD_DELAY_MS);
-                    }
-                } else {
-                    if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed) {
-                        scheduleEnemyAction(() => handleBito(true), AI_STANDARD_DELAY_MS);
-                    }
+                // Все карты отбиты. Теперь только игрок решает, подкидывать ли ещё.
+                if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed) {
+                    scheduleEnemyAction(() => handleBito(true), AI_STANDARD_DELAY_MS);
+                    return;
                 }
+
                 finishAIPhase();
 
             } else {
@@ -2005,6 +2009,49 @@
                     battle.table = oldTable;
                     battle.playerHand = oldPlayerHand;
                     battle.enemyHand = oldEnemyHand;
+                    battle.aiTimer = oldTimer;
+                });
+
+                it('Если AI не может отбить подкинутую карту, он автоматически забирает стол', () => {
+                    const oldPhase = battle.phase;
+                    const oldDefender = battle.defender;
+                    const oldTable = battle.table;
+                    const oldPlayerHand = battle.playerHand;
+                    const oldEnemyHand = battle.enemyHand;
+                    const oldTrumpSuit = battle.trumpSuit;
+                    const oldCardsToTake = battle.cardsToTake;
+                    const oldTimer = battle.aiTimer;
+
+                    clearAITimer();
+                    battle.defender = 'enemy';
+                    battle.phase = BATTLE_PHASES.AI_WAITING;
+                    battle.table = [
+                        { attack: { id: 'test_attack_1', suit: 'Pikes', value: 6 }, defend: { id: 'test_defend', suit: 'Pikes', value: 10 } },
+                        { attack: { id: 'test_throw', suit: 'Hearts', value: 8 }, defend: null }
+                    ];
+                    battle.playerHand = [
+                        { id: 'test_more_throw', suit: 'Tiles', value: 8 }
+                    ];
+                    battle.enemyHand = [
+                        { id: 'test_low', suit: 'Clovers', value: 7 }
+                    ];
+                    battle.trumpSuit = 'Hearts';
+                    battle.cardsToTake = false;
+
+                    executeEnemyAI();
+
+                    assert.isTrue(battle.cardsToTake);
+                    assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
+                    assert.isTrue(battle.aiTimer !== null);
+
+                    clearAITimer();
+                    battle.phase = oldPhase;
+                    battle.defender = oldDefender;
+                    battle.table = oldTable;
+                    battle.playerHand = oldPlayerHand;
+                    battle.enemyHand = oldEnemyHand;
+                    battle.trumpSuit = oldTrumpSuit;
+                    battle.cardsToTake = oldCardsToTake;
                     battle.aiTimer = oldTimer;
                 });
 
