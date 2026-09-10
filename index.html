@@ -396,6 +396,11 @@
 
         <div class="flex-1 overflow-y-auto py-3 flex flex-col gap-4">
             <div>
+                <h3 class="text-xs font-bold text-emerald-400 mb-2 uppercase tracking-wider">Услуги лекаря</h3>
+                <div id="shop-heal-list" class="grid grid-cols-1 gap-2 mb-4">
+                </div>
+            </div>
+            <div>
                 <h3 class="text-xs font-bold text-emerald-400 mb-2 uppercase tracking-wider">Шулерские Артефакты</h3>
                 <div id="shop-relics-list" class="grid grid-cols-1 gap-2">
                 </div>
@@ -676,8 +681,6 @@
         const SUIT_COLORS = { Pikes: 'text-slate-900', Clovers: 'text-slate-900', Hearts: 'text-rose-600', Tiles: 'text-rose-600' };
         const VALUES = { 6:'6', 7:'7', 8:'8', 9:'9', 10:'10', 11:'В', 12:'Д', 13:'К', 14:'Т' };
 
-        // Числовые константы баланса. Значения не менялись - только вынесены из тела функций,
-        // чтобы правки геймдизайна не требовали поиска "магических чисел" по всему файлу.
         const HAND_SIZE = 6;
         const MAX_RELICS = 5;
 
@@ -699,7 +702,6 @@
         const WIN_GOLD_BASE = 10;
         const WIN_GOLD_PER_FLOOR = 2;
 
-        // Задержки хода ИИ (мс): разная скорость реакции для разных ситуаций - оставлено как было.
         const AI_QUICK_DELAY_MS = 400;
         const AI_STANDARD_DELAY_MS = 500;
         const AI_TAKE_RESOLVE_DELAY_MS = 600;
@@ -742,7 +744,6 @@
             cardsToTake: false,
             isTransferActive: false,
             enemyHP: 0,
-            // Explicit turn state. This is the single gate for player input and AI timers.
             phase: 'idle',
             aiTimer: null,
             actionToken: 0
@@ -831,8 +832,6 @@
             return ENEMIES[Math.min(run.floor - 1, ENEMIES.length - 1)];
         }
 
-        // Единая формула "силы" карты для сортировок ИИ и подсказок:
-        // козырь всегда весомее любой некозырной карты, при равенстве козырности - выше номинал.
         function cardPower(card) {
             return (card.suit === battle.trumpSuit ? 100 : 0) + card.value;
         }
@@ -978,8 +977,6 @@
             return false;
         }
 
-        // Единственный источник правды о том, можно ли сейчас перевести ход, и почему нет.
-        // Возвращает null, если перевод разрешён, иначе - код причины блокировки.
         function getTransferBlockReason() {
             const enemyData = getCurrentEnemy();
             if (enemyData.abilityId === 'no_transfer') return 'boss_block';
@@ -1338,7 +1335,7 @@
             boss_block: ["Перевод заблокирован", "Трактирщик запрещает переводить карты на этом этаже!"],
             already_defending: ["Перевод невозможен", "Нельзя переводить ход, если вы уже начали отбиваться!"],
             mixed_ranks: ["Перевод невозможен", "Переводить можно только карты одинакового достоинства!"],
-            no_matching_card: ["Перевод невозможен", null], // текст собирается динамически ниже
+            no_matching_card: ["Перевод невозможен", null],
             enemy_hand_too_small: ["Перевод невозможен", "У противника недостаточно карт на руках, чтобы принять перевод!"]
         };
 
@@ -1351,7 +1348,6 @@
                 return;
             }
 
-            // Как и раньше: если защищается не игрок или стол пуст, кнопка просто неактивна - без модалки.
             if (reason === 'not_defender' || reason === 'empty_table') return;
 
             const [title, text] = TRANSFER_BLOCK_MESSAGES[reason];
@@ -1389,6 +1385,24 @@
             
             setElText('shop-gold-display', `${run.gold}$`);
 
+            const healList = document.getElementById('shop-heal-list');
+            if (healList) {
+                healList.innerHTML = `
+                    <div class="flex items-center justify-between p-2.5 bg-slate-900 border border-emerald-800/60 rounded-xl">
+                        <div class="flex items-center gap-2.5">
+                            <span class="text-2xl">❤️</span>
+                            <div>
+                                <div class="text-xs font-bold text-rose-300">Принять лекарство (+10 HP)</div>
+                                <div class="text-[10px] text-slate-400 leading-tight">Восстановить до 10 здоровья (до макс. ${run.maxHP})</div>
+                            </div>
+                        </div>
+                        <button class="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-lg shadow border border-rose-400 active:scale-95 transition" onclick="buyHeal()">
+                            10$
+                        </button>
+                    </div>
+                `;
+            }
+
             const shopList = document.getElementById('shop-relics-list');
             if (shopList) {
                 shopList.innerHTML = '';
@@ -1414,6 +1428,22 @@
 
             saveRunToLocal();
         }
+
+        window.buyHeal = function() {
+            if (run.gold >= 10) {
+                if (run.playerHP >= run.maxHP) {
+                    showModal("Здоровье полное", "У вас уже максимальный запас здоровья!");
+                    return;
+                }
+                run.gold -= 10;
+                run.playerHP = Math.min(run.maxHP, run.playerHP + 10);
+                audio.playWinSound();
+                openShop();
+                renderAll();
+            } else {
+                showModal("Недостаточно денег", "Нужно 10 золотых монет для покупки здоровья.");
+            }
+        };
 
         window.buyRelic = function(relicId) {
             const relic = ALL_RELICS.find(r => r.id === relicId);
@@ -1454,7 +1484,6 @@
             }
         });
 
-        /* 4. Оптимизированная генерация карт */
         function renderCardHTML(card, extraClass = '') {
             const color = SUIT_COLORS[card.suit];
             const isTrump = battle && battle.trumpSuit && card.suit === battle.trumpSuit;
@@ -1476,7 +1505,6 @@
             setElText('floor-display', run.floor);
             setElText('enemy-hp', battle.enemyHP);
 
-            /* 5. Обновление баннера подсказок */
             const banner = document.getElementById('turn-banner');
             if (banner) {
                 if (battle.defender === 'enemy') {
@@ -1551,7 +1579,6 @@
                 }
             }
 
-            /* 5. Оптимизация слотов артефактов */
             const relicsBar = document.getElementById('relics-bar');
             if (relicsBar) {
                 relicsBar.innerHTML = '';
@@ -1608,7 +1635,6 @@
                 });
             }
 
-            /* 3. Динамическое управление состояниями и стилями кнопок */
             const btnAction = document.getElementById('btn-action');
             const btnTake = document.getElementById('btn-take');
             const btnTransfer = document.getElementById('btn-transfer');
@@ -2002,8 +2028,6 @@
                     battle.playerHand = [{ id: 'test_player', suit: 'Tiles', value: 7 }];
                     battle.enemyHand = [
                         { id: 'test_defend', suit: 'Pikes', value: 10 },
-                        // Вторая карта нужна, чтобы AI после успешной защиты
-                        // не завершал кон автоматически по лимиту атак.
                         { id: 'test_reserve', suit: 'Tiles', value: 8 }
                     ];
                     battle.trumpSuit = 'Hearts';
@@ -2118,7 +2142,6 @@
             modal.classList.add('flex');
         }
 
-        // --- Панель юнит-тестов: открывается по кнопке (в шапке/на сплэше) или скрытым жестом по углам экрана ---
         function initUnitTestsUI() {
             const runTestsAction = () => {
                 const results = runGameUnitTests();
@@ -2146,8 +2169,6 @@
             }
         }
 
-        // Секретный жест: последовательный тап по 4 углам экрана (левый низ -> левый верх -> правый верх -> правый низ)
-        // открывает скрытую панель тестов. Полностью независим от загрузки сохранения ниже.
         function initSecretCornerGesture(onActivated) {
             const secretCornerSequence = ['BL', 'TL', 'TR', 'BR'];
             let secretStep = 0;
@@ -2165,7 +2186,7 @@
             }
 
             window.addEventListener('pointerdown', (e) => {
-                const corner = detectCorner(e.clientX, e.clientY);
+                const corner = detectCardCorner = detectCorner(e.clientX, e.clientY);
                 if (!corner) return;
 
                 if (corner === secretCornerSequence[secretStep]) {
@@ -2180,7 +2201,6 @@
             });
         }
 
-        // Если есть сохранённый забег - меняем текст кнопки на сплэше на "продолжить"
         function updateStartButtonForSavedRun() {
             if (!loadRunFromLocal()) return;
             const btnStart = document.getElementById('btn-start-game');
