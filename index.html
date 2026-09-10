@@ -388,9 +388,15 @@
         <div class="text-center py-2 border-b border-amber-500/30">
             <h2 class="text-xl font-extrabold text-amber-400 tracking-wide">ВОРОВСКОЙ ПРИТОН</h2>
             <p class="text-xs text-slate-400">Покупайте артефакты перед следующим боссом</p>
-            <div class="mt-2 inline-flex items-center gap-1.5 bg-amber-950/80 border border-amber-700/50 px-3 py-1 rounded-full text-xs">
-                <span class="text-amber-400 font-bold">🪙 Золото:</span>
-                <span id="shop-gold-display" class="font-extrabold text-amber-200">15$</span>
+            <div class="mt-2 flex items-center justify-center gap-2">
+                <div class="inline-flex items-center gap-1.5 bg-rose-950/80 border border-rose-700/50 px-3 py-1 rounded-full text-xs">
+                    <span class="text-rose-400 font-bold">❤️ Здоровье:</span>
+                    <span id="shop-hp-display" class="font-extrabold text-rose-200">30/30</span>
+                </div>
+                <div class="inline-flex items-center gap-1.5 bg-amber-950/80 border border-amber-700/50 px-3 py-1 rounded-full text-xs">
+                    <span class="text-amber-400 font-bold">🪙 Золото:</span>
+                    <span id="shop-gold-display" class="font-extrabold text-amber-200">15$</span>
+                </div>
             </div>
         </div>
 
@@ -1388,6 +1394,7 @@
             shopModal.classList.add('flex');
             
             setElText('shop-gold-display', `${run.gold}$`);
+            setElText('shop-hp-display', `${run.playerHP}/${run.maxHP}`);
 
             const healList = document.getElementById('shop-heal-list');
             if (healList) {
@@ -1506,6 +1513,8 @@
         function renderAll() {
             setElText('player-hp-display', `${run.playerHP}/${run.maxHP}`);
             setElText('player-gold-display', `${run.gold}$`);
+            setElText('shop-hp-display', `${run.playerHP}/${run.maxHP}`);
+            setElText('shop-gold-display', `${run.gold}$`);
             setElText('floor-display', run.floor);
             setElText('enemy-hp', battle.enemyHP);
 
@@ -2121,6 +2130,54 @@
                 });
 
                 run.floor = oldFloor;
+            });
+
+            runner.describe('9. Магазин и здоровье игрока', (it, assert) => {
+                const oldHP = run.playerHP;
+                const oldMaxHP = run.maxHP;
+                const oldGold = run.gold;
+
+                it('openShop корректно обновляет отображение здоровья и золота', () => {
+                    run.playerHP = 18;
+                    run.maxHP = 30;
+                    run.gold = 25;
+                    openShop();
+                    const hpEl = document.getElementById('shop-hp-display');
+                    const goldEl = document.getElementById('shop-gold-display');
+                    assert.equal(hpEl ? hpEl.innerText : '', '18/30');
+                    assert.equal(goldEl ? goldEl.innerText : '', '25$');
+                });
+
+                it('Покупка лечения восстанавливает здоровье и обновляет отображение', () => {
+                    run.playerHP = 15;
+                    run.maxHP = 30;
+                    run.gold = 20;
+                    buyHeal();
+                    assert.equal(run.playerHP, 25);
+                    assert.equal(run.gold, 10);
+                    const hpEl = document.getElementById('shop-hp-display');
+                    assert.equal(hpEl ? hpEl.innerText : '', '25/30');
+                });
+
+                it('Лечение не превышает максимальный запас здоровья', () => {
+                    run.playerHP = 26;
+                    run.maxHP = 30;
+                    run.gold = 20;
+                    buyHeal();
+                    assert.equal(run.playerHP, 30);
+                    assert.equal(run.gold, 10);
+                    const hpEl = document.getElementById('shop-hp-display');
+                    assert.equal(hpEl ? hpEl.innerText : '', '30/30');
+                });
+
+                run.playerHP = oldHP;
+                run.maxHP = oldMaxHP;
+                run.gold = oldGold;
+                const shopModal = document.getElementById('shop-modal');
+                if (shopModal) {
+                    shopModal.classList.add('hidden');
+                    shopModal.classList.remove('flex');
+                }
             });
 
             return runner.run();
