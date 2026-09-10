@@ -676,6 +676,34 @@
         const SUIT_COLORS = { Pikes: 'text-slate-900', Clovers: 'text-slate-900', Hearts: 'text-rose-600', Tiles: 'text-rose-600' };
         const VALUES = { 6:'6', 7:'7', 8:'8', 9:'9', 10:'10', 11:'В', 12:'Д', 13:'К', 14:'Т' };
 
+        // Числовые константы баланса. Значения не менялись - только вынесены из тела функций,
+        // чтобы правки геймдизайна не требовали поиска "магических чисел" по всему файлу.
+        const HAND_SIZE = 6;
+        const MAX_RELICS = 5;
+
+        const BASE_THROW_LIMIT = 6;
+        const BULLY_THROW_RELIC_LIMIT = 12;
+        const AGGRESSIVE_THROW_BOSS_LIMIT = 8;
+
+        const EMPTY_HAND_BASE_DAMAGE = 6;
+        const EMPTY_HAND_DAMAGE_PER_CARD = 4;
+
+        const TAKE_DAMAGE_PER_CARD = 2;
+        const ACE_SLEEVE_BONUS_DAMAGE = 5;
+
+        const SELF_DAMAGE_MULTIPLIER = 1.5;
+        const SELF_DAMAGE_MULTIPLIER_DOUBLE_PENALTY = 3;
+        const MIN_SELF_DAMAGE = 3;
+
+        const MIDAS_TOUCH_GOLD_ON_DEFEND = 3;
+        const WIN_GOLD_BASE = 10;
+        const WIN_GOLD_PER_FLOOR = 2;
+
+        // Задержки хода ИИ (мс): разная скорость реакции для разных ситуаций - оставлено как было.
+        const AI_QUICK_DELAY_MS = 400;
+        const AI_STANDARD_DELAY_MS = 500;
+        const AI_TAKE_RESOLVE_DELAY_MS = 600;
+
         const ALL_RELICS = [
             { id: "ace_sleeve", name: "Туз в рукаве", icon: "🃏", desc: "Заставление врага взять карты наносит +5 ед. дополнительного урона.", price: 12 },
             { id: "bully_throw", name: "Безжалостный подкидыш", icon: "💣", desc: "Позволяет подкидывать до 12 карт (ограничивается рукой защитника).", price: 15 },
@@ -712,14 +740,88 @@
             defender: 'enemy',
             selectedCardIndex: null,
             cardsToTake: false,
-            isTransferActive: false
+            isTransferActive: false,
+            enemyHP: 0,
+            // Explicit turn state. This is the single gate for player input and AI timers.
+            phase: 'idle',
+            aiTimer: null,
+            actionToken: 0
         };
+
+        const BATTLE_PHASES = Object.freeze({
+            IDLE: 'idle',
+            PLAYER_ATTACK: 'player_attack',
+            PLAYER_DEFENSE: 'player_defense',
+            AI_WAITING: 'ai_waiting',
+            RESOLVING: 'resolving',
+            ROUND_OVER: 'round_over',
+            BATTLE_OVER: 'battle_over'
+        });
+
+        function clearAITimer() {
+            if (battle.aiTimer !== null) {
+                clearTimeout(battle.aiTimer);
+                battle.aiTimer = null;
+            }
+        }
+
+        function setBattlePhase(phase) {
+            battle.phase = phase;
+            battle.actionToken++;
+            renderAll();
+        }
+
+        function canAcceptPlayerAction() {
+            return battle.phase === BATTLE_PHASES.PLAYER_ATTACK
+                || battle.phase === BATTLE_PHASES.PLAYER_DEFENSE;
+        }
+
+        function scheduleEnemyAI(delay = AI_STANDARD_DELAY_MS) {
+            clearAITimer();
+            const token = battle.actionToken;
+            battle.phase = BATTLE_PHASES.AI_WAITING;
+            renderAll();
+
+            battle.aiTimer = setTimeout(() => {
+                battle.aiTimer = null;
+                if (battle.actionToken !== token || battle.phase !== BATTLE_PHASES.AI_WAITING) return;
+                executeEnemyAI();
+            }, delay);
+        }
+
+        function scheduleEnemyAction(action, delay = AI_STANDARD_DELAY_MS) {
+            clearAITimer();
+            const token = battle.actionToken;
+            battle.phase = BATTLE_PHASES.AI_WAITING;
+            renderAll();
+            battle.aiTimer = setTimeout(() => {
+                battle.aiTimer = null;
+                if (battle.actionToken !== token || battle.phase !== BATTLE_PHASES.AI_WAITING) return;
+                action();
+            }, delay);
+        }
+
+        function enterPlayerPhase() {
+            clearAITimer();
+            setBattlePhase(
+                battle.defender === 'enemy'
+                    ? BATTLE_PHASES.PLAYER_ATTACK
+                    : BATTLE_PHASES.PLAYER_DEFENSE
+            );
+        }
+
+        function finishAIPhase() {
+            if (battle.phase === BATTLE_PHASES.RESOLVING) {
+                enterPlayerPhase();
+            }
+        }
 
         function generateStandardDeck() {
             const deck = [];
+            let cardSeq = 0;
             for (let suit in SUITS) {
                 for (let val = 6; val <= 14; val++) {
-                    deck.push({ id: `${suit}_${val}_${Math.random().toString(36).substr(2,4)}`, suit, value: val });
+                    deck.push({ id: `${suit}_${val}_${cardSeq++}`, suit, value: val });
                 }
             }
             return deck;
@@ -729,7 +831,14 @@
             return ENEMIES[Math.min(run.floor - 1, ENEMIES.length - 1)];
         }
 
+        // Единая формула "силы" карты для сортировок ИИ и подсказок:
+        // козырь всегда весомее любой некозырной карты, при равенстве козырности - выше номинал.
+        function cardPower(card) {
+            return (card.suit === battle.trumpSuit ? 100 : 0) + card.value;
+        }
+
         function initNewRun() {
+            clearAITimer();
             run = {
                 floor: 1,
                 playerHP: 30,
@@ -743,10 +852,11 @@
         }
 
         function startFloorBattle() {
+            clearAITimer();
             const enemyData = getCurrentEnemy();
+            battle.enemyHP = enemyData.hp;
             setElText('enemy-name', enemyData.name);
             setElText('enemy-avatar', enemyData.avatar);
-            setElText('enemy-hp', enemyData.hp);
             setElText('boss-ability-badge', `Особенность: ${enemyData.abilityDesc}`);
 
             startNewRound();
@@ -762,6 +872,9 @@
             battle.selectedCardIndex = null;
             battle.cardsToTake = false;
             battle.isTransferActive = false;
+            battle.phase = BATTLE_PHASES.PLAYER_ATTACK;
+            battle.aiTimer = null;
+            battle.actionToken++;
 
             battle.trumpCard = battle.drawDeck[0];
             battle.trumpSuit = battle.trumpCard.suit;
@@ -772,17 +885,17 @@
 
         function replenishHands(currentDefender = battle.defender) {
             if (currentDefender === 'enemy') {
-                while (battle.playerHand.length < 6 && battle.drawDeck.length > 0) {
+                while (battle.playerHand.length < HAND_SIZE && battle.drawDeck.length > 0) {
                     battle.playerHand.push(battle.drawDeck.pop());
                 }
-                while (battle.enemyHand.length < 6 && battle.drawDeck.length > 0) {
+                while (battle.enemyHand.length < HAND_SIZE && battle.drawDeck.length > 0) {
                     battle.enemyHand.push(battle.drawDeck.pop());
                 }
             } else {
-                while (battle.enemyHand.length < 6 && battle.drawDeck.length > 0) {
+                while (battle.enemyHand.length < HAND_SIZE && battle.drawDeck.length > 0) {
                     battle.enemyHand.push(battle.drawDeck.pop());
                 }
-                while (battle.playerHand.length < 6 && battle.drawDeck.length > 0) {
+                while (battle.playerHand.length < HAND_SIZE && battle.drawDeck.length > 0) {
                     battle.playerHand.push(battle.drawDeck.pop());
                 }
             }
@@ -803,6 +916,7 @@
             const enemyEmpty = battle.enemyHand.length === 0;
 
             if (playerEmpty && enemyEmpty) {
+                setBattlePhase(BATTLE_PHASES.ROUND_OVER);
                 showModal("Ничья в кону", "Колода и карты обоих игроков закончились! Перемешиваем колоду...", () => {
                     startNewRound();
                 });
@@ -810,13 +924,12 @@
             }
 
             if (playerEmpty) {
+                setBattlePhase(BATTLE_PHASES.ROUND_OVER);
                 const enemyCardsLeft = battle.enemyHand.length;
-                const damage = 6 + (enemyCardsLeft * 4);
+                const damage = EMPTY_HAND_BASE_DAMAGE + (enemyCardsLeft * EMPTY_HAND_DAMAGE_PER_CARD);
                 showModal("Раунд Выигран!", `Вы первыми скинули все карты! Противник остается в дураках и получает ${damage} ед. урона.`, () => {
                     damageEnemyHP(damage);
-                    const enemyHpEl = document.getElementById('enemy-hp');
-                    const currentHP = enemyHpEl ? parseInt(enemyHpEl.innerText) : 0;
-                    if (currentHP > 0) {
+                    if (battle.enemyHP > 0) {
                         startNewRound();
                     }
                 });
@@ -824,8 +937,9 @@
             }
 
             if (enemyEmpty) {
+                setBattlePhase(BATTLE_PHASES.ROUND_OVER);
                 const playerCardsLeft = battle.playerHand.length;
-                const damage = 6 + (playerCardsLeft * 4);
+                const damage = EMPTY_HAND_BASE_DAMAGE + (playerCardsLeft * EMPTY_HAND_DAMAGE_PER_CARD);
                 run.playerHP = Math.max(0, run.playerHP - damage);
                 renderAll();
 
@@ -864,29 +978,35 @@
             return false;
         }
 
-        function isTransferAllowedForPlayer() {
+        // Единственный источник правды о том, можно ли сейчас перевести ход, и почему нет.
+        // Возвращает null, если перевод разрешён, иначе - код причины блокировки.
+        function getTransferBlockReason() {
             const enemyData = getCurrentEnemy();
-            if (enemyData.abilityId === 'no_transfer') return false;
-            if (battle.defender !== 'player') return false;
-            if (battle.table.length === 0) return false;
-            if (battle.table.some(p => p.defend !== null)) return false;
+            if (enemyData.abilityId === 'no_transfer') return 'boss_block';
+            if (battle.defender !== 'player') return 'not_defender';
+            if (battle.table.length === 0) return 'empty_table';
+            if (battle.table.some(p => p.defend !== null)) return 'already_defending';
 
             const requiredRank = battle.table[0].attack.value;
             const allSameRank = battle.table.every(p => p.attack.value === requiredRank);
-            if (!allSameRank) return false;
+            if (!allSameRank) return 'mixed_ranks';
 
             const hasMatchingCard = battle.playerHand.some(c => c.value === requiredRank);
-            if (!hasMatchingCard) return false;
+            if (!hasMatchingCard) return 'no_matching_card';
 
-            if (battle.enemyHand.length < battle.table.length + 1) return false;
+            if (battle.enemyHand.length < battle.table.length + 1) return 'enemy_hand_too_small';
 
-            return true;
+            return null;
+        }
+
+        function isTransferAllowedForPlayer() {
+            return getTransferBlockReason() === null;
         }
 
         function getMaxAllowedAttacks() {
             const enemyData = getCurrentEnemy();
-            let baseLimit = hasRelic('bully_throw') ? 12 : 6;
-            if (enemyData.abilityId === 'aggressive_throw') baseLimit = 8;
+            let baseLimit = hasRelic('bully_throw') ? BULLY_THROW_RELIC_LIMIT : BASE_THROW_LIMIT;
+            if (enemyData.abilityId === 'aggressive_throw') baseLimit = AGGRESSIVE_THROW_BOSS_LIMIT;
 
             if (battle.defender === 'enemy') {
                 return Math.min(baseLimit, battle.enemyHand.length + battle.table.filter(p => p.defend).length);
@@ -895,7 +1015,15 @@
             }
         }
 
-        function handleBito() {
+        function handleBito(isAIAction = false) {
+            if (isAIAction) {
+                if (battle.phase !== BATTLE_PHASES.AI_WAITING) return;
+                clearAITimer();
+                battle.phase = BATTLE_PHASES.RESOLVING;
+                battle.actionToken++;
+            } else if (!canAcceptPlayerAction()) {
+                return;
+            }
             battle.isTransferActive = false;
             if (battle.table.length === 0) return;
 
@@ -907,7 +1035,7 @@
                     return;
                 } else {
                     if (hasRelic('midas_touch')) {
-                        run.gold += 3;
+                        run.gold += MIDAS_TOUCH_GOLD_ON_DEFEND;
                     }
                     battle.discardPile.push(...battle.table);
                     battle.table = [];
@@ -925,12 +1053,18 @@
 
             if (!checkRoundEnd()) {
                 if (battle.defender === 'player') {
-                    setTimeout(() => executeEnemyAI(), 500);
+                    scheduleEnemyAI(AI_STANDARD_DELAY_MS);
+                } else {
+                    enterPlayerPhase();
                 }
             }
         }
 
         function handleEnemyTake() {
+            if (battle.phase !== BATTLE_PHASES.AI_WAITING && !canAcceptPlayerAction()) return;
+            clearAITimer();
+            battle.phase = BATTLE_PHASES.RESOLVING;
+            battle.actionToken++;
             battle.isTransferActive = false;
             if (battle.table.length === 0) return;
 
@@ -941,8 +1075,8 @@
                 if (pair.defend) battle.enemyHand.push(pair.defend);
             }
             
-            let damage = cardsCount * 2;
-            if (hasRelic('ace_sleeve')) damage += 5;
+            let damage = cardsCount * TAKE_DAMAGE_PER_CARD;
+            if (hasRelic('ace_sleeve')) damage += ACE_SLEEVE_BONUS_DAMAGE;
             damageEnemyHP(damage);
 
             battle.table = [];
@@ -952,13 +1086,12 @@
             replenishHands(currentDefender);
             saveRunToLocal();
             renderAll();
-
-            if (!checkRoundEnd()) {
-                renderAll();
-            }
+            if (!checkRoundEnd()) enterPlayerPhase();
         }
 
         function handlePlayerTake() {
+            if (!canAcceptPlayerAction() || battle.defender !== 'player') return;
+            battle.phase = BATTLE_PHASES.RESOLVING;
             battle.isTransferActive = false;
             if (battle.defender !== 'player' || battle.table.length === 0) return;
 
@@ -984,8 +1117,8 @@
             }
 
             const enemyData = getCurrentEnemy();
-            let multiplier = enemyData.abilityId === 'double_penalty' ? 3 : 1.5;
-            const selfDamage = Math.max(3, Math.floor(cardsTakenCount * multiplier));
+            let multiplier = enemyData.abilityId === 'double_penalty' ? SELF_DAMAGE_MULTIPLIER_DOUBLE_PENALTY : SELF_DAMAGE_MULTIPLIER;
+            const selfDamage = Math.max(MIN_SELF_DAMAGE, Math.floor(cardsTakenCount * multiplier));
             run.playerHP = Math.max(0, run.playerHP - selfDamage);
 
             if (hasRelic('mirror_ring')) {
@@ -1007,13 +1140,15 @@
                 });
             } else {
                 if (!checkRoundEnd()) {
-                    setTimeout(() => executeEnemyAI(), 600);
+                    scheduleEnemyAI(AI_TAKE_RESOLVE_DELAY_MS);
                 }
             }
         }
 
         function executeEnemyAI() {
+            if (battle.phase !== BATTLE_PHASES.AI_WAITING && battle.phase !== BATTLE_PHASES.RESOLVING && battle.phase !== BATTLE_PHASES.IDLE) return;
             if (checkRoundEnd()) return;
+            battle.phase = BATTLE_PHASES.RESOLVING;
 
             const enemyData = getCurrentEnemy();
 
@@ -1023,19 +1158,19 @@
 
                 if (battle.cardsToTake) {
                     if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !playerHasTossCard) {
-                        setTimeout(() => handleEnemyTake(), 400);
+                        scheduleEnemyAction(() => handleEnemyTake(), AI_QUICK_DELAY_MS);
                         return;
                     }
-                    renderAll();
+                    finishAIPhase();
                     return;
                 }
 
                 const openPairs = battle.table.filter(p => p.defend === null);
                 if (openPairs.length === 0) {
                     if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !playerHasTossCard) {
-                        setTimeout(() => handleBito(), 400);
+                        scheduleEnemyAction(() => handleBito(true), AI_QUICK_DELAY_MS);
                     }
-                    renderAll();
+                    finishAIPhase();
                     return;
                 }
 
@@ -1054,7 +1189,7 @@
                         battle.defender = 'player';
                         audio.playCardSound();
                         showModal("Враг Переводит!", `${enemyData.name} переводит атаку обратно на вас!`);
-                        renderAll();
+                        finishAIPhase();
                         return;
                     }
                 }
@@ -1063,11 +1198,7 @@
 
                 for (let pair of openPairs) {
                     let validCards = battle.enemyHand.filter(c => canBeat(pair.attack, c));
-                    validCards.sort((a,b) => {
-                        const aTrump = a.suit === battle.trumpSuit ? 100 : 0;
-                        const bTrump = b.suit === battle.trumpSuit ? 100 : 0;
-                        return (aTrump + a.value) - (bTrump + b.value);
-                    });
+                    validCards.sort((a, b) => cardPower(a) - cardPower(b));
 
                     if (validCards.length > 0) {
                         const cardToDefend = validCards[0];
@@ -1089,20 +1220,22 @@
                 const updatedHasToss = battle.playerHand.some(c => isRankOnTable(c.value));
                 if (battle.cardsToTake) {
                     if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !updatedHasToss) {
-                        setTimeout(() => handleEnemyTake(), 500);
+                        scheduleEnemyAction(() => handleEnemyTake(), AI_STANDARD_DELAY_MS);
                     }
                 } else {
                     if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed) {
-                        setTimeout(() => handleBito(), 500);
+                        scheduleEnemyAction(() => handleBito(true), AI_STANDARD_DELAY_MS);
                     }
                 }
+                finishAIPhase();
 
             } else {
                 if (battle.enemyHand.length === 0) {
                     if (battle.table.filter(p => p.defend === null).length === 0) {
-                        setTimeout(() => handleBito(), 500);
+                        scheduleEnemyAction(() => handleBito(true), AI_STANDARD_DELAY_MS);
                     } else {
                         checkRoundEnd();
+                        finishAIPhase();
                     }
                     return;
                 }
@@ -1111,11 +1244,7 @@
                 const maxAllowed = getMaxAllowedAttacks();
                 
                 if (battle.table.length === 0) {
-                    battle.enemyHand.sort((a,b) => {
-                        const aTrump = a.suit === battle.trumpSuit ? 100 : 0;
-                        const bTrump = b.suit === battle.trumpSuit ? 100 : 0;
-                        return (aTrump + a.value) - (bTrump + b.value);
-                    });
+                    battle.enemyHand.sort((a, b) => cardPower(a) - cardPower(b));
                     const attackCard = battle.enemyHand.shift();
                     if (attackCard) {
                         battle.table.push({ attack: attackCard, defend: null });
@@ -1129,15 +1258,15 @@
                         battle.table.push({ attack: throwCard, defend: null });
                         audio.playCardSound();
                     } else {
-                        setTimeout(() => handleBito(), 500);
+                        scheduleEnemyAction(() => handleBito(true), AI_STANDARD_DELAY_MS);
                     }
                 }
-                renderAll();
+                finishAIPhase();
             }
         }
 
         window.onPlayerCardClick = function(index) {
-            audio.playCardSound();
+            if (!canAcceptPlayerAction()) return;
             const card = battle.playerHand[index];
 
             if (battle.defender === 'enemy') {
@@ -1146,7 +1275,8 @@
                 if (battle.table.length === 0) {
                     battle.table.push({ attack: card, defend: null });
                     battle.playerHand.splice(index, 1);
-                    executeEnemyAI();
+                    audio.playCardSound();
+                    scheduleEnemyAI(AI_STANDARD_DELAY_MS);
                 } else {
                     if (battle.table.length >= maxAllowed) {
                         showModal("Лимит карт", "Нельзя подкинуть больше карт, чем есть на руках у защищающегося!");
@@ -1155,7 +1285,8 @@
                     if (isRankOnTable(card.value)) {
                         battle.table.push({ attack: card, defend: null });
                         battle.playerHand.splice(index, 1);
-                        executeEnemyAI();
+                        audio.playCardSound();
+                        scheduleEnemyAI(AI_STANDARD_DELAY_MS);
                     } else {
                         showModal("Недопустимый ход", "Вы можете подкидывать только карты того номинала, что уже есть на столе!");
                     }
@@ -1176,7 +1307,7 @@
                         battle.isTransferActive = false;
                         audio.playCardSound();
                         renderAll();
-                        setTimeout(() => executeEnemyAI(), 500);
+                        scheduleEnemyAI(AI_STANDARD_DELAY_MS);
                         return;
                     } else {
                         showModal("Неверная карта", `Для перевода необходимо выбрать карту номинала ${VALUES[requiredRank]}.`);
@@ -1191,7 +1322,7 @@
                         battle.playerHand.splice(index, 1);
                         audio.playCardSound();
 
-                        setTimeout(() => executeEnemyAI(), 400);
+                        scheduleEnemyAI(AI_QUICK_DELAY_MS);
                     } else {
                         showModal("Нельзя отбить", "Эта карта не покрывает атакующего! Нужна карта той же масти старше или козырь.");
                     }
@@ -1203,53 +1334,44 @@
         bindClick('btn-action', () => handleBito());
         bindClick('btn-take', () => handlePlayerTake());
 
+        const TRANSFER_BLOCK_MESSAGES = {
+            boss_block: ["Перевод заблокирован", "Трактирщик запрещает переводить карты на этом этаже!"],
+            already_defending: ["Перевод невозможен", "Нельзя переводить ход, если вы уже начали отбиваться!"],
+            mixed_ranks: ["Перевод невозможен", "Переводить можно только карты одинакового достоинства!"],
+            no_matching_card: ["Перевод невозможен", null], // текст собирается динамически ниже
+            enemy_hand_too_small: ["Перевод невозможен", "У противника недостаточно карт на руках, чтобы принять перевод!"]
+        };
+
         bindClick('btn-transfer', () => {
-            const enemyData = getCurrentEnemy();
-            if (enemyData.abilityId === 'no_transfer') {
-                showModal("Перевод заблокирован", "Трактирщик запрещает переводить карты на этом этаже!");
+            const reason = getTransferBlockReason();
+
+            if (reason === null) {
+                battle.isTransferActive = !battle.isTransferActive;
+                renderAll();
                 return;
             }
 
-            if (battle.defender !== 'player' || battle.table.length === 0) return;
+            // Как и раньше: если защищается не игрок или стол пуст, кнопка просто неактивна - без модалки.
+            if (reason === 'not_defender' || reason === 'empty_table') return;
 
-            if (battle.table.some(p => p.defend !== null)) {
-                showModal("Перевод невозможен", "Нельзя переводить ход, если вы уже начали отбиваться!");
-                return;
+            const [title, text] = TRANSFER_BLOCK_MESSAGES[reason];
+            if (reason === 'no_matching_card') {
+                const requiredRank = battle.table[0].attack.value;
+                showModal(title, `У вас нет карты достоинства ${VALUES[requiredRank]} для перевода.`);
+            } else {
+                showModal(title, text);
             }
-
-            const requiredRank = battle.table[0].attack.value;
-            const allSameRank = battle.table.every(p => p.attack.value === requiredRank);
-            if (!allSameRank) {
-                showModal("Перевод невозможен", "Переводить можно только карты одинакового достоинства!");
-                return;
-            }
-
-            const hasMatchingCard = battle.playerHand.some(c => c.value === requiredRank);
-            if (!hasMatchingCard) {
-                showModal("Перевод невозможен", `У вас нет карты достоинства ${VALUES[requiredRank]} для перевода.`);
-                return;
-            }
-
-            if (battle.enemyHand.length < battle.table.length + 1) {
-                showModal("Перевод невозможен", "У противника недостаточно карт на руках, чтобы принять перевод!");
-                return;
-            }
-
-            battle.isTransferActive = !battle.isTransferActive;
-            renderAll();
         });
 
         function damageEnemyHP(amount) {
-            const enemyHpEl = document.getElementById('enemy-hp');
-            if (!enemyHpEl) return;
-            let current = parseInt(enemyHpEl.innerText);
-            current = Math.max(0, current - amount);
-            enemyHpEl.innerText = current;
+            battle.enemyHP = Math.max(0, battle.enemyHP - amount);
+            setElText('enemy-hp', battle.enemyHP);
 
-            if (current <= 0) {
+            if (battle.enemyHP <= 0) {
                 audio.playWinSound();
-                run.gold += 10 + run.floor * 2;
-                showModal("Победа в Бою!", `Вы одолели соперника! Получено +${10 + run.floor * 2}$`, () => {
+                const goldReward = WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR;
+                run.gold += goldReward;
+                showModal("Победа в Бою!", `Вы одолели соперника! Получено +${goldReward}$`, () => {
                     openShop();
                 });
             }
@@ -1298,7 +1420,7 @@
             if (!relic) return;
 
             if (run.gold >= relic.price) {
-                if (run.relics.length < 5) {
+                if (run.relics.length < MAX_RELICS) {
                     run.gold -= relic.price;
                     run.relics.push(relic);
                     audio.playWinSound();
@@ -1352,6 +1474,7 @@
             setElText('player-hp-display', `${run.playerHP}/${run.maxHP}`);
             setElText('player-gold-display', `${run.gold}$`);
             setElText('floor-display', run.floor);
+            setElText('enemy-hp', battle.enemyHP);
 
             /* 5. Обновление баннера подсказок */
             const banner = document.getElementById('turn-banner');
@@ -1377,9 +1500,7 @@
                 let lowestEnemyCard = null;
                 if (hasRelic('cheat_eye') && battle.enemyHand.length > 0) {
                     lowestEnemyCard = battle.enemyHand.reduce((minCard, currentCard) => {
-                        const minPower = (minCard.suit === battle.trumpSuit ? 100 : 0) + minCard.value;
-                        const currPower = (currentCard.suit === battle.trumpSuit ? 100 : 0) + currentCard.value;
-                        return currPower < minPower ? currentCard : minCard;
+                        return cardPower(currentCard) < cardPower(minCard) ? currentCard : minCard;
                     }, battle.enemyHand[0]);
                 }
 
@@ -1434,7 +1555,7 @@
             const relicsBar = document.getElementById('relics-bar');
             if (relicsBar) {
                 relicsBar.innerHTML = '';
-                for (let i = 0; i < 5; i++) {
+                for (let i = 0; i < MAX_RELICS; i++) {
                     const slot = document.createElement('div');
                     if (run.relics[i]) {
                         const r = run.relics[i];
@@ -1448,7 +1569,7 @@
                     relicsBar.appendChild(slot);
                 }
             }
-            setElText('relic-count', `${run.relics.length}/5`);
+            setElText('relic-count', `${run.relics.length}/${MAX_RELICS}`);
 
             const tablePairsEl = document.getElementById('table-pairs');
             if (tablePairsEl) {
@@ -1495,16 +1616,16 @@
             if (btnAction && btnTake && btnTransfer) {
                 if (battle.defender === 'enemy') {
                     btnAction.innerText = battle.cardsToTake ? "БИТО (Враг взял)" : "БИТО";
-                    btnAction.disabled = battle.table.length === 0;
+                    btnAction.disabled = battle.phase !== BATTLE_PHASES.PLAYER_ATTACK || battle.table.length === 0;
                     btnTake.disabled = true;
                     btnTransfer.disabled = true;
                     btnTransfer.className = "btn-action-base btn-action-indigo";
                 } else {
                     btnAction.innerText = "БИТО";
-                    btnAction.disabled = battle.table.length === 0 || battle.table.some(p => p.defend === null);
-                    btnTake.disabled = battle.table.length === 0;
+                    btnAction.disabled = battle.phase !== BATTLE_PHASES.PLAYER_DEFENSE || battle.table.length === 0 || battle.table.some(p => p.defend === null);
+                    btnTake.disabled = battle.phase !== BATTLE_PHASES.PLAYER_DEFENSE || battle.table.length === 0;
                     
-                    const canTransfer = isTransferAllowedForPlayer();
+                    const canTransfer = battle.phase === BATTLE_PHASES.PLAYER_DEFENSE && isTransferAllowedForPlayer();
                     btnTransfer.disabled = !canTransfer;
 
                     if (battle.isTransferActive) {
@@ -1806,7 +1927,106 @@
                 battle.enemyHand = oldEnemyHand;
             });
 
-            runner.describe('7. Сохранение прогресса (LocalStorage)', (it, assert) => {
+            runner.describe('7. Переходы состояния боя', (it, assert) => {
+                const oldPhase = battle.phase;
+                const oldDefender = battle.defender;
+                const oldTimer = battle.aiTimer;
+
+                it('Игрок может действовать только в своих фазах', () => {
+                    battle.phase = BATTLE_PHASES.PLAYER_ATTACK;
+                    assert.isTrue(canAcceptPlayerAction());
+                    battle.phase = BATTLE_PHASES.PLAYER_DEFENSE;
+                    assert.isTrue(canAcceptPlayerAction());
+                    battle.phase = BATTLE_PHASES.AI_WAITING;
+                    assert.isFalse(canAcceptPlayerAction());
+                });
+
+                it('Фаза игрока определяется ролью защитника', () => {
+                    battle.defender = 'enemy';
+                    enterPlayerPhase();
+                    assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
+                    battle.defender = 'player';
+                    enterPlayerPhase();
+                    assert.equal(battle.phase, BATTLE_PHASES.PLAYER_DEFENSE);
+                });
+
+                it('Первая атака игрока переводит бой в ожидание AI', () => {
+                    const oldDefender = battle.defender;
+                    const oldPhase = battle.phase;
+                    const oldTable = battle.table;
+                    const oldPlayerHand = battle.playerHand;
+                    const oldEnemyHand = battle.enemyHand;
+                    const oldTimer = battle.aiTimer;
+
+                    battle.defender = 'enemy';
+                    battle.phase = BATTLE_PHASES.PLAYER_ATTACK;
+                    battle.table = [];
+                    battle.playerHand = [{ id: 'test_attack', suit: 'Pikes', value: 6 }];
+                    battle.enemyHand = [{ id: 'test_defend', suit: 'Pikes', value: 10 }];
+                    clearAITimer();
+
+                    window.onPlayerCardClick(0);
+
+                    assert.equal(battle.table.length, 1);
+                    assert.equal(battle.table[0].attack.id, 'test_attack');
+                    assert.equal(battle.playerHand.length, 0);
+                    assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
+                    assert.isTrue(battle.aiTimer !== null);
+
+                    clearAITimer();
+                    battle.defender = oldDefender;
+                    battle.phase = oldPhase;
+                    battle.table = oldTable;
+                    battle.playerHand = oldPlayerHand;
+                    battle.enemyHand = oldEnemyHand;
+                    battle.aiTimer = oldTimer;
+                });
+
+                it('После ответа AI управление возвращается игроку', () => {
+                    const oldDefender = battle.defender;
+                    const oldPhase = battle.phase;
+                    const oldTable = battle.table;
+                    const oldPlayerHand = battle.playerHand;
+                    const oldEnemyHand = battle.enemyHand;
+                    const oldTimer = battle.aiTimer;
+                    const oldTrumpSuit = battle.trumpSuit;
+                    const oldCardsToTake = battle.cardsToTake;
+
+                    clearAITimer();
+                    battle.defender = 'enemy';
+                    battle.phase = BATTLE_PHASES.AI_WAITING;
+                    battle.table = [{
+                        attack: { id: 'test_attack', suit: 'Pikes', value: 6 },
+                        defend: null
+                    }];
+                    battle.playerHand = [{ id: 'test_player', suit: 'Tiles', value: 7 }];
+                    battle.enemyHand = [{ id: 'test_defend', suit: 'Pikes', value: 10 }];
+                    battle.trumpSuit = 'Hearts';
+                    battle.cardsToTake = false;
+
+                    executeEnemyAI();
+
+                    assert.equal(battle.table.length, 1);
+                    assert.equal(battle.table[0].defend.id, 'test_defend');
+                    assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
+
+                    clearAITimer();
+                    battle.defender = oldDefender;
+                    battle.phase = oldPhase;
+                    battle.table = oldTable;
+                    battle.playerHand = oldPlayerHand;
+                    battle.enemyHand = oldEnemyHand;
+                    battle.aiTimer = oldTimer;
+                    battle.trumpSuit = oldTrumpSuit;
+                    battle.cardsToTake = oldCardsToTake;
+                });
+
+                battle.phase = oldPhase;
+                battle.defender = oldDefender;
+                battle.aiTimer = oldTimer;
+            });
+
+            runner.describe('8. Сохранение прогресса (LocalStorage)', (it, assert) => {
                 const oldFloor = run.floor;
                 run.floor = 4;
                 saveRunToLocal();
@@ -1893,10 +2113,8 @@
             modal.classList.add('flex');
         }
 
-        window.addEventListener('DOMContentLoaded', () => {
-            const urlParams = new URLSearchParams(window.location.search);
-            const isTestMode = urlParams.has('test') || urlParams.has('tests') || urlParams.has('unit_test');
-
+        // --- Панель юнит-тестов: открывается по кнопке (в шапке/на сплэше) или скрытым жестом по углам экрана ---
+        function initUnitTestsUI() {
             const runTestsAction = () => {
                 const results = runGameUnitTests();
                 renderTestResultsUI(results);
@@ -1908,60 +2126,67 @@
             const btnSplashTests = document.getElementById('btn-splash-tests');
             if (btnSplashTests) btnSplashTests.onclick = runTestsAction;
 
-            const secretCornerSequence = ['BL', 'TL', 'TR', 'BR'];
-            let secretStep = 0;
-
             function revealAndRunTests() {
                 if (btnHeaderTests) btnHeaderTests.classList.remove('hidden');
                 if (btnSplashTests) btnSplashTests.classList.remove('hidden');
                 setTimeout(() => runTestsAction(), 300);
             }
 
-            function checkCornerClick(x, y) {
+            initSecretCornerGesture(revealAndRunTests);
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const isTestMode = urlParams.has('test') || urlParams.has('tests') || urlParams.has('unit_test');
+            if (isTestMode) {
+                revealAndRunTests();
+            }
+        }
+
+        // Секретный жест: последовательный тап по 4 углам экрана (левый низ -> левый верх -> правый верх -> правый низ)
+        // открывает скрытую панель тестов. Полностью независим от загрузки сохранения ниже.
+        function initSecretCornerGesture(onActivated) {
+            const secretCornerSequence = ['BL', 'TL', 'TR', 'BR'];
+            let secretStep = 0;
+
+            function detectCorner(x, y) {
                 const w = window.innerWidth;
                 const h = window.innerHeight;
                 const zoneSize = Math.max(100, Math.min(w, h) * 0.28);
 
-                let corner = null;
-                if (x <= zoneSize && y >= h - zoneSize) corner = 'BL';
-                else if (x <= zoneSize && y <= zoneSize) corner = 'TL';
-                else if (x >= w - zoneSize && y <= zoneSize) corner = 'TR';
-                else if (x >= w - zoneSize && y >= h - zoneSize) corner = 'BR';
+                if (x <= zoneSize && y >= h - zoneSize) return 'BL';
+                if (x <= zoneSize && y <= zoneSize) return 'TL';
+                if (x >= w - zoneSize && y <= zoneSize) return 'TR';
+                if (x >= w - zoneSize && y >= h - zoneSize) return 'BR';
+                return null;
+            }
 
-                if (!corner) {
-                    return;
-                }
+            window.addEventListener('pointerdown', (e) => {
+                const corner = detectCorner(e.clientX, e.clientY);
+                if (!corner) return;
 
                 if (corner === secretCornerSequence[secretStep]) {
                     secretStep++;
                     if (secretStep === secretCornerSequence.length) {
                         secretStep = 0;
-                        revealAndRunTests();
+                        onActivated();
                     }
                 } else {
-                    if (corner === secretCornerSequence[0]) {
-                        secretStep = 1;
-                    } else {
-                        secretStep = 0;
-                    }
+                    secretStep = (corner === secretCornerSequence[0]) ? 1 : 0;
                 }
-            }
-
-            window.addEventListener('pointerdown', (e) => {
-                checkCornerClick(e.clientX, e.clientY);
             });
+        }
 
-            if (isTestMode) {
-                revealAndRunTests();
-            }
+        // Если есть сохранённый забег - меняем текст кнопки на сплэше на "продолжить"
+        function updateStartButtonForSavedRun() {
+            if (!loadRunFromLocal()) return;
+            const btnStart = document.getElementById('btn-start-game');
+            if (!btnStart) return;
+            const span = btnStart.querySelector('span');
+            if (span) span.innerText = "▶ ПРОДОЛЖИТЬ ИГРУ";
+        }
 
-            if (loadRunFromLocal()) {
-                const btnStart = document.getElementById('btn-start-game');
-                if (btnStart) {
-                    const span = btnStart.querySelector('span');
-                    if (span) span.innerText = "▶ ПРОДОЛЖИТЬ ИГРУ";
-                }
-            }
+        window.addEventListener('DOMContentLoaded', () => {
+            initUnitTestsUI();
+            updateStartButtonForSavedRun();
         });
     </script>
 </body>
