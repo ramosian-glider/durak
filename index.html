@@ -711,6 +711,7 @@
         const AI_QUICK_DELAY_MS = 400;
         const AI_STANDARD_DELAY_MS = 500;
         const AI_TAKE_RESOLVE_DELAY_MS = 600;
+        const AI_POST_THROW_DELAY_MS = 1200;
 
         const ALL_RELICS = [
             { id: "ace_sleeve", name: "Туз в рукаве", icon: "🃏", desc: "Заставление врага взять карты наносит +5 ед. дополнительного урона.", price: 12 },
@@ -1239,7 +1240,7 @@
             } else {
                 if (battle.enemyHand.length === 0) {
                     if (battle.table.filter(p => p.defend === null).length === 0) {
-                        scheduleEnemyAction(() => handleBito(true), AI_STANDARD_DELAY_MS);
+                        scheduleEnemyAction(() => handleBito(true), AI_POST_THROW_DELAY_MS);
                     } else {
                         checkRoundEnd();
                         finishAIPhase();
@@ -1265,7 +1266,7 @@
                         battle.table.push({ attack: throwCard, defend: null });
                         audio.playCardSound();
                     } else {
-                        scheduleEnemyAction(() => handleBito(true), AI_STANDARD_DELAY_MS);
+                        scheduleEnemyAction(() => handleBito(true), AI_POST_THROW_DELAY_MS);
                     }
                 }
                 finishAIPhase();
@@ -2104,6 +2105,38 @@
                     battle.aiTimer = oldTimer;
                     battle.trumpSuit = oldTrumpSuit;
                     battle.cardsToTake = oldCardsToTake;
+                });
+
+                it('Когда AI закончил подкидывать, он планирует бито с задержкой', () => {
+                    const oldDefender = battle.defender;
+                    const oldPhase = battle.phase;
+                    const oldTable = battle.table;
+                    const oldPlayerHand = battle.playerHand;
+                    const oldEnemyHand = battle.enemyHand;
+                    const oldTimer = battle.aiTimer;
+
+                    clearAITimer();
+                    battle.defender = 'player';
+                    battle.phase = BATTLE_PHASES.AI_WAITING;
+                    battle.table = [{
+                        attack: { id: 'test_attack', suit: 'Pikes', value: 6 },
+                        defend: { id: 'test_defend', suit: 'Pikes', value: 10 }
+                    }];
+                    battle.playerHand = [{ id: 'test_player', suit: 'Tiles', value: 7 }];
+                    battle.enemyHand = [{ id: 'test_other', suit: 'Clovers', value: 9 }];
+
+                    executeEnemyAI();
+
+                    assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
+                    assert.isTrue(battle.aiTimer !== null);
+
+                    clearAITimer();
+                    battle.defender = oldDefender;
+                    battle.phase = oldPhase;
+                    battle.table = oldTable;
+                    battle.playerHand = oldPlayerHand;
+                    battle.enemyHand = oldEnemyHand;
+                    battle.aiTimer = oldTimer;
                 });
 
                 battle.phase = oldPhase;
