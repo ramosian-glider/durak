@@ -794,20 +794,100 @@
             { id: "cheat_eye", name: "Шулерский глаз", icon: "👁️", desc: "Показывает вам наименьшую карту в руке соперника.", price: 8 }
         ];
 
-        const ENEMIES = [
-            { floor: 1, name: "Начинающий Шулер", hp: 12, avatar: "🙂", abilityId: "none", abilityDesc: "Стандартный противник" },
-            { floor: 2, name: "Уличный Мошенник", hp: 18, avatar: "🧔", abilityId: "none", abilityDesc: "Стандартный противник" },
-            { floor: 3, name: "Карточный Трактирщик", hp: 30, avatar: "🍺", abilityId: "no_transfer", abilityDesc: "Запрет на Перевод карт" },
-            { floor: 4, name: "Карточный Жучок", hp: 24, avatar: "🧑‍🦱", abilityId: "none", abilityDesc: "Стандартный противник" },
-            { floor: 5, name: "Барный Хитрец", hp: 32, avatar: "🍻", abilityId: "none", abilityDesc: "Стандартный противник" },
-            { floor: 6, name: "Фаворит Казино", hp: 40, avatar: "🎩", abilityId: "ai_transfer", abilityDesc: "Умеет Переводить ваши атаки" },
-            { floor: 7, name: "Ловкий Карманник", hp: 38, avatar: "🧤", abilityId: "none", abilityDesc: "Стандартный противник" },
-            { floor: 8, name: "Азартный Игрок", hp: 46, avatar: "🎲", abilityId: "none", abilityDesc: "Стандартный противник" },
-            { floor: 9, name: "Основатель Синдиката", hp: 55, avatar: "🕵️", abilityId: "aggressive_throw", abilityDesc: "Агрессивно подкидывает до 8 карт" },
-            { floor: 10, name: "Матёрый Катала", hp: 50, avatar: "🎰", abilityId: "none", abilityDesc: "Стандартный противник" },
-            { floor: 11, name: "Теневой Подручный", hp: 62, avatar: "🕶️", abilityId: "none", abilityDesc: "Стандартный противник" },
-            { floor: 12, name: "Тень (Финальный БОСС)", hp: 75, avatar: "👑", abilityId: "double_penalty", abilityDesc: "Удвоенный урон игроку при взятии карт" }
+        // --- Enemy ladder ------------------------------------------------------------
+        // Everything you need to edit when adding/removing/swapping enemies lives in
+        // the two lists below. Floor numbers, filler HP between bosses, and whether a
+        // boss's ability "stays unlocked forever" are all computed by
+        // buildEnemyLadder(), so nothing here needs to be maintained by hand.
+
+        // Pool of filler enemies (no special ability, clones of the basic Sharper).
+        // buildEnemyLadder hands them out in order and, once it runs out of
+        // templates, loops back to the start of the pool.
+        const FILLER_POOL = [
+            { name: "Начинающий Шулер", avatar: "🙂" },
+            { name: "Уличный Мошенник", avatar: "🧔" },
+            { name: "Карточный Жучок", avatar: "🧑‍🦱" },
+            { name: "Барный Хитрец", avatar: "🍻" },
+            { name: "Ловкий Карманник", avatar: "🧤" },
+            { name: "Азартный Игрок", avatar: "🎲" },
+            { name: "Матёрый Катала", avatar: "🎰" },
+            { name: "Теневой Подручный", avatar: "🕶️" },
         ];
+
+        // Named bosses, in the order they appear. Each one can specify:
+        //   fillersBefore    — how many filler enemies to place right before it;
+        //   fillerHpRange    — [HP of first filler, HP of last filler] before it
+        //                      (HP of the ones in between is linearly interpolated);
+        //   permanentAbility — true if, once this boss's ability is encountered, it
+        //                     should stay active on EVERY later enemy (a permanent
+        //                     difficulty ratchet, not a one-off mechanic).
+        const BOSS_ROSTER = [
+            {
+                name: "Карточный Трактирщик", hp: 30, avatar: "🍺",
+                abilityId: "no_transfer", abilityDesc: "Запрет на Перевод карт",
+                fillersBefore: 2, fillerHpRange: [12, 18],
+            },
+            {
+                name: "Фаворит Казино", hp: 40, avatar: "🎩",
+                abilityId: "ai_transfer", abilityDesc: "Умеет Переводить ваши атаки",
+                fillersBefore: 2, fillerHpRange: [24, 32],
+                permanentAbility: true, // с этого момента переводить умеют все противники
+            },
+            {
+                name: "Основатель Синдиката", hp: 55, avatar: "🕵️",
+                abilityId: "aggressive_throw", abilityDesc: "Агрессивно подкидывает до 8 карт",
+                fillersBefore: 2, fillerHpRange: [38, 46],
+            },
+            {
+                name: "Тень (Финальный БОСС)", hp: 75, avatar: "👑",
+                abilityId: "double_penalty", abilityDesc: "Удвоенный урон игроку при взятии карт",
+                fillersBefore: 2, fillerHpRange: [50, 62],
+            },
+        ];
+
+        // Builds the flat ENEMIES list from BOSS_ROSTER/FILLER_POOL. No other part of
+        // the code should need to know specific floor numbers — it should look at
+        // enemyData.floor and enemyData.activeAbilities instead.
+        function buildEnemyLadder(bossRoster, fillerPool) {
+            const ladder = [];
+            let fillerCursor = 0;
+
+            bossRoster.forEach(boss => {
+                const fillersBefore = boss.fillersBefore || 0;
+                const [hpFrom, hpTo] = boss.fillerHpRange || [boss.hp, boss.hp];
+
+                for (let i = 0; i < fillersBefore; i++) {
+                    const template = fillerPool[fillerCursor % fillerPool.length];
+                    fillerCursor++;
+                    const t = fillersBefore > 1 ? i / (fillersBefore - 1) : 1;
+                    const hp = Math.round(hpFrom + (hpTo - hpFrom) * t);
+                    ladder.push({
+                        name: template.name, avatar: template.avatar, hp,
+                        abilityId: "none", abilityDesc: "Стандартный противник",
+                    });
+                }
+
+                ladder.push({
+                    name: boss.name, hp: boss.hp, avatar: boss.avatar,
+                    abilityId: boss.abilityId, abilityDesc: boss.abilityDesc,
+                    isBoss: true, permanentAbility: !!boss.permanentAbility,
+                });
+            });
+
+            // Assign floor numbers and the set of abilities "accumulated" by this
+            // floor (its own, plus every earlier boss's permanentAbility).
+            const unlockedForever = new Set();
+            ladder.forEach((enemy, idx) => {
+                enemy.floor = idx + 1;
+                if (enemy.permanentAbility) unlockedForever.add(enemy.abilityId);
+                enemy.activeAbilities = new Set(unlockedForever);
+                if (enemy.abilityId !== "none") enemy.activeAbilities.add(enemy.abilityId);
+            });
+
+            return ladder;
+        }
+
+        const ENEMIES = buildEnemyLadder(BOSS_ROSTER, FILLER_POOL);
 
         let run = {
             floor: 1,
@@ -1291,7 +1371,7 @@
                 const attackVal = battle.table[0].attack.value;
                 const allSameRank = battle.table.every(p => p.attack.value === attackVal);
 
-                if ((enemyData.abilityId === 'ai_transfer' || run.floor >= 6) && 
+                if (enemyData.activeAbilities.has('ai_transfer') && 
                     openPairs.length === battle.table.length && 
                     allSameRank && 
                     battle.playerHand.length >= battle.table.length + 1) {
