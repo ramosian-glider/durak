@@ -472,6 +472,10 @@
 
     <script>
         const SAVE_KEY = 'fools_deck_local_run';
+        const SAVE_VERSION = 2;
+
+        // Поля battle, которые не нужно сохранять (runtime-only)
+        const BATTLE_RUNTIME_FIELDS = ['aiTimer', 'actionToken'];
 
         function setElText(id, text) {
             const el = document.getElementById(id);
@@ -487,12 +491,27 @@
             setElText('save-status-text', text);
         }
 
-        function saveRunToLocal() {
+        /**
+         * Сохраняет полное состояние игры: прогресс забега (run) и текущий бой (battle).
+         * Поля aiTimer и actionToken не сохраняются — они восстанавливаются при загрузке.
+         */
+        function saveGameState() {
             try {
-                localStorage.setItem(SAVE_KEY, JSON.stringify({
-                    runState: run,
-                    updatedAt: new Date().toISOString()
-                }));
+                const battleSnapshot = {};
+                for (const key of Object.keys(battle)) {
+                    if (!BATTLE_RUNTIME_FIELDS.includes(key)) {
+                        battleSnapshot[key] = battle[key];
+                    }
+                }
+
+                const saveData = {
+                    version: SAVE_VERSION,
+                    run: run,
+                    battle: battleSnapshot,
+                    savedAt: new Date().toISOString()
+                };
+
+                localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
                 updateSaveStatus("Сохранено");
             } catch (err) {
                 console.warn("Local storage unavailable:", err);
@@ -500,20 +519,47 @@
             }
         }
 
-        function loadRunFromLocal() {
+        /**
+         * Загружает полное состояние игры из localStorage.
+         * Если версия не совпадает — удаляет устаревшее сохранение.
+         * Возвращает true при успешной загрузке, false — если сохранения нет или оно повреждено.
+         */
+        function loadGameState() {
             try {
-                const savedData = localStorage.getItem(SAVE_KEY);
-                if (savedData) {
-                    const parsed = JSON.parse(savedData);
-                    if (parsed && parsed.runState) {
-                        run = parsed.runState;
-                        return true;
+                const raw = localStorage.getItem(SAVE_KEY);
+                if (!raw) return false;
+
+                const parsed = JSON.parse(raw);
+
+                // Проверка версии формата — устаревшее сохранение сбрасываем
+                if (!parsed || parsed.version !== SAVE_VERSION) {
+                    console.info("Save version mismatch — clearing old save.");
+                    clearLocalSave();
+                    return false;
+                }
+
+                if (!parsed.run || !parsed.battle) return false;
+
+                run = parsed.run;
+
+                // Восстанавливаем battle, сохраняя runtime-поля текущего объекта
+                const savedBattle = parsed.battle;
+                for (const key of Object.keys(battle)) {
+                    if (!BATTLE_RUNTIME_FIELDS.includes(key) && key in savedBattle) {
+                        battle[key] = savedBattle[key];
                     }
                 }
+
+                // После загрузки сбрасываем runtime-поля в безопасное состояние
+                battle.aiTimer = null;
+                battle.actionToken = (battle.actionToken || 0) + 1;
+
+                return true;
             } catch (err) {
-                console.warn("Failed to load local run:", err);
+                console.warn("Failed to load game state:", err);
+                clearLocalSave();
+                return false;
             }
-            return false;
         }
 
         function clearLocalSave() {
@@ -521,6 +567,27 @@
                 localStorage.removeItem(SAVE_KEY);
             } catch (err) {}
         }
+
+        /**
+         * Проверяет наличие валидного сохранения, НЕ загружая и не мутируя
+         * текущее состояние run/battle. Использовать для UI-проверок
+         * (например, текста на кнопке), где полноценная загрузка не нужна
+         * и была бы нежелательным побочным эффектом.
+         */
+        function hasSavedGame() {
+            try {
+                const raw = localStorage.getItem(SAVE_KEY);
+                if (!raw) return false;
+                const parsed = JSON.parse(raw);
+                return !!(parsed && parsed.version === SAVE_VERSION && parsed.run && parsed.battle);
+            } catch (err) {
+                return false;
+            }
+        }
+
+        // Обратная совместимость: старые вызовы saveRunToLocal() теперь вызывают saveGameState()
+        function saveRunToLocal() { saveGameState(); }
+        function loadRunFromLocal() { return loadGameState(); }
 
         class SoundEngine {
             constructor() {
@@ -853,19 +920,49 @@
                 relics: [],
                 deck: generateStandardDeck()
             };
-            saveRunToLocal();
+            saveGameState();
             startFloorBattle();
+        }
+
+        /**
+         * Синхронизирует DOM-элементы с текущим врагом (имя, аватар, особенность).
+         * Вызывается как при старте нового боя, так и при загрузке сохранения.
+         */
+        function syncEnemyDisplay() {
+            const enemyData = getCurrentEnemy();
+            setElText('enemy-name', enemyData.name);
+            const avatarEl = document.getElementById('enemy-avatar');
+            if (avatarEl) avatarEl.innerText = enemyData.avatar;
+            setElText('boss-ability-badge', `Особенность: ${enemyData.abilityDesc}`);
         }
 
         function startFloorBattle() {
             clearAITimer();
             const enemyData = getCurrentEnemy();
             battle.enemyHP = enemyData.hp;
-            setElText('enemy-name', enemyData.name);
-            setElText('enemy-avatar', enemyData.avatar);
-            setElText('boss-ability-badge', `Особенность: ${enemyData.abilityDesc}`);
+            syncEnemyDisplay();
 
             startNewRound();
+        }
+
+        /**
+         * Восстанавливает игру из загруженного состояния.
+         * Не трогает колоду или руки — они уже восстановлены через loadGameState().
+         * Если бой был в фазе AI_WAITING (например, игрок сделал ход и закрыл вкладку),
+         * перезапускаем AI-ход, чтобы игра не зависла.
+         */
+        function resumeFromSave() {
+            clearAITimer();
+            syncEnemyDisplay();
+            renderAll();
+
+            // Если игра была сохранена пока AI думает — запускаем его заново
+            if (battle.phase === BATTLE_PHASES.AI_WAITING) {
+                scheduleEnemyAI(AI_STANDARD_DELAY_MS);
+            } else if (battle.phase === BATTLE_PHASES.RESOLVING || battle.phase === BATTLE_PHASES.IDLE) {
+                // Если фаза неопределённая — возвращаем ход игроку
+                enterPlayerPhase();
+            }
         }
 
         function startNewRound() {
@@ -1726,10 +1823,10 @@
             audio.startMusic(false);
             const splash = document.getElementById('splash-screen');
             if (splash) splash.classList.add('hidden');
-            if (!loadRunFromLocal()) {
+            if (!loadGameState()) {
                 initNewRun();
             } else {
-                startFloorBattle();
+                resumeFromSave();
             }
         });
 
@@ -2191,24 +2288,76 @@
             });
 
             runner.describe('8. Сохранение прогресса (LocalStorage)', (it, assert) => {
-                const oldFloor = run.floor;
-                run.floor = 4;
-                saveRunToLocal();
+                const origFloor = run.floor;
+                const origGold = run.gold;
+                const origBattleEnemyHP = battle.enemyHP;
+                const origPlayerHand = [...battle.playerHand];
 
-                it('Успешно сохраняет и восстанавливает состояние забега', () => {
+                it('Сохраняет run и battle целиком (формат с version)', () => {
+                    run.floor = 4;
+                    run.gold = 77;
+                    battle.enemyHP = 42;
+                    battle.playerHand = [{ id: 'test_save_card', suit: 'Hearts', value: 9 }];
+                    saveGameState();
+
+                    const raw = localStorage.getItem(SAVE_KEY);
+                    const parsed = JSON.parse(raw);
+                    assert.equal(parsed.version, SAVE_VERSION);
+                    assert.equal(parsed.run.floor, 4);
+                    assert.equal(parsed.run.gold, 77);
+                    assert.equal(parsed.battle.enemyHP, 42);
+                    assert.equal(parsed.battle.playerHand.length, 1);
+                });
+
+                it('aiTimer и actionToken НЕ попадают в сохранение', () => {
+                    saveGameState();
+                    const raw = localStorage.getItem(SAVE_KEY);
+                    const parsed = JSON.parse(raw);
+                    assert.isFalse('aiTimer' in parsed.battle);
+                    assert.isFalse('actionToken' in parsed.battle);
+                });
+
+                it('loadGameState восстанавливает run и battle', () => {
+                    run.floor = 3;
+                    battle.enemyHP = 55;
+                    battle.playerHand = [{ id: 'restore_card', suit: 'Pikes', value: 11 }];
+                    saveGameState();
+
                     run.floor = 1;
-                    const loaded = loadRunFromLocal();
+                    battle.enemyHP = 0;
+                    battle.playerHand = [];
+
+                    const loaded = loadGameState();
                     assert.isTrue(loaded);
-                    assert.equal(run.floor, 4);
+                    assert.equal(run.floor, 3);
+                    assert.equal(battle.enemyHP, 55);
+                    assert.equal(battle.playerHand.length, 1);
                 });
 
-                it('Успешно очищает сохранение', () => {
-                    clearLocalSave();
-                    const loaded = loadRunFromLocal();
+                it('После загрузки aiTimer === null', () => {
+                    saveGameState();
+                    loadGameState();
+                    assert.equal(battle.aiTimer, null);
+                });
+
+                it('Несовпадение версии сбрасывает сохранение', () => {
+                    localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 1, run: { floor: 5 }, battle: {} }));
+                    const loaded = loadGameState();
                     assert.isFalse(loaded);
+                    assert.equal(localStorage.getItem(SAVE_KEY), null);
                 });
 
-                run.floor = oldFloor;
+                it('clearLocalSave удаляет сохранение', () => {
+                    saveGameState();
+                    clearLocalSave();
+                    assert.isFalse(loadGameState());
+                });
+
+                run.floor = origFloor;
+                run.gold = origGold;
+                battle.enemyHP = origBattleEnemyHP;
+                battle.playerHand = origPlayerHand;
+                clearLocalSave();
             });
 
             runner.describe('9. Магазин и здоровье игрока', (it, assert) => {
@@ -2385,7 +2534,7 @@
         }
 
         function updateStartButtonForSavedRun() {
-            if (!loadRunFromLocal()) return;
+            if (!hasSavedGame()) return;
             const btnStart = document.getElementById('btn-start-game');
             if (!btnStart) return;
             const span = btnStart.querySelector('span');
