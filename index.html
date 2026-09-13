@@ -41,7 +41,7 @@
             100% { opacity: 0; transform: scale(0.9); }
         }
 
-        /* 1. Индикаторы шапки (Бэйджи) */
+        /* 1. Header indicators (badges) */
         .stat-badge {
             padding: 0.25rem 0.625rem;
             border-radius: 9999px;
@@ -67,7 +67,7 @@
             color: #fcd34d;
         }
 
-        /* 2. Кнопки в заголовке */
+        /* 2. Header buttons */
         .btn-icon-header {
             width: 1.75rem;
             height: 1.75rem;
@@ -109,7 +109,7 @@
             background-color: #312e81;
         }
 
-        /* 3. Игровые кнопки действий */
+        /* 3. Game action buttons */
         .btn-action-base {
             padding: 0.75rem 0.5rem;
             border-radius: 0.75rem;
@@ -169,7 +169,7 @@
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
         }
 
-        /* 4. Карты и Козыри */
+        /* 4. Cards and trumps */
         .card-base {
             width: 3.5rem;
             height: 5rem;
@@ -202,7 +202,7 @@
             box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.8), 0 0 12px rgba(251, 191, 36, 0.7), 0 4px 10px rgba(0, 0, 0, 0.5);
         }
 
-        /* 5. Баннеры подсказок и слоты артефактов */
+        /* 5. Hint banners and relic slots */
         .turn-banner-base {
             margin-bottom: 0.5rem;
             padding: 0.25rem 0.75rem;
@@ -471,10 +471,16 @@
     </div>
 
     <script>
+        // --- Code conventions ---
+        // - Comments: English only.
+        // - User-facing strings (UI text, test names/labels shown in the test panel) stay
+        //   in Russian, since the game itself is Russian-language.
+        // -------------------------
+
         const SAVE_KEY = 'fools_deck_local_run';
         const SAVE_VERSION = 2;
 
-        // Поля battle, которые не нужно сохранять (runtime-only)
+        // Battle fields that should not be persisted (runtime-only)
         const BATTLE_RUNTIME_FIELDS = ['aiTimer', 'actionToken'];
 
         function setElText(id, text) {
@@ -492,8 +498,8 @@
         }
 
         /**
-         * Сохраняет полное состояние игры: прогресс забега (run) и текущий бой (battle).
-         * Поля aiTimer и actionToken не сохраняются — они восстанавливаются при загрузке.
+         * Saves the full game state: run progress (run) and the current battle (battle).
+         * The aiTimer and actionToken fields are not persisted — they are restored on load.
          */
         function saveGameState() {
             try {
@@ -520,9 +526,9 @@
         }
 
         /**
-         * Загружает полное состояние игры из localStorage.
-         * Если версия не совпадает — удаляет устаревшее сохранение.
-         * Возвращает true при успешной загрузке, false — если сохранения нет или оно повреждено.
+         * Loads the full game state from localStorage.
+         * If the version doesn't match, the outdated save is removed.
+         * Returns true on successful load, false if there is no save or it is corrupted.
          */
         function loadGameState() {
             try {
@@ -531,7 +537,7 @@
 
                 const parsed = JSON.parse(raw);
 
-                // Проверка версии формата — устаревшее сохранение сбрасываем
+                // Format version check — clear an outdated save
                 if (!parsed || parsed.version !== SAVE_VERSION) {
                     console.info("Save version mismatch — clearing old save.");
                     clearLocalSave();
@@ -542,7 +548,7 @@
 
                 run = parsed.run;
 
-                // Восстанавливаем battle, сохраняя runtime-поля текущего объекта
+                // Restore battle, keeping the runtime-only fields of the current object
                 const savedBattle = parsed.battle;
                 for (const key of Object.keys(battle)) {
                     if (!BATTLE_RUNTIME_FIELDS.includes(key) && key in savedBattle) {
@@ -550,7 +556,7 @@
                     }
                 }
 
-                // После загрузки сбрасываем runtime-поля в безопасное состояние
+                // After loading, reset the runtime-only fields to a safe state
                 battle.aiTimer = null;
                 battle.actionToken = (battle.actionToken || 0) + 1;
 
@@ -569,10 +575,10 @@
         }
 
         /**
-         * Проверяет наличие валидного сохранения, НЕ загружая и не мутируя
-         * текущее состояние run/battle. Использовать для UI-проверок
-         * (например, текста на кнопке), где полноценная загрузка не нужна
-         * и была бы нежелательным побочным эффектом.
+         * Checks whether a valid save exists WITHOUT loading or mutating
+         * the current run/battle state. Use this for UI checks
+         * (e.g. the button label), where a full load is unnecessary
+         * and would be an undesirable side effect.
          */
         function hasSavedGame() {
             try {
@@ -585,7 +591,7 @@
             }
         }
 
-        // Обратная совместимость: старые вызовы saveRunToLocal() теперь вызывают saveGameState()
+        // Backward compatibility: old saveRunToLocal() calls now call saveGameState()
         function saveRunToLocal() { saveGameState(); }
         function loadRunFromLocal() { return loadGameState(); }
 
@@ -925,8 +931,8 @@
         }
 
         /**
-         * Синхронизирует DOM-элементы с текущим врагом (имя, аватар, особенность).
-         * Вызывается как при старте нового боя, так и при загрузке сохранения.
+         * Syncs DOM elements with the current enemy (name, avatar, ability).
+         * Called both when starting a new battle and when loading a save.
          */
         function syncEnemyDisplay() {
             const enemyData = getCurrentEnemy();
@@ -946,21 +952,21 @@
         }
 
         /**
-         * Восстанавливает игру из загруженного состояния.
-         * Не трогает колоду или руки — они уже восстановлены через loadGameState().
-         * Если бой был в фазе AI_WAITING (например, игрок сделал ход и закрыл вкладку),
-         * перезапускаем AI-ход, чтобы игра не зависла.
+         * Restores the game from a loaded state.
+         * Doesn't touch the deck or hands — they are already restored by loadGameState().
+         * If the battle was in the AI_WAITING phase (e.g. the player moved and closed the
+         * tab), we re-schedule the AI turn so the game doesn't get stuck.
          */
         function resumeFromSave() {
             clearAITimer();
             syncEnemyDisplay();
             renderAll();
 
-            // Если игра была сохранена пока AI думает — запускаем его заново
+            // If the game was saved while the AI was thinking — restart it
             if (battle.phase === BATTLE_PHASES.AI_WAITING) {
                 scheduleEnemyAI(AI_STANDARD_DELAY_MS);
             } else if (battle.phase === BATTLE_PHASES.RESOLVING || battle.phase === BATTLE_PHASES.IDLE) {
-                // Если фаза неопределённая — возвращаем ход игроку
+                // If the phase is indeterminate — hand the turn back to the player
                 enterPlayerPhase();
             }
         }
@@ -1328,7 +1334,7 @@
                 battle.cardsToTake = false;
                 renderAll();
 
-                // Все карты отбиты. Теперь только игрок решает, подкидывать ли ещё.
+                // All cards have been beaten off. Now only the player decides whether to throw in more.
                 if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed) {
                     scheduleEnemyAction(() => handleBito(true), AI_STANDARD_DELAY_MS);
                     return;
@@ -2354,10 +2360,10 @@
                 });
 
                 it('РЕГРЕССИЯ: initNewRun() сохраняет уже инициализированный бой, а не пустой battle', () => {
-                    // Баг: saveGameState() вызывался ДО startFloorBattle(), поэтому в
-                    // localStorage попадал дефолтный battle (enemyHP: 0, руки не розданы,
-                    // phase: 'idle'). Если закрыть вкладку сразу после старта новой игры,
-                    // "Продолжить игру" показывала пустой стол.
+                    // Bug: saveGameState() used to be called BEFORE startFloorBattle(), so
+                    // localStorage ended up with the default battle (enemyHP: 0, hands not
+                    // dealt, phase: 'idle'). If the tab was closed right after starting a new
+                    // game, "Continue game" would show an empty table.
                     const oldRun = run;
                     const oldBattle = battle;
                     const oldAiTimer = battle.aiTimer;
@@ -2383,8 +2389,8 @@
                 });
 
                 it('РЕГРЕССИЯ: переход на следующий этаж сохраняет бой после его инициализации', () => {
-                    // Тот же баг был продублирован в обработчике btn-next-floor:
-                    // saveRunToLocal() вызывался до startFloorBattle().
+                    // The same bug was duplicated in the btn-next-floor handler:
+                    // saveRunToLocal() used to be called before startFloorBattle().
                     const oldRun = run;
                     const oldBattle = battle;
                     const oldAiTimer = battle.aiTimer;
