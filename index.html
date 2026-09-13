@@ -920,8 +920,8 @@
                 relics: [],
                 deck: generateStandardDeck()
             };
-            saveGameState();
             startFloorBattle();
+            saveGameState();
         }
 
         /**
@@ -1590,8 +1590,8 @@
                     if (splash) splash.classList.remove('hidden');
                 });
             } else {
-                saveRunToLocal();
                 startFloorBattle();
+                saveRunToLocal();
             }
         });
 
@@ -2351,6 +2351,62 @@
                     saveGameState();
                     clearLocalSave();
                     assert.isFalse(loadGameState());
+                });
+
+                it('РЕГРЕССИЯ: initNewRun() сохраняет уже инициализированный бой, а не пустой battle', () => {
+                    // Баг: saveGameState() вызывался ДО startFloorBattle(), поэтому в
+                    // localStorage попадал дефолтный battle (enemyHP: 0, руки не розданы,
+                    // phase: 'idle'). Если закрыть вкладку сразу после старта новой игры,
+                    // "Продолжить игру" показывала пустой стол.
+                    const oldRun = run;
+                    const oldBattle = battle;
+                    const oldAiTimer = battle.aiTimer;
+
+                    clearAITimer();
+                    clearLocalSave();
+                    initNewRun();
+
+                    const raw = localStorage.getItem(SAVE_KEY);
+                    const parsed = JSON.parse(raw);
+
+                    assert.isTrue(parsed.battle.enemyHP > 0, 'enemyHP должен быть установлен из данных врага, а не 0');
+                    assert.equal(parsed.battle.playerHand.length, HAND_SIZE, 'Рука игрока должна быть уже роздана к моменту сохранения');
+                    assert.equal(parsed.battle.enemyHand.length, HAND_SIZE, 'Рука противника должна быть уже роздана к моменту сохранения');
+                    assert.equal(parsed.battle.phase, BATTLE_PHASES.PLAYER_ATTACK, 'Фаза боя не должна остаться idle в сохранении');
+                    assert.isTrue(!!parsed.battle.trumpSuit, 'Козырь должен быть определён к моменту сохранения');
+
+                    clearAITimer();
+                    run = oldRun;
+                    battle = oldBattle;
+                    battle.aiTimer = oldAiTimer;
+                    clearLocalSave();
+                });
+
+                it('РЕГРЕССИЯ: переход на следующий этаж сохраняет бой после его инициализации', () => {
+                    // Тот же баг был продублирован в обработчике btn-next-floor:
+                    // saveRunToLocal() вызывался до startFloorBattle().
+                    const oldRun = run;
+                    const oldBattle = battle;
+                    const oldAiTimer = battle.aiTimer;
+
+                    clearAITimer();
+                    clearLocalSave();
+                    run = { floor: 2, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() };
+                    startFloorBattle();
+                    saveRunToLocal();
+
+                    const raw = localStorage.getItem(SAVE_KEY);
+                    const parsed = JSON.parse(raw);
+
+                    assert.equal(parsed.battle.enemyHP, ENEMIES[1].hp, 'enemyHP в сохранении должен соответствовать врагу нового этажа');
+                    assert.equal(parsed.battle.playerHand.length, HAND_SIZE, 'Рука игрока должна быть роздана к моменту сохранения на новом этаже');
+                    assert.equal(parsed.battle.phase, BATTLE_PHASES.PLAYER_ATTACK, 'Фаза боя не должна остаться idle при переходе на новый этаж');
+
+                    clearAITimer();
+                    run = oldRun;
+                    battle = oldBattle;
+                    battle.aiTimer = oldAiTimer;
+                    clearLocalSave();
                 });
 
                 run.floor = origFloor;
