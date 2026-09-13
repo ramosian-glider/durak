@@ -277,7 +277,7 @@
             </div>
             
             <p class="text-xs text-slate-300 leading-relaxed px-2">
-                Пройдите 5 этажей подземелья, побеждайте боссов, покупайте шулерские артефакты и собирайте мощную комбинацию!
+                Пройдите все этажи подземелья, побеждайте боссов, покупайте шулерские артефакты и собирайте мощную комбинацию!
             </p>
 
             <div class="w-full flex flex-col gap-3 mt-2">
@@ -298,7 +298,7 @@
     <header class="w-full bg-black/60 border-b border-emerald-800/40 px-3 py-2 flex items-center justify-between text-xs sm:text-sm z-30 backdrop-blur-md">
         <div class="flex items-center gap-2 sm:gap-3">
             <div class="stat-badge stat-badge-emerald">
-                <span>🏰</span> <span id="floor-display" class="text-white font-bold">1</span>/5
+                <span>🏰</span> <span id="floor-display" class="text-white font-bold">1</span>/<span id="floor-total">5</span>
             </div>
             <div class="stat-badge stat-badge-rose">
                 <span>❤️</span> <span id="player-hp-display" class="text-white font-bold">30/30</span>
@@ -795,11 +795,18 @@
         ];
 
         const ENEMIES = [
-            { floor: 1, name: "Уличный Шулер", hp: 20, avatar: "🧔", abilityId: "none", abilityDesc: "Стандартный противник" },
-            { floor: 2, name: "Карточный Трактирщик", hp: 30, avatar: "🍺", abilityId: "no_transfer", abilityDesc: "Запрет на Перевод карт" },
-            { floor: 3, name: "Фаворит Казино", hp: 40, avatar: "🎩", abilityId: "ai_transfer", abilityDesc: "Умеет Переводить ваши атаки" },
-            { floor: 4, name: "Основатель Синдиката", hp: 55, avatar: "🕵️", abilityId: "aggressive_throw", abilityDesc: "Агрессивно подкидывает до 8 карт" },
-            { floor: 5, name: "Тень (Финальный БОСС)", hp: 75, avatar: "👑", abilityId: "double_penalty", abilityDesc: "Удвоенный урон игроку при взятии карт" }
+            { floor: 1, name: "Начинающий Шулер", hp: 12, avatar: "🙂", abilityId: "none", abilityDesc: "Стандартный противник" },
+            { floor: 2, name: "Уличный Мошенник", hp: 18, avatar: "🧔", abilityId: "none", abilityDesc: "Стандартный противник" },
+            { floor: 3, name: "Карточный Трактирщик", hp: 30, avatar: "🍺", abilityId: "no_transfer", abilityDesc: "Запрет на Перевод карт" },
+            { floor: 4, name: "Карточный Жучок", hp: 24, avatar: "🧑‍🦱", abilityId: "none", abilityDesc: "Стандартный противник" },
+            { floor: 5, name: "Барный Хитрец", hp: 32, avatar: "🍻", abilityId: "none", abilityDesc: "Стандартный противник" },
+            { floor: 6, name: "Фаворит Казино", hp: 40, avatar: "🎩", abilityId: "ai_transfer", abilityDesc: "Умеет Переводить ваши атаки" },
+            { floor: 7, name: "Ловкий Карманник", hp: 38, avatar: "🧤", abilityId: "none", abilityDesc: "Стандартный противник" },
+            { floor: 8, name: "Азартный Игрок", hp: 46, avatar: "🎲", abilityId: "none", abilityDesc: "Стандартный противник" },
+            { floor: 9, name: "Основатель Синдиката", hp: 55, avatar: "🕵️", abilityId: "aggressive_throw", abilityDesc: "Агрессивно подкидывает до 8 карт" },
+            { floor: 10, name: "Матёрый Катала", hp: 50, avatar: "🎰", abilityId: "none", abilityDesc: "Стандартный противник" },
+            { floor: 11, name: "Теневой Подручный", hp: 62, avatar: "🕶️", abilityId: "none", abilityDesc: "Стандартный противник" },
+            { floor: 12, name: "Тень (Финальный БОСС)", hp: 75, avatar: "👑", abilityId: "double_penalty", abilityDesc: "Удвоенный урон игроку при взятии карт" }
         ];
 
         let run = {
@@ -1284,7 +1291,7 @@
                 const attackVal = battle.table[0].attack.value;
                 const allSameRank = battle.table.every(p => p.attack.value === attackVal);
 
-                if ((enemyData.abilityId === 'ai_transfer' || run.floor >= 3) && 
+                if ((enemyData.abilityId === 'ai_transfer' || run.floor >= 6) && 
                     openPairs.length === battle.table.length && 
                     allSameRank && 
                     battle.playerHand.length >= battle.table.length + 1) {
@@ -1589,9 +1596,9 @@
             }
 
             run.floor++;
-            if (run.floor > 5) {
+            if (run.floor > ENEMIES.length) {
                 clearLocalSave();
-                showModal("ПОБЕДА В ЗАБЕГЕ!", "Вы прошли все 5 этажей и стали Легендой Дурака!", () => {
+                showModal("ПОБЕДА В ЗАБЕГЕ!", "Вы прошли все этажи подземелья и стали Легендой Дурака!", () => {
                     const splash = document.getElementById('splash-screen');
                     if (splash) splash.classList.remove('hidden');
                 });
@@ -1622,6 +1629,7 @@
             setElText('shop-hp-display', `${run.playerHP}/${run.maxHP}`);
             setElText('shop-gold-display', `${run.gold}$`);
             setElText('floor-display', run.floor);
+            setElText('floor-total', ENEMIES.length);
             setElText('enemy-hp', battle.enemyHP);
 
             const banner = document.getElementById('turn-banner');
@@ -2056,8 +2064,8 @@
                     assert.isTrue(isTransferAllowedForPlayer());
                 });
 
-                it('Запрещено на 2 этаже (Босс Трактирщик блокирует перевод)', () => {
-                    run.floor = 2;
+                it('Запрещено на 3 этаже (Босс Трактирщик блокирует перевод)', () => {
+                    run.floor = 3;
                     battle.defender = 'player';
                     battle.table = [{ attack: { suit: 'Pikes', value: 8 }, defend: null }];
                     battle.playerHand = [{ suit: 'Hearts', value: 8 }];
