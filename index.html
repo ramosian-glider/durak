@@ -333,7 +333,8 @@
                 <div>
                     <h2 id="enemy-name" class="font-bold text-sm text-slate-100 leading-tight">Уличный Шулер</h2>
                     <div class="flex items-center gap-2 text-xs mt-0.5">
-                        <span class="text-rose-400 font-medium">HP: <span id="enemy-hp">20</span></span>
+                        <span class="text-sky-300 font-medium">Lvl: <span id="enemy-level">1</span></span>
+                        <span class="text-rose-400 font-medium">| HP: <span id="enemy-hp">20</span></span>
                         <span class="text-slate-400">| Карт: <span id="enemy-card-count" class="text-amber-300 font-semibold">6</span></span>
                     </div>
                     <div id="boss-ability-badge" class="mt-1 text-[10px] font-semibold text-amber-300 bg-amber-950/60 border border-amber-600/40 px-2 py-0.5 rounded-md inline-block">
@@ -773,9 +774,7 @@
         const TAKE_DAMAGE_PER_CARD = 2;
         const ACE_SLEEVE_BONUS_DAMAGE = 5;
 
-        const SELF_DAMAGE_MULTIPLIER = 1.5;
-        const SELF_DAMAGE_MULTIPLIER_DOUBLE_PENALTY = 3;
-        const MIN_SELF_DAMAGE = 3;
+        const BOSS_MAX_HP_BONUS = 5;
 
         const MIDAS_TOUCH_GOLD_ON_DEFEND = 3;
         const WIN_GOLD_BASE = 10;
@@ -851,6 +850,10 @@
         function buildEnemyLadder(bossRoster, fillerPool) {
             const ladder = [];
             let fillerCursor = 0;
+            // level starts at 1 and increases by 1 after each boss: the fillers
+            // before a boss share that boss's level (e.g. the first boss and the
+            // two fillers before it are all level 1).
+            let level = 1;
 
             bossRoster.forEach(boss => {
                 const fillersBefore = boss.fillersBefore || 0;
@@ -864,6 +867,7 @@
                     ladder.push({
                         name: template.name, avatar: template.avatar, hp,
                         abilityId: "none", abilityDesc: "Стандартный противник",
+                        level,
                     });
                 }
 
@@ -871,7 +875,10 @@
                     name: boss.name, hp: boss.hp, avatar: boss.avatar,
                     abilityId: boss.abilityId, abilityDesc: boss.abilityDesc,
                     isBoss: true, permanentAbility: !!boss.permanentAbility,
+                    level,
                 });
+
+                level++;
             });
 
             // Assign floor numbers and the set of abilities "accumulated" by this
@@ -1024,6 +1031,7 @@
         function syncEnemyDisplay() {
             const enemyData = getCurrentEnemy();
             setElText('enemy-name', enemyData.name);
+            setElText('enemy-level', enemyData.level);
             const avatarEl = document.getElementById('enemy-avatar');
             if (avatarEl) avatarEl.innerText = enemyData.avatar;
             setElText('boss-ability-badge', `Особенность: ${enemyData.abilityDesc}`);
@@ -1311,8 +1319,8 @@
             }
 
             const enemyData = getCurrentEnemy();
-            let multiplier = enemyData.abilityId === 'double_penalty' ? SELF_DAMAGE_MULTIPLIER_DOUBLE_PENALTY : SELF_DAMAGE_MULTIPLIER;
-            const selfDamage = Math.max(MIN_SELF_DAMAGE, Math.floor(cardsTakenCount * multiplier));
+            const levelMultiplier = enemyData.abilityId === 'double_penalty' ? 2 : 1;
+            const selfDamage = cardsTakenCount * enemyData.level * levelMultiplier;
             run.playerHP = Math.max(0, run.playerHP - selfDamage);
 
             if (hasRelic('mirror_ring')) {
@@ -1570,7 +1578,15 @@
                 audio.playWinSound();
                 const goldReward = WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR;
                 run.gold += goldReward;
-                showModal("Победа в Бою!", `Вы одолели соперника! Получено +${goldReward}$`, () => {
+
+                let rewardText = `Вы одолели соперника! Получено +${goldReward}$`;
+                if (getCurrentEnemy().isBoss) {
+                    run.maxHP += BOSS_MAX_HP_BONUS;
+                    run.playerHP = Math.min(run.maxHP, run.playerHP + BOSS_MAX_HP_BONUS);
+                    rewardText += ` и +${BOSS_MAX_HP_BONUS} к максимальному здоровью за победу над боссом!`;
+                }
+
+                showModal("Победа в Бою!", rewardText, () => {
                     openShop();
                 });
             }
@@ -2556,6 +2572,159 @@
                     shopModal.classList.add('hidden');
                     shopModal.classList.remove('flex');
                 }
+            });
+
+            runner.describe('10. Уровень соперника, урон при взятии и бонус HP за босса', (it, assert) => {
+                it('Уровень растёт на 1 после каждого босса и общий для филлеров перед ним', () => {
+                    // Этажи 1-3: боевая группа Трактирщика (level 1)
+                    assert.equal(ENEMIES[0].level, 1);
+                    assert.equal(ENEMIES[1].level, 1);
+                    assert.equal(ENEMIES[2].level, 1);
+                    assert.isTrue(ENEMIES[2].isBoss);
+                    // Этажи 4-6: боевая группа Фаворита Казино (level 2)
+                    assert.equal(ENEMIES[3].level, 2);
+                    assert.equal(ENEMIES[5].level, 2);
+                    assert.isTrue(ENEMIES[5].isBoss);
+                    // Этажи 7-9: боевая группа Синдиката (level 3)
+                    assert.equal(ENEMIES[6].level, 3);
+                    assert.equal(ENEMIES[8].level, 3);
+                    // Этажи 10-12: боевая группа финального босса (level 4)
+                    assert.equal(ENEMIES[9].level, 4);
+                    assert.equal(ENEMIES[11].level, 4);
+                    assert.isTrue(ENEMIES[11].isBoss);
+                });
+
+                it('handlePlayerTake: урон игроку = количество карт × уровень соперника', () => {
+                    const oldRun = run;
+                    const oldBattle = battle;
+                    const oldTimer = battle.aiTimer;
+
+                    clearAITimer();
+                    run = { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [], deck: [] };
+                    battle = {
+                        drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                        discardPile: [],
+                        playerHand: [],
+                        enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                        trumpCard: null,
+                        trumpSuit: 'Hearts',
+                        table: [
+                            { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
+                            { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
+                            { attack: { id: 'x3', suit: 'Hearts', value: 8 }, defend: null },
+                        ],
+                        defender: 'player',
+                        selectedCardIndex: null,
+                        cardsToTake: false,
+                        isTransferActive: false,
+                        enemyHP: 10,
+                        phase: BATTLE_PHASES.PLAYER_DEFENSE,
+                        aiTimer: null,
+                        actionToken: 0
+                    };
+
+                    handlePlayerTake();
+
+                    assert.equal(run.playerHP, 97); // 3 карты × уровень 1
+
+                    clearAITimer();
+                    run = oldRun;
+                    battle = oldBattle;
+                    battle.aiTimer = oldTimer;
+                });
+
+                it('handlePlayerTake: способность double_penalty финального босса удваивает урон', () => {
+                    const oldRun = run;
+                    const oldBattle = battle;
+                    const oldTimer = battle.aiTimer;
+
+                    clearAITimer();
+                    run = { floor: 12, playerHP: 100, maxHP: 100, gold: 0, relics: [], deck: [] };
+                    battle = {
+                        drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                        discardPile: [],
+                        playerHand: [],
+                        enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                        trumpCard: null,
+                        trumpSuit: 'Hearts',
+                        table: [
+                            { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
+                            { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
+                            { attack: { id: 'x3', suit: 'Hearts', value: 8 }, defend: null },
+                        ],
+                        defender: 'player',
+                        selectedCardIndex: null,
+                        cardsToTake: false,
+                        isTransferActive: false,
+                        enemyHP: 10,
+                        phase: BATTLE_PHASES.PLAYER_DEFENSE,
+                        aiTimer: null,
+                        actionToken: 0
+                    };
+
+                    handlePlayerTake();
+
+                    assert.equal(run.playerHP, 76); // 3 карты × уровень 4 × 2 (double_penalty) = 24
+
+                    clearAITimer();
+                    run = oldRun;
+                    battle = oldBattle;
+                    battle.aiTimer = oldTimer;
+                });
+
+                it('Победа над боссом увеличивает maxHP и лечит игрока на ту же величину', () => {
+                    const oldFloor = run.floor;
+                    const oldMaxHP = run.maxHP;
+                    const oldPlayerHP = run.playerHP;
+                    const oldGold = run.gold;
+                    const oldEnemyHP = battle.enemyHP;
+
+                    run.floor = 3; // Карточный Трактирщик (первый босс)
+                    run.maxHP = 30;
+                    run.playerHP = 20;
+                    battle.enemyHP = 5;
+
+                    damageEnemyHP(50);
+
+                    assert.equal(run.maxHP, 35);
+                    assert.equal(run.playerHP, 25);
+
+                    run.floor = oldFloor;
+                    run.maxHP = oldMaxHP;
+                    run.playerHP = oldPlayerHP;
+                    run.gold = oldGold;
+                    battle.enemyHP = oldEnemyHP;
+                    const msgBox = document.getElementById('msg-box');
+                    if (msgBox) {
+                        msgBox.classList.add('hidden');
+                        msgBox.classList.remove('flex');
+                    }
+                });
+
+                it('Победа над рядовым противником НЕ увеличивает maxHP', () => {
+                    const oldFloor = run.floor;
+                    const oldMaxHP = run.maxHP;
+                    const oldGold = run.gold;
+                    const oldEnemyHP = battle.enemyHP;
+
+                    run.floor = 1; // рядовой филлер
+                    run.maxHP = 30;
+                    battle.enemyHP = 5;
+
+                    damageEnemyHP(50);
+
+                    assert.equal(run.maxHP, 30);
+
+                    run.floor = oldFloor;
+                    run.maxHP = oldMaxHP;
+                    run.gold = oldGold;
+                    battle.enemyHP = oldEnemyHP;
+                    const msgBox = document.getElementById('msg-box');
+                    if (msgBox) {
+                        msgBox.classList.add('hidden');
+                        msgBox.classList.remove('flex');
+                    }
+                });
             });
 
             return runner.run();
