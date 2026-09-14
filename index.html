@@ -2112,6 +2112,13 @@
         function runGameUnitTests() {
             const runner = new TinyTestRunner();
 
+            // Snapshot whatever real save exists BEFORE any test runs. Some tests call
+            // game functions (e.g. handlePlayerTake) that autosave as a side effect
+            // (saveRunToLocal/saveGameState), which would otherwise overwrite the
+            // player's real save with fake test fixtures (e.g. the final-boss
+            // double_penalty test data) with nothing to restore it afterwards.
+            const preTestSaveRaw = localStorage.getItem(SAVE_KEY);
+
             runner.describe('1. Сравнение карт (canBeat)', (it, assert) => {
                 const oldTrump = battle.trumpSuit;
                 battle.trumpSuit = 'Hearts';
@@ -2891,7 +2898,22 @@
                 });
             });
 
-            return runner.run();
+            const results = runner.run();
+
+            // Restore the real save exactly as it was before the tests ran, undoing any
+            // autosave side effects triggered by tests that call functions like
+            // handlePlayerTake() directly (see preTestSaveRaw above).
+            try {
+                if (preTestSaveRaw === null) {
+                    localStorage.removeItem(SAVE_KEY);
+                } else {
+                    localStorage.setItem(SAVE_KEY, preTestSaveRaw);
+                }
+            } catch (err) {
+                console.warn("Failed to restore save after tests:", err);
+            }
+
+            return results;
         }
 
         function renderTestResultsUI(results) {
