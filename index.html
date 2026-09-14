@@ -252,6 +252,14 @@
             font-size: 0.75rem;
             color: #047857;
         }
+        .relic-slot-sellable {
+            cursor: pointer;
+            transition: transform 0.15s ease, border-color 0.15s ease;
+        }
+        .relic-slot-sellable:hover {
+            border-color: rgba(244, 63, 94, 0.85);
+            transform: scale(1.08);
+        }
     </style>
 </head>
 <body class="h-full flex flex-col justify-between overflow-hidden felt-bg relative">
@@ -399,6 +407,16 @@
                     <span id="shop-gold-display" class="font-extrabold text-amber-200">15$</span>
                 </div>
             </div>
+        </div>
+
+        <div class="px-1 pt-2 pb-1 border-b border-amber-500/30">
+            <div class="flex items-center justify-between px-1 mb-1 text-[11px] font-semibold text-emerald-400/80">
+                <span>ВАШИ АРТЕФАКТЫ</span>
+                <span id="shop-relic-count">0/5</span>
+            </div>
+            <div id="shop-relic-slots" class="grid grid-cols-5 gap-1.5 bg-black/50 p-1.5 rounded-xl border border-emerald-900/50">
+            </div>
+            <p class="text-[10px] text-slate-500 mt-1 px-1">Нажмите на артефакт, чтобы продать его за полцены</p>
         </div>
 
         <div class="flex-1 overflow-y-auto py-3 flex flex-col gap-4">
@@ -1646,8 +1664,54 @@
                 });
             }
 
+            renderShopRelicSlots();
             saveRunToLocal();
         }
+
+        // Renders the player's owned artifacts as a slot grid inside the shop.
+        // Slots are always filled left-to-right because run.relics is kept
+        // compact (no gaps) — buying appends to the end (= first free slot)
+        // and selling splices the sold item out, shifting the rest left.
+        function renderShopRelicSlots() {
+            const slotsBar = document.getElementById('shop-relic-slots');
+            if (slotsBar) {
+                slotsBar.innerHTML = '';
+                for (let i = 0; i < MAX_RELICS; i++) {
+                    const slot = document.createElement('div');
+                    if (run.relics[i]) {
+                        const r = run.relics[i];
+                        const sellPrice = Math.floor(r.price / 2);
+                        slot.className = "relic-slot-base relic-slot-filled relic-slot-sellable";
+                        slot.title = `${r.name}: ${r.desc} (продать за ${sellPrice}$)`;
+                        slot.innerText = r.icon;
+                        slot.onclick = () => sellRelic(i);
+                    } else {
+                        slot.className = "relic-slot-base relic-slot-empty";
+                        slot.innerText = "+";
+                    }
+                    slotsBar.appendChild(slot);
+                }
+            }
+            setElText('shop-relic-count', `${run.relics.length}/${MAX_RELICS}`);
+        }
+
+        window.sellRelic = function(index) {
+            const relic = run.relics[index];
+            if (!relic) return;
+
+            const sellPrice = Math.floor(relic.price / 2);
+            showConfirm(
+                "Продать артефакт?",
+                `Продать «${relic.name}» за ${sellPrice}$? Слот освободится для новой покупки.`,
+                () => {
+                    run.relics.splice(index, 1);
+                    run.gold += sellPrice;
+                    audio.playWinSound();
+                    openShop();
+                    renderAll();
+                }
+            );
+        };
 
         window.buyHeal = function() {
             if (run.gold >= 10) {
@@ -1895,7 +1959,10 @@
             setElText('msg-body', text);
             
             const cancelBtn = document.getElementById('msg-btn-cancel');
-            if (cancelBtn) cancelBtn.classList.add('hidden');
+            if (cancelBtn) {
+                cancelBtn.classList.add('hidden');
+                cancelBtn.onclick = null;
+            }
 
             const confirmBtn = document.getElementById('msg-btn');
             if (confirmBtn) {
@@ -1904,6 +1971,39 @@
                     modal.classList.add('hidden');
                     modal.classList.remove('flex');
                     if (onClose) onClose();
+                };
+            }
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        // Same message box as showModal, but with a Cancel button shown
+        // alongside the confirm action. Used for destructive/irreversible
+        // choices like selling an artifact.
+        function showConfirm(title, text, onConfirm) {
+            const modal = document.getElementById('msg-box');
+            if (!modal) return;
+            setElText('msg-title', title);
+            setElText('msg-body', text);
+
+            const cancelBtn = document.getElementById('msg-btn-cancel');
+            if (cancelBtn) {
+                cancelBtn.classList.remove('hidden');
+                cancelBtn.innerText = "ОТМЕНА";
+                cancelBtn.onclick = () => {
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                };
+            }
+
+            const confirmBtn = document.getElementById('msg-btn');
+            if (confirmBtn) {
+                confirmBtn.innerText = "ПРОДАТЬ";
+                confirmBtn.onclick = () => {
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                    if (onConfirm) onConfirm();
                 };
             }
 
@@ -2571,6 +2671,70 @@
                 if (shopModal) {
                     shopModal.classList.add('hidden');
                     shopModal.classList.remove('flex');
+                }
+            });
+
+            runner.describe('9b. Слоты артефактов в магазине (покупка/продажа)', (it, assert) => {
+                const oldRelics = run.relics;
+                const oldGold = run.gold;
+
+                it('Купленный артефакт занимает самый левый свободный слот', () => {
+                    run.relics = [];
+                    run.gold = 100;
+                    buyRelic('cheat_eye');
+                    buyRelic('midas_touch');
+                    assert.equal(run.relics.length, 2);
+                    assert.equal(run.relics[0].id, 'cheat_eye', 'Первая покупка должна попасть в слот 0');
+                    assert.equal(run.relics[1].id, 'midas_touch', 'Вторая покупка должна попасть в слот 1 (следующий свободный)');
+                });
+
+                it('renderShopRelicSlots отображает заполненные и пустые слоты', () => {
+                    run.relics = [{ id: 'ace_sleeve', name: 'Туз в рукаве', icon: '🃏', desc: 'x', price: 12 }];
+                    renderShopRelicSlots();
+                    const slotsBar = document.getElementById('shop-relic-slots');
+                    const countEl = document.getElementById('shop-relic-count');
+                    assert.equal(slotsBar.children.length, MAX_RELICS, 'Должно быть отрисовано MAX_RELICS слотов');
+                    assert.isTrue(slotsBar.children[0].className.includes('relic-slot-filled'), 'Слот 0 должен быть заполнен');
+                    assert.isTrue(slotsBar.children[1].className.includes('relic-slot-empty'), 'Слот 1 должен быть пустым');
+                    assert.equal(countEl ? countEl.innerText : '', '1/5');
+                });
+
+                it('sellRelic продаёт артефакт за половину цены, округлённую вниз, и освобождает слот', () => {
+                    run.relics = [
+                        { id: 'ace_sleeve', name: 'Туз в рукаве', icon: '🃏', desc: 'x', price: 15 },
+                        { id: 'midas_touch', name: 'Золотое пальто', icon: '🪙', desc: 'x', price: 10 },
+                    ];
+                    run.gold = 5;
+                    sellRelic(0);
+                    // showConfirm requires explicit confirmation; simulate the click.
+                    const confirmBtn = document.getElementById('msg-btn');
+                    confirmBtn.onclick();
+                    assert.equal(run.gold, 5 + 7, 'floor(15/2) = 7 золота должно быть возвращено');
+                    assert.equal(run.relics.length, 1, 'Проданный артефакт должен быть удалён из массива');
+                    assert.equal(run.relics[0].id, 'midas_touch', 'Оставшийся артефакт должен сдвинуться в слот 0');
+                });
+
+                it('showConfirm отменяет продажу без изменений при нажатии ОТМЕНА', () => {
+                    run.relics = [{ id: 'cheat_eye', name: 'Шулерский глаз', icon: '👁️', desc: 'x', price: 8 }];
+                    run.gold = 3;
+                    sellRelic(0);
+                    const cancelBtn = document.getElementById('msg-btn-cancel');
+                    cancelBtn.onclick();
+                    assert.equal(run.gold, 3, 'Золото не должно измениться при отмене');
+                    assert.equal(run.relics.length, 1, 'Артефакт не должен быть удалён при отмене');
+                });
+
+                run.relics = oldRelics;
+                run.gold = oldGold;
+                const shopModal2 = document.getElementById('shop-modal');
+                if (shopModal2) {
+                    shopModal2.classList.add('hidden');
+                    shopModal2.classList.remove('flex');
+                }
+                const msgBox = document.getElementById('msg-box');
+                if (msgBox) {
+                    msgBox.classList.add('hidden');
+                    msgBox.classList.remove('flex');
                 }
             });
 
