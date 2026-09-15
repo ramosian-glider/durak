@@ -594,6 +594,36 @@
         }
 
         /**
+         * Runs fn() while guaranteeing that whatever real save currently sits in
+         * localStorage is restored exactly afterwards, even if fn() (or something it
+         * calls) writes to or clears SAVE_KEY as a side effect. This protects the
+         * player's real save from being clobbered by, e.g., unit tests that call
+         * game functions with fake fixtures (some game functions autosave
+         * internally, such as handlePlayerTake() calling saveRunToLocal()).
+         */
+        function preserveLocalSaveAround(fn) {
+            let preRaw;
+            try {
+                preRaw = localStorage.getItem(SAVE_KEY);
+            } catch (err) {
+                preRaw = null;
+            }
+            try {
+                return fn();
+            } finally {
+                try {
+                    if (preRaw === null) {
+                        localStorage.removeItem(SAVE_KEY);
+                    } else {
+                        localStorage.setItem(SAVE_KEY, preRaw);
+                    }
+                } catch (err) {
+                    console.warn("Failed to restore save after preserveLocalSaveAround:", err);
+                }
+            }
+        }
+
+        /**
          * Checks whether a valid save exists WITHOUT loading or mutating
          * the current run/battle state. Use this for UI checks
          * (e.g. the button label), where a full load is unnecessary
@@ -2112,13 +2142,6 @@
         function runGameUnitTests() {
             const runner = new TinyTestRunner();
 
-            // Snapshot whatever real save exists BEFORE any test runs. Some tests call
-            // game functions (e.g. handlePlayerTake) that autosave as a side effect
-            // (saveRunToLocal/saveGameState), which would otherwise overwrite the
-            // player's real save with fake test fixtures (e.g. the final-boss
-            // double_penalty test data) with nothing to restore it afterwards.
-            const preTestSaveRaw = localStorage.getItem(SAVE_KEY);
-
             runner.describe('1. Сравнение карт (canBeat)', (it, assert) => {
                 const oldTrump = battle.trumpSuit;
                 battle.trumpSuit = 'Hearts';
@@ -2633,6 +2656,65 @@
                 clearLocalSave();
             });
 
+            runner.describe('8b. preserveLocalSaveAround (изоляция реального сейва от тестов)', (it, assert) => {
+                it('РЕГРЕССИЯ: восстанавливает реальный сейв, даже если функция внутри его перезаписывает', () => {
+                    // Simulates the exact bug: a game function called with fake test
+                    // fixtures (e.g. handlePlayerTake) autosaves as a side effect and
+                    // clobbers the player's real save.
+                    const realSave = JSON.stringify({
+                        version: SAVE_VERSION,
+                        run: { floor: 5, playerHP: 22 },
+                        battle: { marker: 'real_save' }
+                    });
+                    localStorage.setItem(SAVE_KEY, realSave);
+
+                    preserveLocalSaveAround(() => {
+                        localStorage.setItem(SAVE_KEY, JSON.stringify({
+                            version: SAVE_VERSION,
+                            run: { floor: 12, playerHP: 76 },
+                            battle: { marker: 'fake_test_fixture' }
+                        }));
+                    });
+
+                    assert.equal(localStorage.getItem(SAVE_KEY), realSave);
+                    clearLocalSave();
+                });
+
+                it('РЕГРЕССИЯ: если до вызова сейва не было, он остаётся отсутствующим после', () => {
+                    clearLocalSave();
+
+                    preserveLocalSaveAround(() => {
+                        localStorage.setItem(SAVE_KEY, JSON.stringify({ version: SAVE_VERSION, run: {}, battle: {} }));
+                    });
+
+                    assert.equal(localStorage.getItem(SAVE_KEY), null);
+                });
+
+                it('Возвращает результат переданной функции', () => {
+                    const result = preserveLocalSaveAround(() => 'test result value');
+                    assert.equal(result, 'test result value');
+                });
+
+                it('Восстанавливает сейв, даже если функция внутри выбрасывает исключение', () => {
+                    const realSave = JSON.stringify({ version: SAVE_VERSION, run: { floor: 3 }, battle: { marker: 'real_save_2' } });
+                    localStorage.setItem(SAVE_KEY, realSave);
+
+                    let threw = false;
+                    try {
+                        preserveLocalSaveAround(() => {
+                            localStorage.setItem(SAVE_KEY, JSON.stringify({ version: SAVE_VERSION, run: {}, battle: { marker: 'fake' } }));
+                            throw new Error('simulated failure inside test fn');
+                        });
+                    } catch (err) {
+                        threw = true;
+                    }
+
+                    assert.isTrue(threw);
+                    assert.equal(localStorage.getItem(SAVE_KEY), realSave);
+                    clearLocalSave();
+                });
+            });
+
             runner.describe('9. Магазин и здоровье игрока', (it, assert) => {
                 const oldHP = run.playerHP;
                 const oldMaxHP = run.maxHP;
@@ -2898,22 +2980,11 @@
                 });
             });
 
-            const results = runner.run();
-
-            // Restore the real save exactly as it was before the tests ran, undoing any
-            // autosave side effects triggered by tests that call functions like
-            // handlePlayerTake() directly (see preTestSaveRaw above).
-            try {
-                if (preTestSaveRaw === null) {
-                    localStorage.removeItem(SAVE_KEY);
-                } else {
-                    localStorage.setItem(SAVE_KEY, preTestSaveRaw);
-                }
-            } catch (err) {
-                console.warn("Failed to restore save after tests:", err);
-            }
-
-            return results;
+            // Some tests call game functions (e.g. handlePlayerTake) that autosave as a
+            // side effect, which would otherwise overwrite the player's real save with
+            // fake test fixtures. preserveLocalSaveAround guarantees the real save is
+            // restored exactly, no matter what the suites do to SAVE_KEY.
+            return preserveLocalSaveAround(() => runner.run());
         }
 
         function renderTestResultsUI(results) {
