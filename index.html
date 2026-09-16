@@ -390,6 +390,7 @@
                     ВЗЯТЬ
                 </button>
             </div>
+            <div id="relic-actions" class="grid grid-cols-1 gap-1.5 hidden"></div>
         </section>
     </main>
 
@@ -828,6 +829,17 @@
         const WIN_GOLD_BASE = 10;
         const WIN_GOLD_PER_FLOOR = 2;
 
+        // How many cards "over" the normal hand size still count toward relics
+        // that punish a bloated enemy hand (heavy_ballast, salted_wound). The
+        // enemy's real hand is never capped — only the damage math is.
+        const ENEMY_HAND_EXCESS_CAP = 4;
+        const HEAVY_BALLAST_DAMAGE_PER_CARD = 1;
+        const SALTED_WOUND_DAMAGE_PER_CARD = 1;
+        const CASCADE_TRANSFER_DAMAGE = 4;
+        const COIN_MAGNET_GOLD_PER_SIX = 1;
+        const SHARP_SUIT_DAMAGE = 1;
+        const MIRROR_RING_MULTIPLIER = 2;
+
         const AI_QUICK_DELAY_MS = 400;
         const AI_STANDARD_DELAY_MS = 500;
         const AI_TAKE_RESOLVE_DELAY_MS = 600;
@@ -837,8 +849,19 @@
             { id: "ace_sleeve", name: "Туз в рукаве", icon: "🃏", desc: "Заставление врага взять карты наносит +5 ед. дополнительного урона.", price: 12 },
             { id: "bully_throw", name: "Безжалостный подкидыш", icon: "💣", desc: "Позволяет подкидывать до 12 карт (ограничивается рукой защитника).", price: 15 },
             { id: "midas_touch", name: "Золотое пальто", icon: "🪙", desc: "Получайте +3$ каждый раз, когда успешно отбиваетесь.", price: 10 },
-            { id: "mirror_ring", name: "Зеркальный перстень", icon: "💍", desc: "Когда вы берете карты, враг получает двойной урон от взятых карт.", price: 14 },
-            { id: "cheat_eye", name: "Шулерский глаз", icon: "👁️", desc: "Показывает вам наименьшую карту в руке соперника.", price: 8 }
+            { id: "mirror_ring", name: "Зеркальный перстень", icon: "💍", desc: "Когда вы берете карты со стола, враг получает двойной урон от количества взятых карт.", price: 14 },
+            { id: "cheat_eye", name: "Шулерский глаз", icon: "👁️", desc: "Показывает вам наименьшую карту в руке соперника.", price: 8 },
+            { id: "pocket_discard", name: "Карманный сброс", icon: "✂️", desc: "Раз за раунд можно безвозвратно сбросить из руки шестёрку или семёрку прямо в отбой.", price: 7 },
+            { id: "spam_mail", name: "Спам-рассылка", icon: "✉️", desc: "Когда враг забирает карты со стола, он дополнительно берёт верхнюю карту из колоды.", price: 9 },
+            { id: "heavy_ballast", name: "Тяжёлый балласт", icon: "⚓", desc: "В начале хода врага он получает урон за каждую карту в руке сверх 6 штук (не больше 4 ед.).", price: 13 },
+            { id: "ballast_drop", name: "Сброс балласта", icon: "🪂", desc: "При взятии карт со стола вы сразу сбрасываете в отбой 2 некозырные карты наименьшего ранга.", price: 10 },
+            { id: "coin_magnet", name: "Магнит для мелочи", icon: "🧲", desc: "Каждая сыгранная шестёрка (подкинутая или отбитая) приносит +1$.", price: 8 },
+            { id: "safety_rope", name: "Страховочный трос", icon: "🪢", desc: "При смертельном уроне вы выживаете с 1 HP и стол очищается (срабатывает 1 раз за забег).", price: 18 },
+            { id: "jester_discard", name: "Шутовской сброс", icon: "🃏", desc: "Раз за бой на своём ходу атаки можно сбросить всю руку и добрать столько же карт из колоды.", price: 9 },
+            { id: "cascade_transfer", name: "Каскадный перевод", icon: "🌊", desc: "Первый перевод карт за ход наносит врагу 4 ед. урона.", price: 11 },
+            { id: "sleight_of_hand", name: "Ловкость рук", icon: "🪄", desc: "Раз за бой можно заменить карту, которой враг пошёл на вас, случайной картой из колоды.", price: 12 },
+            { id: "salted_wound", name: "Солёная рана", icon: "🧂", desc: "Если враг берёт карты со стола, он получает +1 ед. урона за каждую карту сверх 6 в его руке (не больше 4 ед.).", price: 10 },
+            { id: "sharp_suit", name: "Острая масть", icon: "🗡️", desc: "Каждый раз, когда вы отбиваетесь козырной картой, враг получает 1 ед. урона.", price: 9 }
         ];
 
         // --- Enemy ladder ------------------------------------------------------------
@@ -950,7 +973,8 @@
             maxHP: 30,
             gold: 15,
             relics: [],
-            deck: []
+            deck: [],
+            safetyRopeUsed: false
         };
 
         let battle = {
@@ -968,7 +992,15 @@
             enemyHP: 0,
             phase: 'idle',
             aiTimer: null,
-            actionToken: 0
+            actionToken: 0,
+            // Turn-scoped guards, reset at the start of every "ход" (see resetTurnScopedFlags)
+            cascadeTransferUsedThisTurn: false,
+            heavyBallastAppliedThisTurn: false,
+            // Battle-scoped guards, reset once per fight in startFloorBattle
+            jesterDiscardUsedThisBattle: false,
+            sleightOfHandUsedThisBattle: false,
+            // Round-scoped guard for pocket_discard (once per round)
+            pocketDiscardUsedThisRound: false
         };
 
         const BATTLE_PHASES = Object.freeze({
@@ -985,6 +1017,28 @@
             if (battle.aiTimer !== null) {
                 clearTimeout(battle.aiTimer);
                 battle.aiTimer = null;
+            }
+        }
+
+        // Runs `testFn` against a throwaway run/battle pair, guaranteeing the real
+        // run/battle are restored afterward NO MATTER WHAT — including when an
+        // assertion inside testFn throws. Without the try/finally here, a failed
+        // assertion would skip a test's own restore lines (they're written *after*
+        // the assertions), leaving every later test — and the real game, once the
+        // test panel closes — running against that test's fake fixture instead of
+        // the player's actual state.
+        function withIsolatedGameState(fixtureRun, fixtureBattle, testFn) {
+            const oldRun = run, oldBattle = battle, oldTimer = battle.aiTimer;
+            clearAITimer();
+            run = fixtureRun;
+            battle = fixtureBattle;
+            try {
+                testFn();
+            } finally {
+                clearAITimer(); // cancel anything the test scheduled on the fake battle
+                run = oldRun;
+                battle = oldBattle;
+                battle.aiTimer = oldTimer;
             }
         }
 
@@ -1022,6 +1076,25 @@
                 if (battle.actionToken !== token || battle.phase !== BATTLE_PHASES.AI_WAITING) return;
                 action();
             }, delay);
+        }
+
+        // Clears the once-per-"ход" guards. Called every time the turn passes from
+        // one side to the other (attacker/defender roles swap), so relics like
+        // cascade_transfer and heavy_ballast can fire again next turn but not twice
+        // within the same one via a chain of transfers/attacks.
+        function resetTurnScopedFlags() {
+            battle.cascadeTransferUsedThisTurn = false;
+            battle.heavyBallastAppliedThisTurn = false;
+        }
+
+        // cascade_transfer: the first transfer within a turn (whether the player
+        // initiates it, or the ai_transfer boss bounces it back) deals a flat hit.
+        // Guarded per-turn so a chain of transfers can't be farmed for repeat damage.
+        function triggerCascadeTransfer() {
+            if (hasRelic('cascade_transfer') && !battle.cascadeTransferUsedThisTurn) {
+                battle.cascadeTransferUsedThisTurn = true;
+                damageEnemyHP(CASCADE_TRANSFER_DAMAGE);
+            }
         }
 
         function enterPlayerPhase() {
@@ -1066,7 +1139,8 @@
                 maxHP: 30,
                 gold: 15,
                 relics: [],
-                deck: generateStandardDeck()
+                deck: generateStandardDeck(),
+                safetyRopeUsed: false
             };
             startFloorBattle();
             saveGameState();
@@ -1090,6 +1164,11 @@
             const enemyData = getCurrentEnemy();
             battle.enemyHP = enemyData.hp;
             syncEnemyDisplay();
+
+            // Once-per-battle relic charges reset here (a "battle" is one enemy
+            // fight; it may span several rounds if the deck runs out and reshuffles).
+            battle.jesterDiscardUsedThisBattle = false;
+            battle.sleightOfHandUsedThisBattle = false;
 
             startNewRound();
         }
@@ -1127,6 +1206,8 @@
             battle.phase = BATTLE_PHASES.PLAYER_ATTACK;
             battle.aiTimer = null;
             battle.actionToken++;
+            battle.pocketDiscardUsedThisRound = false;
+            resetTurnScopedFlags();
 
             battle.trumpCard = battle.drawDeck[0];
             battle.trumpSuit = battle.trumpCard.suit;
@@ -1151,6 +1232,12 @@
                     battle.playerHand.push(battle.drawDeck.pop());
                 }
             }
+            sortPlayerHand();
+        }
+
+        // Shared sort so any code that rebuilds the player's hand (replenishHands,
+        // jester_discard) presents cards in the same order.
+        function sortPlayerHand() {
             battle.playerHand.sort((a,b) => {
                 const aTrump = a.suit === battle.trumpSuit ? 1 : 0;
                 const bTrump = b.suit === battle.trumpSuit ? 1 : 0;
@@ -1192,17 +1279,18 @@
                 setBattlePhase(BATTLE_PHASES.ROUND_OVER);
                 const playerCardsLeft = battle.playerHand.length;
                 const damage = EMPTY_HAND_BASE_DAMAGE + (playerCardsLeft * EMPTY_HAND_DAMAGE_PER_CARD);
-                run.playerHP = Math.max(0, run.playerHP - damage);
+                const { isDefeated, savedBySafetyRope } = applyPlayerDamage(damage);
                 renderAll();
 
-                if (run.playerHP <= 0) {
+                if (isDefeated) {
                     clearLocalSave();
                     showModal("Поражение!", `Соперник первым скинул все карты. Вы получили ${damage} ед. урона и погибли.`, () => {
                         const splash = document.getElementById('splash-screen');
                         if (splash) splash.classList.remove('hidden');
                     });
                 } else {
-                    showModal("Раунд Проигран!", `Соперник первым скинул все карты! Вы остались в дураках с ${playerCardsLeft} картами и получили ${damage} ед. урона.`, () => {
+                    const safetyNote = savedBySafetyRope ? " Страховочный трос спас вас, оставив 1 HP!" : "";
+                    showModal("Раунд Проигран!", `Соперник первым скинул все карты! Вы остались в дураках с ${playerCardsLeft} картами и получили ${damage} ед. урона.${safetyNote}`, () => {
                         startNewRound();
                     });
                 }
@@ -1297,6 +1385,7 @@
                 battle.defender = 'enemy';
             }
 
+            resetTurnScopedFlags();
             replenishHands(currentDefender);
             saveRunToLocal();
             renderAll();
@@ -1324,15 +1413,23 @@
                 if (pair.attack) battle.enemyHand.push(pair.attack);
                 if (pair.defend) battle.enemyHand.push(pair.defend);
             }
-            
+
+            if (hasRelic('spam_mail') && battle.drawDeck.length > 0) {
+                battle.enemyHand.push(battle.drawDeck.pop());
+            }
+
             let damage = cardsCount * TAKE_DAMAGE_PER_CARD;
             if (hasRelic('ace_sleeve')) damage += ACE_SLEEVE_BONUS_DAMAGE;
+            if (hasRelic('salted_wound')) {
+                damage += getEnemyDamageExcess(battle.enemyHand.length) * SALTED_WOUND_DAMAGE_PER_CARD;
+            }
             damageEnemyHP(damage);
 
             battle.table = [];
             battle.cardsToTake = false;
             audio.playTakeSound();
 
+            resetTurnScopedFlags();
             replenishHands(currentDefender);
             saveRunToLocal();
             renderAll();
@@ -1369,29 +1466,60 @@
             const enemyData = getCurrentEnemy();
             const levelMultiplier = enemyData.abilityId === 'double_penalty' ? 2 : 1;
             const selfDamage = cardsTakenCount * enemyData.level * levelMultiplier;
-            run.playerHP = Math.max(0, run.playerHP - selfDamage);
 
+            // mirror_ring reflects damage based on the raw number of cards taken
+            // (the same baseline the enemy's own take-damage uses), NOT the
+            // already-scaled selfDamage above. Reflecting the scaled value let the
+            // enemy's own level/double_penalty multiplier compound with this
+            // relic's own x2, snowballing far past what "double damage" should mean.
             if (hasRelic('mirror_ring')) {
-                damageEnemyHP(selfDamage * 2);
+                damageEnemyHP(cardsTakenCount * TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER);
             }
+
+            if (hasRelic('ballast_drop')) {
+                discardLowestNonTrumpCards(battle.playerHand, 2);
+            }
+
+            const { isDefeated, savedBySafetyRope } = applyPlayerDamage(selfDamage);
 
             battle.table = [];
             battle.defender = 'player';
             
+            resetTurnScopedFlags();
             replenishHands(currentDefender);
             saveRunToLocal();
             renderAll();
 
-            if (run.playerHP <= 0) {
+            if (isDefeated) {
                 clearLocalSave();
                 showModal("Поражение!", "Вы потеряли всё здоровье. Забег окончен.", () => {
                     const splash = document.getElementById('splash-screen');
                     if (splash) splash.classList.remove('hidden');
                 });
             } else {
+                if (savedBySafetyRope) {
+                    showModal("Страховочный трос сработал!", "Вы чудом остались в живых с 1 HP. Стол очищен.");
+                }
                 if (!checkRoundEnd()) {
                     scheduleEnemyAI(AI_TAKE_RESOLVE_DELAY_MS);
                 }
+            }
+        }
+
+        // Discards up to `count` of the lowest-ranked non-trump cards from a hand
+        // straight to the discard pile (used by ballast_drop). Trump cards are
+        // never touched, since they're the hand's most valuable resource.
+        function discardLowestNonTrumpCards(hand, count) {
+            const eligible = hand
+                .map((card, idx) => ({ card, idx }))
+                .filter(({ card }) => card.suit !== battle.trumpSuit)
+                .sort((a, b) => a.card.value - b.card.value)
+                .slice(0, count);
+
+            const indicesToRemove = eligible.map(e => e.idx).sort((a, b) => b - a);
+            for (const idx of indicesToRemove) {
+                battle.discardPile.push(hand[idx]);
+                hand.splice(idx, 1);
             }
         }
 
@@ -1437,6 +1565,7 @@
                         const transferCard = battle.enemyHand.splice(transferCardIdx, 1)[0];
                         battle.table.push({ attack: transferCard, defend: null });
                         battle.defender = 'player';
+                        triggerCascadeTransfer();
                         audio.playCardSound();
                         showModal("Враг Переводит!", `${enemyData.name} переводит атаку обратно на вас!`);
                         finishAIPhase();
@@ -1486,6 +1615,18 @@
                 finishAIPhase();
 
             } else {
+                // Enemy is attacking this turn (battle.defender === 'player').
+                // heavy_ballast ticks once at the start of that turn, not on every
+                // recursive executeEnemyAI() call within it.
+                if (hasRelic('heavy_ballast') && !battle.heavyBallastAppliedThisTurn) {
+                    battle.heavyBallastAppliedThisTurn = true;
+                    const excess = getEnemyDamageExcess(battle.enemyHand.length);
+                    if (excess > 0) {
+                        damageEnemyHP(excess * HEAVY_BALLAST_DAMAGE_PER_CARD);
+                        if (battle.enemyHP <= 0) return;
+                    }
+                }
+
                 if (battle.enemyHand.length === 0) {
                     if (battle.table.filter(p => p.defend === null).length === 0) {
                         scheduleEnemyAction(() => handleBito(true), AI_POST_THROW_DELAY_MS);
@@ -1521,6 +1662,15 @@
             }
         }
 
+        // Fired whenever the player successfully plays a card (attack, toss, or
+        // defend). Handles coin_magnet (gold for sixes) in one place instead of
+        // repeating the check at every play site.
+        function onPlayerCardPlayed(card) {
+            if (hasRelic('coin_magnet') && card.value === 6) {
+                run.gold += COIN_MAGNET_GOLD_PER_SIX;
+            }
+        }
+
         window.onPlayerCardClick = function(index) {
             if (!canAcceptPlayerAction()) return;
             const card = battle.playerHand[index];
@@ -1531,6 +1681,7 @@
                 if (battle.table.length === 0) {
                     battle.table.push({ attack: card, defend: null });
                     battle.playerHand.splice(index, 1);
+                    onPlayerCardPlayed(card);
                     audio.playCardSound();
                     scheduleEnemyAI(AI_STANDARD_DELAY_MS);
                 } else {
@@ -1541,6 +1692,7 @@
                     if (isRankOnTable(card.value)) {
                         battle.table.push({ attack: card, defend: null });
                         battle.playerHand.splice(index, 1);
+                        onPlayerCardPlayed(card);
                         audio.playCardSound();
                         scheduleEnemyAI(AI_STANDARD_DELAY_MS);
                     } else {
@@ -1561,6 +1713,8 @@
                         battle.playerHand.splice(index, 1);
                         battle.defender = 'enemy';
                         battle.isTransferActive = false;
+                        onPlayerCardPlayed(card);
+                        triggerCascadeTransfer();
                         audio.playCardSound();
                         renderAll();
                         scheduleEnemyAI(AI_STANDARD_DELAY_MS);
@@ -1576,6 +1730,10 @@
                     if (canBeat(undefendedPair.attack, card)) {
                         undefendedPair.defend = card;
                         battle.playerHand.splice(index, 1);
+                        onPlayerCardPlayed(card);
+                        if (hasRelic('sharp_suit') && card.suit === battle.trumpSuit) {
+                            damageEnemyHP(SHARP_SUIT_DAMAGE);
+                        }
                         audio.playCardSound();
 
                         scheduleEnemyAI(AI_QUICK_DELAY_MS);
@@ -1642,6 +1800,31 @@
 
         function hasRelic(relicId) {
             return run.relics.some(r => r.id === relicId);
+        }
+
+        // How many cards "count" as excess in an oversized enemy hand, for relics
+        // that scale off it (heavy_ballast, salted_wound). Capped so a runaway
+        // hand size (e.g. via spam_mail) can't translate into unbounded damage.
+        function getEnemyDamageExcess(handLength) {
+            return Math.max(0, Math.min(handLength - HAND_SIZE, ENEMY_HAND_EXCESS_CAP));
+        }
+
+        // Single choke point for all damage dealt to the player. Centralizing this
+        // (instead of `run.playerHP -= x` scattered at each call site) is what lets
+        // safety_rope reliably intercept a lethal hit no matter where it came from.
+        function applyPlayerDamage(amount) {
+            run.playerHP = Math.max(0, run.playerHP - amount);
+            let savedBySafetyRope = false;
+
+            if (run.playerHP <= 0 && hasRelic('safety_rope') && !run.safetyRopeUsed) {
+                run.safetyRopeUsed = true;
+                run.playerHP = 1;
+                savedBySafetyRope = true;
+                battle.discardPile.push(...battle.table);
+                battle.table = [];
+            }
+
+            return { isDefeated: run.playerHP <= 0, savedBySafetyRope };
         }
 
         function openShop() {
@@ -1980,6 +2163,109 @@
                     }
                 }
             }
+
+            renderRelicActions();
+        }
+
+        // Renders the row of one-off relic ability buttons (pocket_discard,
+        // jester_discard, sleight_of_hand) — only the ones currently owned,
+        // not yet used for their scope (round/battle), and legal to use right now.
+        function renderRelicActions() {
+            const container = document.getElementById('relic-actions');
+            if (!container) return;
+
+            const buttons = [];
+
+            if (hasRelic('pocket_discard') && !battle.pocketDiscardUsedThisRound
+                && canAcceptPlayerAction()
+                && battle.playerHand.some(c => c.value === 6 || c.value === 7)) {
+                buttons.push({ id: 'btn-pocket-discard', label: '✂️ Сбросить 6/7 (Карманный сброс)', handler: usePocketDiscard });
+            }
+
+            if (hasRelic('jester_discard') && !battle.jesterDiscardUsedThisBattle
+                && canAcceptPlayerAction() && battle.defender === 'enemy' && battle.table.length === 0) {
+                buttons.push({ id: 'btn-jester-discard', label: '🃏 Пересдать руку (Шутовской сброс)', handler: useJesterDiscard });
+            }
+
+            if (hasRelic('sleight_of_hand') && !battle.sleightOfHandUsedThisBattle
+                && canAcceptPlayerAction() && battle.defender === 'player'
+                && battle.table.some(p => p.defend === null) && battle.drawDeck.length > 0) {
+                buttons.push({ id: 'btn-sleight-of-hand', label: '🪄 Подменить карту (Ловкость рук)', handler: useSleightOfHand });
+            }
+
+            container.innerHTML = '';
+            if (buttons.length === 0) {
+                container.classList.add('hidden');
+                return;
+            }
+            container.classList.remove('hidden');
+
+            buttons.forEach(b => {
+                const btn = document.createElement('button');
+                btn.id = b.id;
+                btn.className = "btn-action-base btn-action-amber text-[11px] leading-tight py-1.5";
+                btn.innerText = b.label;
+                btn.onclick = b.handler;
+                container.appendChild(btn);
+            });
+        }
+
+        // pocket_discard: once per round, permanently bin a 6 or 7 from hand.
+        // Auto-picks the first matching card (lowest value first) rather than
+        // prompting, to keep the interaction one tap.
+        function usePocketDiscard() {
+            if (!hasRelic('pocket_discard') || battle.pocketDiscardUsedThisRound || !canAcceptPlayerAction()) return;
+            const idx = battle.playerHand.findIndex(c => c.value === 6 || c.value === 7);
+            if (idx === -1) return;
+
+            const [card] = battle.playerHand.splice(idx, 1);
+            battle.discardPile.push(card);
+            battle.pocketDiscardUsedThisRound = true;
+            audio.playCardSound();
+            saveRunToLocal();
+            renderAll();
+        }
+
+        // jester_discard: once per battle, on your own attacking turn with an
+        // empty table, bin your whole hand and redraw the same number of cards.
+        function useJesterDiscard() {
+            if (!hasRelic('jester_discard') || battle.jesterDiscardUsedThisBattle || !canAcceptPlayerAction()) return;
+            if (battle.defender !== 'enemy' || battle.table.length !== 0) return;
+
+            const handSize = battle.playerHand.length;
+            battle.discardPile.push(...battle.playerHand);
+            battle.playerHand = [];
+            for (let i = 0; i < handSize && battle.drawDeck.length > 0; i++) {
+                battle.playerHand.push(battle.drawDeck.pop());
+            }
+            sortPlayerHand();
+
+            battle.jesterDiscardUsedThisBattle = true;
+            audio.playCardSound();
+            saveRunToLocal();
+            renderAll();
+        }
+
+        // sleight_of_hand: once per battle, while defending against an
+        // undefended attack, swap that attack card for a random card from the
+        // draw deck. The original attack card goes to the discard pile.
+        function useSleightOfHand() {
+            if (!hasRelic('sleight_of_hand') || battle.sleightOfHandUsedThisBattle || !canAcceptPlayerAction()) return;
+            if (battle.defender !== 'player' || battle.drawDeck.length === 0) return;
+
+            const pair = battle.table.find(p => p.defend === null);
+            if (!pair) return;
+
+            const oldCard = pair.attack;
+            const randomIdx = Math.floor(Math.random() * battle.drawDeck.length);
+            const [newCard] = battle.drawDeck.splice(randomIdx, 1);
+            pair.attack = newCard;
+            battle.discardPile.push(oldCard);
+
+            battle.sleightOfHandUsedThisBattle = true;
+            audio.playCardSound();
+            saveRunToLocal();
+            renderAll();
         }
 
         function showModal(title, text, onClose) {
@@ -2980,11 +3266,308 @@
                 });
             });
 
+            runner.describe('11. Новые артефакты и нерф mirror_ring', (it, assert) => {
+                it('getEnemyDamageExcess капает "лишние" карты на ENEMY_HAND_EXCESS_CAP', () => {
+                    assert.equal(getEnemyDamageExcess(4), 0);
+                    assert.equal(getEnemyDamageExcess(6), 0);
+                    assert.equal(getEnemyDamageExcess(8), 2);
+                    assert.equal(getEnemyDamageExcess(10), 4);
+                    assert.equal(getEnemyDamageExcess(20), 4); // не растёт дальше кэпа
+                });
+
+                it('mirror_ring (нерф): урон = взятые карты × TAKE_DAMAGE_PER_CARD × 2, БЕЗ учёта уровня/double_penalty', () => {
+                    withIsolatedGameState(
+                        { floor: 12, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
+                        {
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            discardPile: [], playerHand: [],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [
+                                { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
+                                { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
+                                { attack: { id: 'x3', suit: 'Hearts', value: 8 }, defend: null },
+                            ],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handlePlayerTake();
+                            // 3 карты × TAKE_DAMAGE_PER_CARD(2) × 2 = 12 — не 48, как было бы при
+                            // старой формуле (3 × уровень 4 × double_penalty 2 = 24, затем ×2 = 48).
+                            assert.equal(battle.enemyHP, 88);
+                        }
+                    );
+                });
+
+                it('safety_rope: спасает от смертельного урона один раз за забег и очищает стол', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 5, maxHP: 30, gold: 0, relics: [{ id: 'safety_rope' }], deck: [], safetyRopeUsed: false },
+                        { table: [{ attack: { id: 'a', suit: 'Hearts', value: 6 }, defend: null }], discardPile: [], aiTimer: null },
+                        () => {
+                            const first = applyPlayerDamage(100);
+                            assert.isTrue(first.savedBySafetyRope);
+                            assert.isFalse(first.isDefeated);
+                            assert.equal(run.playerHP, 1);
+                            assert.equal(battle.table.length, 0);
+                            assert.isTrue(run.safetyRopeUsed);
+
+                            battle.table = [];
+                            const second = applyPlayerDamage(100);
+                            assert.isFalse(second.savedBySafetyRope);
+                            assert.isTrue(second.isDefeated);
+                        }
+                    );
+                });
+
+                it('cascade_transfer: наносит урон один раз за ход, повторный вызов в тот же ход не бьёт снова', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'cascade_transfer' }], deck: [] },
+                        { enemyHP: 20, cascadeTransferUsedThisTurn: false, aiTimer: null },
+                        () => {
+                            triggerCascadeTransfer();
+                            assert.equal(battle.enemyHP, 16); // 20 - CASCADE_TRANSFER_DAMAGE(4)
+                            assert.isTrue(battle.cascadeTransferUsedThisTurn);
+
+                            triggerCascadeTransfer(); // тот же ход — не должен сработать повторно
+                            assert.equal(battle.enemyHP, 16);
+
+                            resetTurnScopedFlags(); // новый ход
+                            triggerCascadeTransfer();
+                            assert.equal(battle.enemyHP, 12);
+                        }
+                    );
+                });
+
+                it('heavy_ballast: тикает один раз за ход врага, урон капается через getEnemyDamageExcess', () => {
+                    const bigEnemyHand = [];
+                    for (let i = 0; i < 9; i++) bigEnemyHand.push({ id: `e${i}`, suit: 'Pikes', value: 6 });
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'heavy_ballast' }], deck: [] },
+                        {
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            discardPile: [], playerHand: [],
+                            enemyHand: bigEnemyHand,
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
+                            table: [],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            executeEnemyAI();
+                            // 9 карт в руке врага - 6 = 3 избыточных (не капается, т.к. < 4)
+                            assert.equal(battle.enemyHP, 47);
+                            assert.isTrue(battle.heavyBallastAppliedThisTurn);
+                        }
+                    );
+                });
+
+                it('spam_mail + salted_wound: враг добирает карту при взятии, урон капается по избытку руки', () => {
+                    const enemyHand = [];
+                    for (let i = 0; i < 6; i++) enemyHand.push({ id: `e${i}`, suit: 'Pikes', value: 6 });
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'spam_mail' }, { id: 'salted_wound' }], deck: [] },
+                        {
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            discardPile: [],
+                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
+                            enemyHand,
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }],
+                            defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handleEnemyTake();
+                            // enemyHand: 6 (исходно) + 1 (со стола) + 1 (spam_mail) = 8 → избыток 2
+                            assert.equal(battle.enemyHand.length, 8);
+                            // урон: 1 карта × TAKE_DAMAGE_PER_CARD(2) + 2 (salted_wound) = 4
+                            assert.equal(battle.enemyHP, 46);
+                        }
+                    );
+                });
+
+                it('ballast_drop: при взятии карт сбрасывает 2 некозырные карты наименьшего ранга', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'ballast_drop' }], deck: [] },
+                        {
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            discardPile: [],
+                            playerHand: [
+                                { id: 'p1', suit: 'Pikes', value: 7 },
+                                { id: 'p2', suit: 'Pikes', value: 6 },
+                            ],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null }],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handlePlayerTake();
+                            // p1, p2 (некозырные) сброшены; остаётся только x1 (козырь, взятый со стола)
+                            assert.equal(battle.playerHand.length, 1);
+                            assert.equal(battle.playerHand[0].id, 'x1');
+                            assert.equal(battle.discardPile.filter(c => c.id === 'p1' || c.id === 'p2').length, 2);
+                        }
+                    );
+                });
+
+                it('coin_magnet: +1$ за каждую сыгранную шестёрку', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'coin_magnet' }], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [],
+                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            onPlayerCardClick(0);
+                            assert.equal(run.gold, 1);
+                        }
+                    );
+                });
+
+                it('sharp_suit: наносит 1 ед. урона врагу при защите козырной картой', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'sharp_suit' }], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [],
+                            playerHand: [{ id: 'p1', suit: 'Hearts', value: 9 }],
+                            enemyHand: [],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'a1', suit: 'Pikes', value: 8 }, defend: null }],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            onPlayerCardClick(0);
+                            assert.equal(battle.enemyHP, 49);
+                        }
+                    );
+                });
+
+                it('pocket_discard: разово за раунд сбрасывает 6/7 из руки в отбой', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }], deck: [] },
+                        {
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            discardPile: [],
+                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }, { id: 'p2', suit: 'Hearts', value: 10 }],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
+                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            usePocketDiscard();
+                            assert.equal(battle.playerHand.length, 1);
+                            assert.equal(battle.discardPile.length, 1);
+                            assert.equal(battle.discardPile[0].id, 'p1');
+                            assert.isTrue(battle.pocketDiscardUsedThisRound);
+
+                            const handSizeBefore = battle.playerHand.length;
+                            usePocketDiscard(); // уже использовано в этом раунде
+                            assert.equal(battle.playerHand.length, handSizeBefore);
+                        }
+                    );
+                });
+
+                it('jester_discard: раз за бой пересдаёт руку той же длины из колоды', () => {
+                    const drawDeck = [];
+                    for (let i = 0; i < 5; i++) drawDeck.push({ id: `d${i}`, suit: 'Hearts', value: 6 + i });
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'jester_discard' }], deck: [] },
+                        {
+                            drawDeck, discardPile: [],
+                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }, { id: 'p2', suit: 'Pikes', value: 7 }],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
+                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            useJesterDiscard();
+                            assert.equal(battle.playerHand.length, 2);
+                            assert.equal(battle.drawDeck.length, 3);
+                            assert.equal(battle.discardPile.length, 2);
+                            assert.isTrue(battle.jesterDiscardUsedThisBattle);
+                        }
+                    );
+                });
+
+                it('sleight_of_hand: раз за бой подменяет карту атаки на столе случайной из колоды', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'sleight_of_hand' }], deck: [] },
+                        {
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            discardPile: [],
+                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 12 }],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'a1', suit: 'Pikes', value: 14 }, defend: null }],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            useSleightOfHand();
+                            assert.equal(battle.table[0].attack.id, 'd1');
+                            assert.equal(battle.drawDeck.length, 0);
+                            assert.equal(battle.discardPile[0].id, 'a1');
+                            assert.isTrue(battle.sleightOfHandUsedThisBattle);
+                        }
+                    );
+                });
+            });
+
             // Some tests call game functions (e.g. handlePlayerTake) that autosave as a
             // side effect, which would otherwise overwrite the player's real save with
             // fake test fixtures. preserveLocalSaveAround guarantees the real save is
             // restored exactly, no matter what the suites do to SAVE_KEY.
-            return preserveLocalSaveAround(() => runner.run());
+            //
+            // Some tests also legitimately drive real game functions (damageEnemyHP,
+            // checkRoundEnd, etc.) into a "win/lose" branch to verify it, which pops
+            // the real #msg-box modal as a side effect. If a test forgets to hide it
+            // again (or throws before its own cleanup runs), that modal would stay
+            // open and silently surface to the player once they close the test panel.
+            // This is a catch-all — regardless of which test left it open — that runs
+            // no matter how the suite finishes, so a leaked modal can never survive
+            // past the test run.
+            try {
+                return preserveLocalSaveAround(() => runner.run());
+            } finally {
+                const msgBox = document.getElementById('msg-box');
+                if (msgBox) {
+                    msgBox.classList.add('hidden');
+                    msgBox.classList.remove('flex');
+                }
+                const confirmBtn = document.getElementById('msg-btn');
+                if (confirmBtn) confirmBtn.onclick = null;
+                const cancelBtn = document.getElementById('msg-btn-cancel');
+                if (cancelBtn) cancelBtn.onclick = null;
+                clearAITimer();
+            }
         }
 
         function renderTestResultsUI(results) {
