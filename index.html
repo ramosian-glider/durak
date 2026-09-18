@@ -973,8 +973,7 @@
             maxHP: 30,
             gold: 15,
             relics: [],
-            deck: [],
-            safetyRopeUsed: false
+            deck: []
         };
 
         let battle = {
@@ -1139,8 +1138,7 @@
                 maxHP: 30,
                 gold: 15,
                 relics: [],
-                deck: generateStandardDeck(),
-                safetyRopeUsed: false
+                deck: generateStandardDeck()
             };
             startFloorBattle();
             saveGameState();
@@ -1802,6 +1800,46 @@
             return run.relics.some(r => r.id === relicId);
         }
 
+        // --- Relic effect registry (pilot) --------------------------------------
+        // Most relics are still wired as scattered hasRelic('id') checks at their
+        // call sites (see ways-of-working notes on this). This registry is a pilot
+        // for migrating relics toward named hooks instead: each relic can define a
+        // handler per hook name, and game code calls fireHook() at one canonical
+        // point rather than every call site re-checking hasRelic() individually.
+        // Only safety_rope has been migrated so far — everything else is untouched.
+        const RELIC_EFFECTS = {
+            safety_rope: {
+                // Called from applyPlayerDamage() only when the hit would be lethal.
+                // Consumes the relic (removes it from run.relics) so it visibly
+                // disappears from the relic bar once spent, rather than lingering
+                // as an inert slot. Returns true if this relic intercepted the kill.
+                onLethalDamage() {
+                    const idx = run.relics.findIndex(r => r.id === 'safety_rope');
+                    if (idx === -1) return false;
+                    run.relics.splice(idx, 1);
+                    run.playerHP = 1;
+                    battle.discardPile.push(...battle.table);
+                    battle.table = [];
+                    return true;
+                }
+            }
+        };
+
+        // Fires `hookName` on every owned relic that defines it, in slot order,
+        // stopping at (and returning) the first truthy result. `ctx` is passed
+        // through to the handler for hooks that need extra data later; unused for
+        // now since safety_rope's handler takes none.
+        function fireHook(hookName, ctx) {
+            for (const relic of run.relics) {
+                const effect = RELIC_EFFECTS[relic.id];
+                if (effect && typeof effect[hookName] === 'function') {
+                    const result = effect[hookName](ctx);
+                    if (result) return result;
+                }
+            }
+            return null;
+        }
+
         // How many cards "count" as excess in an oversized enemy hand, for relics
         // that scale off it (heavy_ballast, salted_wound). Capped so a runaway
         // hand size (e.g. via spam_mail) can't translate into unbounded damage.
@@ -1816,12 +1854,8 @@
             run.playerHP = Math.max(0, run.playerHP - amount);
             let savedBySafetyRope = false;
 
-            if (run.playerHP <= 0 && hasRelic('safety_rope') && !run.safetyRopeUsed) {
-                run.safetyRopeUsed = true;
-                run.playerHP = 1;
-                savedBySafetyRope = true;
-                battle.discardPile.push(...battle.table);
-                battle.table = [];
+            if (run.playerHP <= 0) {
+                savedBySafetyRope = !!fireHook('onLethalDamage');
             }
 
             return { isDefeated: run.playerHP <= 0, savedBySafetyRope };
@@ -3302,9 +3336,9 @@
                     );
                 });
 
-                it('safety_rope: спасает от смертельного урона один раз за забег и очищает стол', () => {
+                it('safety_rope: спасает от смертельного урона один раз за забег, очищает стол и исчезает из инвентаря', () => {
                     withIsolatedGameState(
-                        { floor: 1, playerHP: 5, maxHP: 30, gold: 0, relics: [{ id: 'safety_rope' }], deck: [], safetyRopeUsed: false },
+                        { floor: 1, playerHP: 5, maxHP: 30, gold: 0, relics: [{ id: 'safety_rope' }], deck: [] },
                         { table: [{ attack: { id: 'a', suit: 'Hearts', value: 6 }, defend: null }], discardPile: [], aiTimer: null },
                         () => {
                             const first = applyPlayerDamage(100);
@@ -3312,12 +3346,67 @@
                             assert.isFalse(first.isDefeated);
                             assert.equal(run.playerHP, 1);
                             assert.equal(battle.table.length, 0);
-                            assert.isTrue(run.safetyRopeUsed);
+                            assert.isFalse(hasRelic('safety_rope'), 'Артефакт должен быть удалён из инвентаря после срабатывания');
+                            assert.equal(run.relics.length, 0);
 
                             battle.table = [];
                             const second = applyPlayerDamage(100);
                             assert.isFalse(second.savedBySafetyRope);
                             assert.isTrue(second.isDefeated);
+                        }
+                    );
+                });
+
+                it('safety_rope: после срабатывания снова доступен на продажу в магазине', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 5, maxHP: 30, gold: 100, relics: [{ id: 'safety_rope' }], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [], playerHand: [], enemyHand: [],
+                            trumpCard: null, trumpSuit: 'Hearts', table: [],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            applyPlayerDamage(100); // срабатывает и потребляет safety_rope
+                            assert.isFalse(hasRelic('safety_rope'));
+
+                            openShop();
+                            const shopList = document.getElementById('shop-relics-list');
+                            const offersSafetyRope = Array.from(shopList.children)
+                                .some(item => item.textContent.includes('Страховочный трос'));
+                            assert.isTrue(offersSafetyRope, 'После срабатывания трос должен снова появиться в списке покупки — это осознанное поведение, подтверждённое пользователем');
+
+                            buyRelic('safety_rope');
+                            assert.isTrue(hasRelic('safety_rope'), 'Повторная покупка должна вернуть артефакт в инвентарь');
+                            assert.equal(run.gold, 100 - 18, 'Цена (18$) должна списаться при повторной покупке');
+
+                            const shopModal = document.getElementById('shop-modal');
+                            if (shopModal) { shopModal.classList.add('hidden'); shopModal.classList.remove('flex'); }
+                        }
+                    );
+                });
+
+                it('safety_rope: после срабатывания слот в боевой панели артефактов освобождается', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 5, maxHP: 30, gold: 0, relics: [{ id: 'safety_rope', name: 'Страховочный трос', icon: '🪢', desc: 'x', price: 18 }], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [], playerHand: [], enemyHand: [],
+                            trumpCard: null, trumpSuit: 'Hearts', table: [],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            renderAll();
+                            const relicsBar = document.getElementById('relics-bar');
+                            assert.isTrue(relicsBar.children[0].className.includes('relic-slot-filled'), 'До срабатывания слот 0 должен быть занят');
+
+                            applyPlayerDamage(100);
+                            renderAll();
+                            assert.isTrue(relicsBar.children[0].className.includes('relic-slot-empty'), 'После срабатывания слот должен визуально освободиться');
                         }
                     );
                 });
