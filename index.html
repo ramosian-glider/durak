@@ -1728,9 +1728,7 @@
                         undefendedPair.defend = card;
                         battle.playerHand.splice(index, 1);
                         onPlayerCardPlayed(card);
-                        if (hasRelic('sharp_suit') && card.suit === battle.trumpSuit) {
-                            damageEnemyHP(SHARP_SUIT_DAMAGE);
-                        }
+                        fireAllHooks('onPlayerDefend', card);
                         audio.playCardSound();
 
                         scheduleEnemyAI(AI_QUICK_DELAY_MS);
@@ -1805,7 +1803,7 @@
         // for migrating relics toward named hooks instead: each relic can define a
         // handler per hook name, and game code calls fireHook()/fireAllHooks() at
         // one canonical point rather than every call site re-checking hasRelic()
-        // individually. Migrated so far: safety_rope, coin_magnet.
+        // individually. Migrated so far: safety_rope, coin_magnet, sharp_suit.
         const RELIC_EFFECTS = {
             safety_rope: {
                 // Called from applyPlayerDamage() only when the hit would be lethal.
@@ -1829,6 +1827,17 @@
                 onCardPlayed(card) {
                     if (card.value === 6) {
                         run.gold += COIN_MAGNET_GOLD_PER_SIX;
+                    }
+                }
+            },
+            sharp_suit: {
+                // Called only from the defend branch of onPlayerCardClick(), not
+                // from attacks/tosses/transfers — sharp_suit specifically cares
+                // about the player beating an attack with a trump card, which
+                // onCardPlayed (fired for every play) can't distinguish on its own.
+                onPlayerDefend(card) {
+                    if (card.suit === battle.trumpSuit) {
+                        damageEnemyHP(SHARP_SUIT_DAMAGE);
                     }
                 }
             }
@@ -3601,6 +3610,26 @@
                         () => {
                             onPlayerCardClick(0);
                             assert.equal(battle.enemyHP, 49);
+                        }
+                    );
+                });
+
+                it('sharp_suit: НЕ наносит урон при розыгрыше козыря в атаке/подкидке (хук onPlayerDefend стреляет только из ветки защиты)', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'sharp_suit' }], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [],
+                            playerHand: [{ id: 'p1', suit: 'Hearts', value: 9 }],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 6 }],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            onPlayerCardClick(0); // играет козырь в атаку, не в защиту
+                            assert.equal(battle.enemyHP, 50, 'sharp_suit не должен наносить урон вне защиты');
                         }
                     );
                 });
