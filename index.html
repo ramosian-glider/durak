@@ -1090,10 +1090,7 @@
         // initiates it, or the ai_transfer boss bounces it back) deals a flat hit.
         // Guarded per-turn so a chain of transfers can't be farmed for repeat damage.
         function triggerCascadeTransfer() {
-            if (hasRelic('cascade_transfer') && !battle.cascadeTransferUsedThisTurn) {
-                battle.cascadeTransferUsedThisTurn = true;
-                damageEnemyHP(CASCADE_TRANSFER_DAMAGE);
-            }
+            fireAllHooks('onTransfer');
         }
 
         function enterPlayerPhase() {
@@ -1803,7 +1800,8 @@
         // for migrating relics toward named hooks instead: each relic can define a
         // handler per hook name, and game code calls fireHook()/fireAllHooks() at
         // one canonical point rather than every call site re-checking hasRelic()
-        // individually. Migrated so far: safety_rope, coin_magnet, sharp_suit.
+        // individually. Migrated so far: safety_rope, coin_magnet, sharp_suit,
+        // cascade_transfer.
         const RELIC_EFFECTS = {
             safety_rope: {
                 // Called from applyPlayerDamage() only when the hit would be lethal.
@@ -1839,6 +1837,24 @@
                     if (card.suit === battle.trumpSuit) {
                         damageEnemyHP(SHARP_SUIT_DAMAGE);
                     }
+                }
+            },
+            cascade_transfer: {
+                // Called from triggerCascadeTransfer(), fired whenever a transfer
+                // happens (player-initiated, or bounced back by the ai_transfer
+                // boss ability). Guarded per-turn via
+                // battle.cascadeTransferUsedThisTurn, which resetTurnScopedFlags()
+                // clears when the turn passes — unlike safety_rope, this recharges
+                // every turn rather than being consumed for the whole run, so the
+                // guard lives on battle (turn-scoped state), not run.relics.
+                // Dispatched via fireAllHooks (not fireHook): the guard is this
+                // relic's own concern, and a future second onTransfer owner
+                // shouldn't be silently skipped just because this one already
+                // fired its charge this turn.
+                onTransfer() {
+                    if (battle.cascadeTransferUsedThisTurn) return;
+                    battle.cascadeTransferUsedThisTurn = true;
+                    damageEnemyHP(CASCADE_TRANSFER_DAMAGE);
                 }
             }
         };
@@ -3460,6 +3476,61 @@
                             resetTurnScopedFlags(); // новый ход
                             triggerCascadeTransfer();
                             assert.equal(battle.enemyHP, 12);
+                        }
+                    );
+                });
+
+                it('cascade_transfer: triggerCascadeTransfer использует fireAllHooks — уже сработавший в этот ход cascade_transfer не блокирует другие onTransfer-обработчики', () => {
+                    // Guards against accidentally switching triggerCascadeTransfer() to
+                    // fireHook(): with a single onTransfer owner (cascade_transfer
+                    // itself) fireHook vs fireAllHooks look identical, so this test
+                    // adds a throwaway second owner to prove the dispatch really
+                    // doesn't stop early once cascade_transfer has spent its charge.
+                    let otherHookCalled = false;
+                    RELIC_EFFECTS.__test_transfer = { onTransfer: () => { otherHookCalled = true; } };
+                    try {
+                        withIsolatedGameState(
+                            { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'cascade_transfer' }, { id: '__test_transfer' }], deck: [] },
+                            { enemyHP: 20, cascadeTransferUsedThisTurn: false, aiTimer: null },
+                            () => {
+                                triggerCascadeTransfer();
+                                assert.equal(battle.enemyHP, 16, 'cascade_transfer всё ещё должен нанести урон');
+                                assert.isTrue(otherHookCalled, 'Второй владелец onTransfer должен сработать в том же вызове, даже если cascade_transfer уже потратил заряд в этот ход');
+                            }
+                        );
+                    } finally {
+                        delete RELIC_EFFECTS.__test_transfer;
+                    }
+                });
+
+                it('cascade_transfer: наносит урон и когда перевод инициирует противник через способность ai_transfer (осознанное решение — см. обсуждение)', () => {
+                    // Confirms the deliberate design decision that cascade_transfer
+                    // fires on ANY transfer this turn, not just player-initiated ones.
+                    // Exercises the real AI code path (executeEnemyAI's ai_transfer
+                    // branch) rather than calling triggerCascadeTransfer() directly,
+                    // so a future refactor of that branch can't silently drop the call
+                    // without a test noticing.
+                    const transferFloorIndex = ENEMIES.findIndex(e => e.activeAbilities.has('ai_transfer'));
+                    withIsolatedGameState(
+                        { floor: transferFloorIndex + 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'cascade_transfer' }], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [],
+                            playerHand: [
+                                { id: 'p1', suit: 'Pikes', value: 10 },
+                                { id: 'p2', suit: 'Pikes', value: 11 }
+                            ],
+                            enemyHand: [{ id: 'e1', suit: 'Clubs', value: 8 }],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'a1', suit: 'Clubs', value: 8 }, defend: null }],
+                            defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 40, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            executeEnemyAI();
+                            assert.equal(battle.defender, 'player', 'После перевода противником защитником снова становится игрок');
+                            assert.equal(battle.enemyHP, 36, 'cascade_transfer должен нанести урон, даже когда перевод инициировал противник');
                         }
                     );
                 });
