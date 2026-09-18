@@ -1661,12 +1661,11 @@
         }
 
         // Fired whenever the player successfully plays a card (attack, toss, or
-        // defend). Handles coin_magnet (gold for sixes) in one place instead of
-        // repeating the check at every play site.
+        // defend). Single canonical dispatch point for per-card-played relic
+        // effects (currently just coin_magnet) instead of repeating checks at
+        // every play site.
         function onPlayerCardPlayed(card) {
-            if (hasRelic('coin_magnet') && card.value === 6) {
-                run.gold += COIN_MAGNET_GOLD_PER_SIX;
-            }
+            fireAllHooks('onCardPlayed', card);
         }
 
         window.onPlayerCardClick = function(index) {
@@ -1804,9 +1803,9 @@
         // Most relics are still wired as scattered hasRelic('id') checks at their
         // call sites (see ways-of-working notes on this). This registry is a pilot
         // for migrating relics toward named hooks instead: each relic can define a
-        // handler per hook name, and game code calls fireHook() at one canonical
-        // point rather than every call site re-checking hasRelic() individually.
-        // Only safety_rope has been migrated so far — everything else is untouched.
+        // handler per hook name, and game code calls fireHook()/fireAllHooks() at
+        // one canonical point rather than every call site re-checking hasRelic()
+        // individually. Migrated so far: safety_rope, coin_magnet.
         const RELIC_EFFECTS = {
             safety_rope: {
                 // Called from applyPlayerDamage() only when the hit would be lethal.
@@ -1822,13 +1821,25 @@
                     battle.table = [];
                     return true;
                 }
+            },
+            coin_magnet: {
+                // Called from onPlayerCardPlayed() for every card the player plays
+                // (attack, toss, or defend). Additive — doesn't intercept anything,
+                // so it's dispatched via fireAllHooks() rather than fireHook().
+                onCardPlayed(card) {
+                    if (card.value === 6) {
+                        run.gold += COIN_MAGNET_GOLD_PER_SIX;
+                    }
+                }
             }
         };
 
         // Fires `hookName` on every owned relic that defines it, in slot order,
-        // stopping at (and returning) the first truthy result. `ctx` is passed
-        // through to the handler for hooks that need extra data later; unused for
-        // now since safety_rope's handler takes none.
+        // stopping at (and returning) the first truthy result. Use this for
+        // *intercepting* hooks — where at most one relic should act, and later
+        // handlers firing after one already "used" the hook would be wrong (e.g.
+        // a one-shot life-save: once playerHP is restored, a second handler
+        // shouldn't also fire against the same lethal hit).
         function fireHook(hookName, ctx) {
             for (const relic of run.relics) {
                 const effect = RELIC_EFFECTS[relic.id];
@@ -1838,6 +1849,20 @@
                 }
             }
             return null;
+        }
+
+        // Fires `hookName` on every owned relic that defines it, in slot order,
+        // with no early-exit. Use this for *additive/notification* hooks — where
+        // every relic that cares about the event should act independently (e.g.
+        // gold-on-card-played: two such relics, if they existed, should both pay
+        // out, not just the first).
+        function fireAllHooks(hookName, ctx) {
+            for (const relic of run.relics) {
+                const effect = RELIC_EFFECTS[relic.id];
+                if (effect && typeof effect[hookName] === 'function') {
+                    effect[hookName](ctx);
+                }
+            }
         }
 
         // How many cards "count" as excess in an oversized enemy hand, for relics
@@ -3528,6 +3553,35 @@
                             assert.equal(run.gold, 1);
                         }
                     );
+                });
+
+                it('fireAllHooks вызывает всех владельцев хука (не останавливается на первом); fireHook — останавливается на первом truthy', () => {
+                    // Registered relics with real gameplay effects (coin_magnet, sharp_suit)
+                    // are single-owner today, so nothing else exercises the dispatch
+                    // mechanism itself. This test adds two throwaway handlers directly
+                    // to the registry to prove fireAllHooks/fireHook's actual semantics,
+                    // independent of any one relic's business logic.
+                    const calls = [];
+                    RELIC_EFFECTS.__test_a = { onTestHook: () => { calls.push('a'); return true; } };
+                    RELIC_EFFECTS.__test_b = { onTestHook: () => { calls.push('b'); return true; } };
+                    try {
+                        withIsolatedGameState(
+                            { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: '__test_a' }, { id: '__test_b' }], deck: [] },
+                            { aiTimer: null },
+                            () => {
+                                fireAllHooks('onTestHook');
+                                assert.equal(calls.join(','), 'a,b', 'fireAllHooks должен вызвать оба обработчика в порядке слотов, не останавливаясь на первом');
+
+                                calls.length = 0;
+                                const result = fireHook('onTestHook');
+                                assert.equal(calls.join(','), 'a', 'fireHook должен остановиться сразу после первого truthy-результата и не вызывать второй обработчик');
+                                assert.equal(result, true, 'fireHook должен вернуть результат первого сработавшего обработчика');
+                            }
+                        );
+                    } finally {
+                        delete RELIC_EFFECTS.__test_a;
+                        delete RELIC_EFFECTS.__test_b;
+                    }
                 });
 
                 it('sharp_suit: наносит 1 ед. урона врагу при защите козырной картой', () => {
