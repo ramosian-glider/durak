@@ -1612,15 +1612,13 @@
             } else {
                 // Enemy is attacking this turn (battle.defender === 'player').
                 // heavy_ballast ticks once at the start of that turn, not on every
-                // recursive executeEnemyAI() call within it.
-                if (hasRelic('heavy_ballast') && !battle.heavyBallastAppliedThisTurn) {
-                    battle.heavyBallastAppliedThisTurn = true;
-                    const excess = getEnemyDamageExcess(battle.enemyHand.length);
-                    if (excess > 0) {
-                        damageEnemyHP(excess * HEAVY_BALLAST_DAMAGE_PER_CARD);
-                        if (battle.enemyHP <= 0) return;
-                    }
-                }
+                // recursive executeEnemyAI() call within it. Only bail out if a
+                // hook just brought a previously-alive enemy to 0 — not merely
+                // because battle.enemyHP happens to be unset/0 (e.g. in a test
+                // fixture that doesn't touch HP at all).
+                const enemyHPBeforeTurnStart = battle.enemyHP;
+                fireAllHooks('onEnemyTurnStart');
+                if (enemyHPBeforeTurnStart > 0 && battle.enemyHP <= 0) return;
 
                 if (battle.enemyHand.length === 0) {
                     if (battle.table.filter(p => p.defend === null).length === 0) {
@@ -1801,7 +1799,7 @@
         // handler per hook name, and game code calls fireHook()/fireAllHooks() at
         // one canonical point rather than every call site re-checking hasRelic()
         // individually. Migrated so far: safety_rope, coin_magnet, sharp_suit,
-        // cascade_transfer.
+        // cascade_transfer, heavy_ballast.
         const RELIC_EFFECTS = {
             safety_rope: {
                 // Called from applyPlayerDamage() only when the hit would be lethal.
@@ -1855,6 +1853,24 @@
                     if (battle.cascadeTransferUsedThisTurn) return;
                     battle.cascadeTransferUsedThisTurn = true;
                     damageEnemyHP(CASCADE_TRANSFER_DAMAGE);
+                }
+            },
+            heavy_ballast: {
+                // Fired once at the start of the enemy's attacking turn (from
+                // executeEnemyAI's "enemy is attacker" branch), not on every
+                // recursive executeEnemyAI() call within that turn. Guarded via
+                // battle.heavyBallastAppliedThisTurn, reset by
+                // resetTurnScopedFlags() — same turn-scoped shape as
+                // cascade_transfer's guard, and dispatched via fireAllHooks for
+                // the same reason: the guard is this relic's own concern, not a
+                // reason to skip some future second onEnemyTurnStart owner.
+                onEnemyTurnStart() {
+                    if (battle.heavyBallastAppliedThisTurn) return;
+                    battle.heavyBallastAppliedThisTurn = true;
+                    const excess = getEnemyDamageExcess(battle.enemyHand.length);
+                    if (excess > 0) {
+                        damageEnemyHP(excess * HEAVY_BALLAST_DAMAGE_PER_CARD);
+                    }
                 }
             }
         };
@@ -3560,6 +3576,62 @@
                     );
                 });
 
+                it('heavy_ballast: если урон от артефакта убивает врага, executeEnemyAI прерывается и не продолжает ход ИИ', () => {
+                    // Regression test for a bug caught (and fixed) during migration:
+                    // the early-return guard was briefly unconditional on
+                    // battle.enemyHP <= 0, which broke unrelated scenarios where HP
+                    // simply hadn't been set. This test locks in the *correct*
+                    // behavior — bailing out when heavy_ballast itself just landed
+                    // the killing blow.
+                    const bigEnemyHand = [];
+                    for (let i = 0; i < 10; i++) bigEnemyHand.push({ id: `e${i}`, suit: 'Pikes', value: 6 });
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'heavy_ballast' }], deck: [] },
+                        {
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            discardPile: [], playerHand: [],
+                            enemyHand: bigEnemyHand,
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
+                            table: [],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 2, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            executeEnemyAI();
+                            assert.isTrue(battle.enemyHP <= 0, 'heavy_ballast должен добить врага (2 HP - 4 капированного урона)');
+                            assert.equal(battle.table.length, 0, 'executeEnemyAI должен прерваться сразу после смертельного урона и не выложить карту атаки');
+                            assert.equal(battle.enemyHand.length, 10, 'рука врага не должна измениться после досрочного выхода');
+                        }
+                    );
+                });
+
+                it('executeEnemyAI: НЕ прерывается на уже нулевом enemyHP, если хук ничего не убивал (регрессия, поймана при миграции heavy_ballast)', () => {
+                    // Without this, the early-return guard could accidentally become
+                    // unconditional again (checking `battle.enemyHP <= 0` regardless of
+                    // whether it dropped from >0 during this call) and silently break
+                    // any fixture/scenario where enemyHP starts at 0 for unrelated
+                    // reasons — exactly what broke the "AI закончил подкидывать" test.
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [], playerHand: [{ id: 'p1', suit: 'Hearts', value: 9 }],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 6 }],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 0, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            executeEnemyAI();
+                            assert.equal(battle.table.length, 1, 'ИИ должен продолжить ход и выложить карту атаки, даже если enemyHP было 0 ещё до срабатывания хуков');
+                        }
+                    );
+                });
+
                 it('spam_mail + salted_wound: враг добирает карту при взятии, урон капается по избытку руки', () => {
                     const enemyHand = [];
                     for (let i = 0; i < 6; i++) enemyHand.push({ id: `e${i}`, suit: 'Pikes', value: 6 });
@@ -3880,6 +3952,15 @@
             const runTestsAction = () => {
                 const results = runGameUnitTests();
                 renderTestResultsUI(results);
+                // Tests drive real game functions (executeEnemyAI, handlePlayerTake,
+                // etc.) against throwaway fixtures via withIsolatedGameState. Those
+                // functions call renderAll() as a side effect, painting the DOM with
+                // fixture data. withIsolatedGameState restores the real run/battle
+                // variables in memory once the test ends, but nothing repaints the
+                // screen afterward — so without this call the background game screen
+                // is left showing the last test's fixture (wrong floor/HP/gold, and
+                // relics rendered from bare {id} fixtures with no icon/name/desc).
+                renderAll();
             };
 
             const btnHeaderTests = document.getElementById('btn-run-tests');
