@@ -1415,9 +1415,7 @@
 
             let damage = cardsCount * TAKE_DAMAGE_PER_CARD;
             if (hasRelic('ace_sleeve')) damage += ACE_SLEEVE_BONUS_DAMAGE;
-            if (hasRelic('salted_wound')) {
-                damage += getEnemyDamageExcess(battle.enemyHand.length) * SALTED_WOUND_DAMAGE_PER_CARD;
-            }
+            damage += fireHookSum('onEnemyTookCards');
             damageEnemyHP(damage);
 
             battle.table = [];
@@ -1799,7 +1797,7 @@
         // handler per hook name, and game code calls fireHook()/fireAllHooks() at
         // one canonical point rather than every call site re-checking hasRelic()
         // individually. Migrated so far: safety_rope, coin_magnet, sharp_suit,
-        // cascade_transfer, heavy_ballast.
+        // cascade_transfer, heavy_ballast, salted_wound.
         const RELIC_EFFECTS = {
             safety_rope: {
                 // Called from applyPlayerDamage() only when the hit would be lethal.
@@ -1872,6 +1870,17 @@
                         damageEnemyHP(excess * HEAVY_BALLAST_DAMAGE_PER_CARD);
                     }
                 }
+            },
+            salted_wound: {
+                // Called from handleEnemyTake() via fireHookSum, folded into the
+                // single `damage` total that call site's own one damageEnemyHP()
+                // call applies. Same excess-hand formula as heavy_ballast, but a
+                // pure modifier here rather than a direct damageEnemyHP call — it
+                // must not cause its own separate HP reduction (see fireHookSum's
+                // comment for why that would be unsafe).
+                onEnemyTookCards() {
+                    return getEnemyDamageExcess(battle.enemyHand.length) * SALTED_WOUND_DAMAGE_PER_CARD;
+                }
             }
         };
 
@@ -1904,6 +1913,26 @@
                     effect[hookName](ctx);
                 }
             }
+        }
+
+        // Fires `hookName` on every owned relic that defines it and sums the
+        // numeric values each handler returns. Use this for *additive damage/gold
+        // modifier* hooks that must be folded into a single call site's own number
+        // before that call site does its one, single side-effecting call (e.g.
+        // damageEnemyHP) — unlike fireAllHooks, whose handlers each cause their own
+        // side effects independently. Splitting a modifier like salted_wound into
+        // its own damageEnemyHP call instead would risk a second "enemy defeated"
+        // trigger firing off an already-dead enemy.
+        function fireHookSum(hookName, ctx) {
+            let total = 0;
+            for (const relic of run.relics) {
+                const effect = RELIC_EFFECTS[relic.id];
+                if (effect && typeof effect[hookName] === 'function') {
+                    const result = effect[hookName](ctx);
+                    if (typeof result === 'number') total += result;
+                }
+            }
+            return total;
         }
 
         // How many cards "count" as excess in an oversized enemy hand, for relics
@@ -2914,69 +2943,122 @@
             });
 
             runner.describe('8. Сохранение прогресса (LocalStorage)', (it, assert) => {
-                const origFloor = run.floor;
-                const origGold = run.gold;
-                const origBattleEnemyHP = battle.enemyHP;
-                const origPlayerHand = [...battle.playerHand];
+                // Every test here goes through withIsolatedGameState instead of mutating
+                // the real run/battle directly. Before this refactor, tests 1, 3 and 4
+                // wrote straight to the live run/battle and relied on this describe's own
+                // origFloor/origGold/origBattleEnemyHP/origPlayerHand snapshot-and-restore
+                // at the very end to put things back — with two problems: it only patched
+                // four specific fields (not table/enemyHand/trumpCard/phase/etc., all of
+                // which loadGameState() below also overwrites), and it ran unconditionally
+                // after every it() rather than per-test, so a throw inside any one test
+                // would skip it entirely and leave the real state however that test left
+                // it. loadGameState() also reassigns the `run` variable outright
+                // (`run = parsed.run`), which — without isolation — permanently swaps the
+                // live run for a JSON-deserialized clone, breaking reference identity for
+                // every test that runs afterward.
 
                 it('Сохраняет run и battle целиком (формат с version)', () => {
-                    run.floor = 4;
-                    run.gold = 77;
-                    battle.enemyHP = 42;
-                    battle.playerHand = [{ id: 'test_save_card', suit: 'Hearts', value: 9 }];
-                    saveGameState();
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
+                        { enemyHP: 0, playerHand: [], aiTimer: null },
+                        () => {
+                            run.floor = 4;
+                            run.gold = 77;
+                            battle.enemyHP = 42;
+                            battle.playerHand = [{ id: 'test_save_card', suit: 'Hearts', value: 9 }];
+                            saveGameState();
 
-                    const raw = localStorage.getItem(SAVE_KEY);
-                    const parsed = JSON.parse(raw);
-                    assert.equal(parsed.version, SAVE_VERSION);
-                    assert.equal(parsed.run.floor, 4);
-                    assert.equal(parsed.run.gold, 77);
-                    assert.equal(parsed.battle.enemyHP, 42);
-                    assert.equal(parsed.battle.playerHand.length, 1);
+                            const raw = localStorage.getItem(SAVE_KEY);
+                            const parsed = JSON.parse(raw);
+                            assert.equal(parsed.version, SAVE_VERSION);
+                            assert.equal(parsed.run.floor, 4);
+                            assert.equal(parsed.run.gold, 77);
+                            assert.equal(parsed.battle.enemyHP, 42);
+                            assert.equal(parsed.battle.playerHand.length, 1);
+
+                            clearLocalSave();
+                        }
+                    );
                 });
 
                 it('aiTimer и actionToken НЕ попадают в сохранение', () => {
-                    saveGameState();
-                    const raw = localStorage.getItem(SAVE_KEY);
-                    const parsed = JSON.parse(raw);
-                    assert.isFalse('aiTimer' in parsed.battle);
-                    assert.isFalse('actionToken' in parsed.battle);
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
+                        { enemyHP: 10, playerHand: [], aiTimer: null, actionToken: 7 },
+                        () => {
+                            saveGameState();
+                            const raw = localStorage.getItem(SAVE_KEY);
+                            const parsed = JSON.parse(raw);
+                            assert.isFalse('aiTimer' in parsed.battle);
+                            assert.isFalse('actionToken' in parsed.battle);
+
+                            clearLocalSave();
+                        }
+                    );
                 });
 
                 it('loadGameState восстанавливает run и battle', () => {
-                    run.floor = 3;
-                    battle.enemyHP = 55;
-                    battle.playerHand = [{ id: 'restore_card', suit: 'Pikes', value: 11 }];
-                    saveGameState();
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
+                        { enemyHP: 0, playerHand: [], aiTimer: null },
+                        () => {
+                            run.floor = 3;
+                            battle.enemyHP = 55;
+                            battle.playerHand = [{ id: 'restore_card', suit: 'Pikes', value: 11 }];
+                            saveGameState();
 
-                    run.floor = 1;
-                    battle.enemyHP = 0;
-                    battle.playerHand = [];
+                            run.floor = 1;
+                            battle.enemyHP = 0;
+                            battle.playerHand = [];
 
-                    const loaded = loadGameState();
-                    assert.isTrue(loaded);
-                    assert.equal(run.floor, 3);
-                    assert.equal(battle.enemyHP, 55);
-                    assert.equal(battle.playerHand.length, 1);
+                            const loaded = loadGameState();
+                            assert.isTrue(loaded);
+                            assert.equal(run.floor, 3);
+                            assert.equal(battle.enemyHP, 55);
+                            assert.equal(battle.playerHand.length, 1);
+
+                            clearLocalSave();
+                        }
+                    );
                 });
 
                 it('После загрузки aiTimer === null', () => {
-                    saveGameState();
-                    loadGameState();
-                    assert.equal(battle.aiTimer, null);
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
+                        { enemyHP: 10, playerHand: [], aiTimer: null },
+                        () => {
+                            saveGameState();
+                            loadGameState();
+                            assert.equal(battle.aiTimer, null);
+
+                            clearLocalSave();
+                        }
+                    );
                 });
 
                 it('Несовпадение версии сбрасывает сохранение', () => {
-                    localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 1, run: { floor: 5 }, battle: {} }));
-                    const loaded = loadGameState();
-                    assert.isFalse(loaded);
-                    assert.equal(localStorage.getItem(SAVE_KEY), null);
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
+                        { enemyHP: 10, playerHand: [], aiTimer: null },
+                        () => {
+                            localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 1, run: { floor: 5 }, battle: {} }));
+                            const loaded = loadGameState();
+                            assert.isFalse(loaded);
+                            assert.equal(localStorage.getItem(SAVE_KEY), null);
+                        }
+                    );
                 });
 
                 it('clearLocalSave удаляет сохранение', () => {
-                    saveGameState();
-                    clearLocalSave();
-                    assert.isFalse(loadGameState());
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
+                        { enemyHP: 10, playerHand: [], aiTimer: null },
+                        () => {
+                            saveGameState();
+                            clearLocalSave();
+                            assert.isFalse(loadGameState());
+                        }
+                    );
                 });
 
                 it('РЕГРЕССИЯ: initNewRun() сохраняет уже инициализированный бой, а не пустой battle', () => {
@@ -2984,62 +3066,67 @@
                     // localStorage ended up with the default battle (enemyHP: 0, hands not
                     // dealt, phase: 'idle'). If the tab was closed right after starting a new
                     // game, "Continue game" would show an empty table.
-                    const oldRun = run;
-                    const oldBattle = battle;
-                    const oldAiTimer = battle.aiTimer;
+                    //
+                    // This test needs initNewRun() (which reassigns run) and
+                    // startFloorBattle() (which mutates battle in place and, via
+                    // syncEnemyDisplay(), writes the enemy header straight to the DOM) to
+                    // run against throwaway objects, not the player's real run/battle — so
+                    // it goes through withIsolatedGameState rather than hand-rolling its own
+                    // save/restore. A manual oldRun/oldBattle capture-and-restore pattern was
+                    // tried here before and had two bugs: the restore lived after the asserts
+                    // with no try/finally (skipped entirely if an assert threw), and even
+                    // when it did run it only pointed the run/battle *variables* back — it
+                    // never undid startFloorBattle()'s in-place mutation of the real battle
+                    // object's fields (table, enemyHand, trumpCard, phase, etc.), since
+                    // battle was the live object throughout, not a swapped-in fixture.
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
+                        { aiTimer: null },
+                        () => {
+                            clearLocalSave();
+                            initNewRun();
 
-                    clearAITimer();
-                    clearLocalSave();
-                    initNewRun();
+                            const raw = localStorage.getItem(SAVE_KEY);
+                            const parsed = JSON.parse(raw);
 
-                    const raw = localStorage.getItem(SAVE_KEY);
-                    const parsed = JSON.parse(raw);
+                            assert.isTrue(parsed.battle.enemyHP > 0, 'enemyHP должен быть установлен из данных врага, а не 0');
+                            assert.equal(parsed.battle.playerHand.length, HAND_SIZE, 'Рука игрока должна быть уже роздана к моменту сохранения');
+                            assert.equal(parsed.battle.enemyHand.length, HAND_SIZE, 'Рука противника должна быть уже роздана к моменту сохранения');
+                            assert.equal(parsed.battle.phase, BATTLE_PHASES.PLAYER_ATTACK, 'Фаза боя не должна остаться idle в сохранении');
+                            assert.isTrue(!!parsed.battle.trumpSuit, 'Козырь должен быть определён к моменту сохранения');
 
-                    assert.isTrue(parsed.battle.enemyHP > 0, 'enemyHP должен быть установлен из данных врага, а не 0');
-                    assert.equal(parsed.battle.playerHand.length, HAND_SIZE, 'Рука игрока должна быть уже роздана к моменту сохранения');
-                    assert.equal(parsed.battle.enemyHand.length, HAND_SIZE, 'Рука противника должна быть уже роздана к моменту сохранения');
-                    assert.equal(parsed.battle.phase, BATTLE_PHASES.PLAYER_ATTACK, 'Фаза боя не должна остаться idle в сохранении');
-                    assert.isTrue(!!parsed.battle.trumpSuit, 'Козырь должен быть определён к моменту сохранения');
-
-                    clearAITimer();
-                    run = oldRun;
-                    battle = oldBattle;
-                    battle.aiTimer = oldAiTimer;
-                    clearLocalSave();
+                            clearLocalSave();
+                        }
+                    );
                 });
 
                 it('РЕГРЕССИЯ: переход на следующий этаж сохраняет бой после его инициализации', () => {
                     // The same bug was duplicated in the btn-next-floor handler:
                     // saveRunToLocal() used to be called before startFloorBattle().
-                    const oldRun = run;
-                    const oldBattle = battle;
-                    const oldAiTimer = battle.aiTimer;
+                    // Same withIsolatedGameState reasoning as the test above — this one
+                    // additionally used to leave the *real* battle's table/enemyHand/
+                    // trumpCard/phase/etc. overwritten with a floor-2 fresh-battle fixture,
+                    // and "Уличный Мошенник" (floor 2's filler) stuck in the #enemy-name DOM
+                    // element for the rest of the play session.
+                    withIsolatedGameState(
+                        { floor: 2, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
+                        { aiTimer: null },
+                        () => {
+                            clearLocalSave();
+                            startFloorBattle();
+                            saveRunToLocal();
 
-                    clearAITimer();
-                    clearLocalSave();
-                    run = { floor: 2, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() };
-                    startFloorBattle();
-                    saveRunToLocal();
+                            const raw = localStorage.getItem(SAVE_KEY);
+                            const parsed = JSON.parse(raw);
 
-                    const raw = localStorage.getItem(SAVE_KEY);
-                    const parsed = JSON.parse(raw);
+                            assert.equal(parsed.battle.enemyHP, ENEMIES[1].hp, 'enemyHP в сохранении должен соответствовать врагу нового этажа');
+                            assert.equal(parsed.battle.playerHand.length, HAND_SIZE, 'Рука игрока должна быть роздана к моменту сохранения на новом этаже');
+                            assert.equal(parsed.battle.phase, BATTLE_PHASES.PLAYER_ATTACK, 'Фаза боя не должна остаться idle при переходе на новый этаж');
 
-                    assert.equal(parsed.battle.enemyHP, ENEMIES[1].hp, 'enemyHP в сохранении должен соответствовать врагу нового этажа');
-                    assert.equal(parsed.battle.playerHand.length, HAND_SIZE, 'Рука игрока должна быть роздана к моменту сохранения на новом этаже');
-                    assert.equal(parsed.battle.phase, BATTLE_PHASES.PLAYER_ATTACK, 'Фаза боя не должна остаться idle при переходе на новый этаж');
-
-                    clearAITimer();
-                    run = oldRun;
-                    battle = oldBattle;
-                    battle.aiTimer = oldAiTimer;
-                    clearLocalSave();
+                            clearLocalSave();
+                        }
+                    );
                 });
-
-                run.floor = origFloor;
-                run.gold = origGold;
-                battle.enemyHP = origBattleEnemyHP;
-                battle.playerHand = origPlayerHand;
-                clearLocalSave();
             });
 
             runner.describe('8b. preserveLocalSaveAround (изоляция реального сейва от тестов)', (it, assert) => {
@@ -3659,6 +3746,41 @@
                     );
                 });
 
+                it('handleEnemyTake: fireHookSum суммирует вклад нескольких onEnemyTookCards, а не перезаписывает (регрессия при миграции salted_wound)', () => {
+                    // With a single onEnemyTookCards owner (salted_wound itself),
+                    // a broken fireHookSum that kept only the *last* numeric result
+                    // instead of summing would look identical. This throwaway second
+                    // owner proves the two bonuses actually add together.
+                    let otherHookCalled = false;
+                    RELIC_EFFECTS.__test_take = {
+                        onEnemyTookCards() { otherHookCalled = true; return 5; }
+                    };
+                    try {
+                        withIsolatedGameState(
+                            { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'salted_wound' }, { id: '__test_take' }], deck: [] },
+                            {
+                                drawDeck: [], discardPile: [], playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
+                                enemyHand: Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, suit: 'Pikes', value: 6 })),
+                                trumpCard: null, trumpSuit: 'Hearts',
+                                table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }],
+                                defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
+                                enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                                cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                                jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            },
+                            () => {
+                                handleEnemyTake();
+                                // enemyHand: 6 (исходно) + 1 (со стола) = 7 → избыток 1
+                                // урон: 1 карта × TAKE_DAMAGE_PER_CARD(2) + 1 (salted_wound) + 5 (__test_take) = 8
+                                assert.isTrue(otherHookCalled, 'Второй владелец onEnemyTookCards должен сработать');
+                                assert.equal(battle.enemyHP, 42, 'Оба бонуса должны сложиться в общий урон, а не перезаписать друг друга');
+                            }
+                        );
+                    } finally {
+                        delete RELIC_EFFECTS.__test_take;
+                    }
+                });
+
                 it('ballast_drop: при взятии карт сбрасывает 2 некозырные карты наименьшего ранга', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'ballast_drop' }], deck: [] },
@@ -3953,14 +4075,16 @@
                 const results = runGameUnitTests();
                 renderTestResultsUI(results);
                 // Tests drive real game functions (executeEnemyAI, handlePlayerTake,
-                // etc.) against throwaway fixtures via withIsolatedGameState. Those
-                // functions call renderAll() as a side effect, painting the DOM with
-                // fixture data. withIsolatedGameState restores the real run/battle
-                // variables in memory once the test ends, but nothing repaints the
-                // screen afterward — so without this call the background game screen
-                // is left showing the last test's fixture (wrong floor/HP/gold, and
-                // relics rendered from bare {id} fixtures with no icon/name/desc).
+                // startFloorBattle, etc.) against throwaway fixtures via
+                // withIsolatedGameState or manual run/battle swaps. Those functions
+                // call renderAll() and/or syncEnemyDisplay() as a side effect,
+                // painting the DOM with fixture data. Restoring the real run/battle
+                // variables in memory doesn't undo that DOM write, so both must be
+                // re-run here to repaint the screen from the (now restored) real
+                // state — renderAll() alone misses the enemy header block, which
+                // syncEnemyDisplay() owns exclusively (see its call sites).
                 renderAll();
+                syncEnemyDisplay();
             };
 
             const btnHeaderTests = document.getElementById('btn-run-tests');
