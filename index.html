@@ -2126,6 +2126,9 @@
         }
 
         function renderAll() {
+            // Enemy header (name, level, avatar, ability) is a pure projection of
+            // run.floor, so it is repainted here together with everything else.
+            syncEnemyDisplay();
             setElText('player-hp-display', `${run.playerHP}/${run.maxHP}`);
             setElText('player-gold-display', `${run.gold}$`);
             setElText('shop-hp-display', `${run.playerHP}/${run.maxHP}`);
@@ -3978,6 +3981,36 @@
                 });
             });
 
+            runner.describe('12. Отрисовка шапки врага (renderAll как единственная проекция состояния)', (it, assert) => {
+                it('renderAll() перерисовывает имя, уровень и аватар врага из текущего run.floor', () => {
+                    const expected = getCurrentEnemy();
+                    setElText('enemy-name', '__СТАРОЕ_ИМЯ__');
+                    setElText('enemy-level', '999');
+                    const avatarEl = document.getElementById('enemy-avatar');
+                    if (avatarEl) avatarEl.innerText = '__X__';
+
+                    renderAll();
+
+                    assert.equal(document.getElementById('enemy-name').innerText, expected.name);
+                    assert.equal(document.getElementById('enemy-level').innerText, String(expected.level));
+                    if (avatarEl) assert.equal(avatarEl.innerText, expected.avatar);
+                });
+
+                it('РЕГРЕССИЯ: после теста на фикстуре другого этажа renderAll() возвращает имя реального врага', () => {
+                    const realName = getCurrentEnemy().name;
+                    withIsolatedGameState(
+                        { floor: ENEMIES.length, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() },
+                        { aiTimer: null },
+                        () => {
+                            startFloorBattle(); // paints the fixture floor's enemy into the DOM
+                            assert.equal(document.getElementById('enemy-name').innerText, ENEMIES[ENEMIES.length - 1].name);
+                        }
+                    );
+                    renderAll();
+                    assert.equal(document.getElementById('enemy-name').innerText, realName);
+                });
+            });
+
             // Some tests call game functions (e.g. handlePlayerTake) that autosave as a
             // side effect, which would otherwise overwrite the player's real save with
             // fake test fixtures. preserveLocalSaveAround guarantees the real save is
@@ -4004,6 +4037,16 @@
                 const cancelBtn = document.getElementById('msg-btn-cancel');
                 if (cancelBtn) cancelBtn.onclick = null;
                 clearAITimer();
+                // Tests drive real game functions (startFloorBattle, executeEnemyAI,
+                // etc.) against throwaway fixtures, which paint the DOM with fixture
+                // data. Restoring run/battle in memory does not undo that, so repaint
+                // the whole screen from the restored real state. Doing it here (not in
+                // a UI click handler) covers every caller, e.g. headless runs.
+                try {
+                    renderAll();
+                } catch (err) {
+                    console.warn("Failed to repaint screen after tests:", err);
+                }
             }
         }
 
@@ -4072,19 +4115,8 @@
 
         function initUnitTestsUI() {
             const runTestsAction = () => {
-                const results = runGameUnitTests();
-                renderTestResultsUI(results);
-                // Tests drive real game functions (executeEnemyAI, handlePlayerTake,
-                // startFloorBattle, etc.) against throwaway fixtures via
-                // withIsolatedGameState or manual run/battle swaps. Those functions
-                // call renderAll() and/or syncEnemyDisplay() as a side effect,
-                // painting the DOM with fixture data. Restoring the real run/battle
-                // variables in memory doesn't undo that DOM write, so both must be
-                // re-run here to repaint the screen from the (now restored) real
-                // state — renderAll() alone misses the enemy header block, which
-                // syncEnemyDisplay() owns exclusively (see its call sites).
-                renderAll();
-                syncEnemyDisplay();
+                // runGameUnitTests() repaints the screen from the restored real state itself.
+                renderTestResultsUI(runGameUnitTests());
             };
 
             const btnHeaderTests = document.getElementById('btn-run-tests');
