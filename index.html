@@ -1367,14 +1367,12 @@
                     handleEnemyTake();
                     return;
                 } else {
-                    if (hasRelic('midas_touch')) {
-                        run.gold += MIDAS_TOUCH_GOLD_ON_DEFEND;
-                    }
                     battle.discardPile.push(...battle.table);
                     battle.table = [];
                     battle.defender = 'player';
                 }
             } else {
+                fireAllHooks('onDefenseSucceeded');
                 battle.discardPile.push(...battle.table);
                 battle.table = [];
                 battle.defender = 'enemy';
@@ -1814,7 +1812,7 @@
         // handler per hook name, and game code calls fireHook()/fireAllHooks() at
         // one canonical point rather than every call site re-checking hasRelic()
         // individually. Migrated so far: safety_rope, coin_magnet, sharp_suit,
-        // cascade_transfer, heavy_ballast, salted_wound, ace_sleeve, mirror_ring.
+        // cascade_transfer, heavy_ballast, salted_wound, ace_sleeve, mirror_ring, midas_touch.
         const RELIC_EFFECTS = {
             safety_rope: {
                 // Called from applyPlayerDamage() only when the hit would be lethal.
@@ -1850,6 +1848,18 @@
                     if (card.suit === battle.trumpSuit) {
                         damageEnemyHP(SHARP_SUIT_DAMAGE);
                     }
+                }
+            },
+            midas_touch: {
+                // Called from handleBito() when the PLAYER is the defender and
+                // the round ends with every attack beaten (the player pressed
+                // БИТО / the AI called bito; taking cards goes through
+                // handlePlayerTake() and never reaches this hook). Fires once
+                // per round, not once per beaten card — so it is deliberately
+                // NOT wired to onPlayerDefend, which fires per card. Additive,
+                // so dispatched via fireAllHooks().
+                onDefenseSucceeded() {
+                    run.gold += MIDAS_TOUCH_GOLD_ON_DEFEND;
                 }
             },
             cascade_transfer: {
@@ -3881,7 +3891,7 @@
                     // name here too.
                     const KNOWN_HOOKS = [
                         'onTransfer', 'onEnemyTookCards', 'onPlayerTookCards', 'onEnemyTurnStart',
-                        'onCardPlayed', 'onPlayerDefend', 'onLethalDamage'
+                        'onCardPlayed', 'onPlayerDefend', 'onLethalDamage', 'onDefenseSucceeded'
                     ];
                     const relicIds = ALL_RELICS.map(r => r.id);
                     for (const [relicId, effect] of Object.entries(RELIC_EFFECTS)) {
@@ -4316,6 +4326,129 @@
                             assert.equal(battle.drawDeck.length, 0);
                             assert.equal(battle.discardPile[0].id, 'a1');
                             assert.isTrue(battle.sleightOfHandUsedThisBattle);
+                        }
+                    );
+                });
+
+                it('midas_touch: +MIDAS_TOUCH_GOLD_ON_DEFEND один раз за раунд, когда игрок отбил все карты и раунд закончился бито', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [],
+                            playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
+                            enemyHand: [],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: { id: 'd1', suit: 'Pikes', value: 7 } }, { attack: { id: 'a2', suit: 'Pikes', value: 10 }, defend: { id: 'd2', suit: 'Pikes', value: 11 } }],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handleBito();
+                            assert.equal(run.gold, MIDAS_TOUCH_GOLD_ON_DEFEND, 'Золото должно начислиться один раз за раунд, а не за каждую отбитую карту');
+                        }
+                    );
+                });
+
+                it('midas_touch: то же самое, когда бито вызывает ИИ (handleBito(true)), а игрок уже отбил всё', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [],
+                            playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
+                            enemyHand: [],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: { id: 'd1', suit: 'Pikes', value: 7 } }],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handleBito(true);
+                            assert.equal(run.gold, MIDAS_TOUCH_GOLD_ON_DEFEND);
+                        }
+                    );
+                });
+
+                it('midas_touch: без артефакта золото не начисляется', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [],
+                            playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
+                            enemyHand: [],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: { id: 'd1', suit: 'Pikes', value: 7 } }, { attack: { id: 'a2', suit: 'Pikes', value: 10 }, defend: { id: 'd2', suit: 'Pikes', value: 11 } }],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handleBito();
+                            assert.equal(run.gold, 0);
+                        }
+                    );
+                });
+
+                it('midas_touch: НЕ срабатывает, когда игрок взял карты (handlePlayerTake) или когда успешно отбился враг', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [],
+                            playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
+                            enemyHand: [],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: null }],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handlePlayerTake();
+                            assert.equal(run.gold, 0, 'Игрок взял карты — это не успешная защита');
+                        }
+                    );
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [],
+                            playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
+                            enemyHand: [],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: { id: 'd1', suit: 'Pikes', value: 7 } }],
+                            defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handleBito();
+                            assert.equal(run.gold, 0, 'Когда отбивается враг, золото не даётся (поведение до этой правки)');
+                        }
+                    );
+                });
+
+                it('midas_touch: НЕ срабатывает посреди раунда — отбитие одной карты (onPlayerDefend) золота не даёт', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [],
+                            playerHand: [{ id: 'p9', suit: 'Pikes', value: 9 }],
+                            enemyHand: [],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'a1', suit: 'Pikes', value: 8 }, defend: null }],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            onPlayerCardClick(0);
+                            assert.equal(run.gold, 0, 'Золото начисляется только при завершении раунда, а не за каждую карту');
                         }
                     );
                 });
