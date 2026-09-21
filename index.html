@@ -826,6 +826,7 @@
         const BOSS_MAX_HP_BONUS = 5;
 
         const MIDAS_TOUCH_GOLD_ON_DEFEND = 3;
+        const BALLAST_DROP_DISCARD_COUNT = 2;
         const WIN_GOLD_BASE = 10;
         const WIN_GOLD_PER_FLOOR = 2;
 
@@ -1473,16 +1474,14 @@
             const enemyJustDied = enemyHPBeforeHooks > 0 && battle.enemyHP <= 0;
 
             // Victory takes priority: if a hook just killed the enemy, the battle is
-            // over before this take's own consequences land. Skip ballast_drop and the
-            // self-damage entirely, so the player can't be defeated (and safety_rope
+            // over before this take's own consequences land. Skip the onPlayerTakePenalty
+            // hook (ballast_drop) and the self-damage entirely, so the player can't be defeated (and safety_rope
             // isn't consumed) on the same turn they won. Same "enemy death ends the
             // turn" rule as the onEnemyTurnStart early return in executeEnemyAI().
             let isDefeated = false;
             let savedBySafetyRope = false;
             if (!enemyJustDied) {
-                if (hasRelic('ballast_drop')) {
-                    discardLowestNonTrumpCards(battle.playerHand, 2);
-                }
+                fireAllHooks('onPlayerTakePenalty');
                 ({ isDefeated, savedBySafetyRope } = applyPlayerDamage(selfDamage));
             }
 
@@ -1812,7 +1811,7 @@
         // handler per hook name, and game code calls fireHook()/fireAllHooks() at
         // one canonical point rather than every call site re-checking hasRelic()
         // individually. Migrated so far: safety_rope, coin_magnet, sharp_suit,
-        // cascade_transfer, heavy_ballast, salted_wound, ace_sleeve, mirror_ring, midas_touch.
+        // cascade_transfer, heavy_ballast, salted_wound, ace_sleeve, mirror_ring, midas_touch, ballast_drop.
         const RELIC_EFFECTS = {
             safety_rope: {
                 // Called from applyPlayerDamage() only when the hit would be lethal.
@@ -1931,6 +1930,20 @@
                 // comment for why that would be unsafe).
                 onEnemyTookCards() {
                     return getEnemyDamageExcess(battle.enemyHand.length) * SALTED_WOUND_DAMAGE_PER_CARD;
+                }
+            },
+            ballast_drop: {
+                // Called from handlePlayerTake() via fireAllHooks, after the cards
+                // from the table are already in the player's hand and only if the
+                // take did NOT just kill the enemy (victory takes priority over the
+                // take's own consequences). Deliberately a separate hook from
+                // onPlayerTookCards: that one fires BEFORE the enemy-death check, so
+                // a discard there would hit the hand of a player who already won.
+                // Fires before applyPlayerDamage(), same order as the old inline
+                // check. Dispatched via fireAllHooks: a pure side effect on the
+                // hand, nothing to intercept or sum.
+                onPlayerTakePenalty() {
+                    discardLowestNonTrumpCards(battle.playerHand, BALLAST_DROP_DISCARD_COUNT);
                 }
             }
         };
@@ -3891,7 +3904,8 @@
                     // name here too.
                     const KNOWN_HOOKS = [
                         'onTransfer', 'onEnemyTookCards', 'onPlayerTookCards', 'onEnemyTurnStart',
-                        'onCardPlayed', 'onPlayerDefend', 'onLethalDamage', 'onDefenseSucceeded'
+                        'onCardPlayed', 'onPlayerDefend', 'onLethalDamage', 'onDefenseSucceeded',
+                        'onPlayerTakePenalty'
                     ];
                     const relicIds = ALL_RELICS.map(r => r.id);
                     for (const [relicId, effect] of Object.entries(RELIC_EFFECTS)) {
@@ -4160,6 +4174,40 @@
                             assert.equal(battle.discardPile.filter(c => c.id === 'p1' || c.id === 'p2').length, 2);
                         }
                     );
+                });
+
+                it('ballast_drop: не срабатывает, если взятие добило врага через mirror_ring (победа приоритетнее)', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }, { id: 'ballast_drop' }], deck: [] },
+                        {
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            discardPile: [],
+                            playerHand: [
+                                { id: 'p1', suit: 'Pikes', value: 7 },
+                                { id: 'p2', suit: 'Pikes', value: 6 },
+                            ],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null }],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 1, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handlePlayerTake();
+                            assert.equal(battle.enemyHP, 0);
+                            assert.equal(battle.discardPile.filter(c => c.id === 'p1' || c.id === 'p2').length, 0, 'Сброс балласта не должен срабатывать после победы');
+
+                            const msgBox = document.getElementById('msg-box');
+                            if (msgBox) { msgBox.classList.add('hidden'); msgBox.classList.remove('flex'); }
+                        }
+                    );
+                });
+
+                it('ballast_drop: описание называет то же число карт, что и BALLAST_DROP_DISCARD_COUNT', () => {
+                    const relic = ALL_RELICS.find(r => r.id === 'ballast_drop');
+                    assert.isTrue(relic.desc.includes(`${BALLAST_DROP_DISCARD_COUNT} некозырные`), `Описание должно называть ${BALLAST_DROP_DISCARD_COUNT} некозырные карты: «${relic.desc}»`);
                 });
 
                 it('coin_magnet: +1$ за каждую сыгранную шестёрку', () => {
