@@ -838,7 +838,7 @@
         const CASCADE_TRANSFER_DAMAGE = 4;
         const COIN_MAGNET_GOLD_PER_SIX = 1;
         const SHARP_SUIT_DAMAGE = 1;
-        const MIRROR_RING_MULTIPLIER = 2;
+        const MIRROR_RING_MULTIPLIER = 1;
 
         const AI_QUICK_DELAY_MS = 400;
         const AI_STANDARD_DELAY_MS = 500;
@@ -849,7 +849,7 @@
             { id: "ace_sleeve", name: "Туз в рукаве", icon: "🃏", desc: "Заставление врага взять карты наносит +5 ед. дополнительного урона.", price: 12 },
             { id: "bully_throw", name: "Безжалостный подкидыш", icon: "💣", desc: "Позволяет подкидывать до 12 карт (ограничивается рукой защитника).", price: 15 },
             { id: "midas_touch", name: "Золотое пальто", icon: "🪙", desc: "Получайте +3$ каждый раз, когда успешно отбиваетесь.", price: 10 },
-            { id: "mirror_ring", name: "Зеркальный перстень", icon: "💍", desc: "Когда вы берете карты со стола, враг получает двойной урон от количества взятых карт.", price: 14 },
+            { id: "mirror_ring", name: "Зеркальный перстень", icon: "💍", desc: "Когда вы берете карты со стола, враг получает 2 урона за каждую взятую карту.", price: 14 },
             { id: "cheat_eye", name: "Шулерский глаз", icon: "👁️", desc: "Показывает вам наименьшую карту в руке соперника.", price: 8 },
             { id: "pocket_discard", name: "Карманный сброс", icon: "✂️", desc: "Раз за раунд можно безвозвратно сбросить из руки шестёрку или семёрку прямо в отбой.", price: 7 },
             { id: "spam_mail", name: "Спам-рассылка", icon: "✉️", desc: "Когда враг забирает карты со стола, он дополнительно берёт верхнюю карту из колоды.", price: 9 },
@@ -1413,9 +1413,13 @@
                 battle.enemyHand.push(battle.drawDeck.pop());
             }
 
+            const enemyHPBeforeDamage = battle.enemyHP;
             let damage = cardsCount * TAKE_DAMAGE_PER_CARD;
             damage += fireHookSum('onEnemyTookCards');
             damageEnemyHP(damage);
+            // Only "just died" counts (alive before, dead now), not merely
+            // enemyHP <= 0: fixtures that never set HP start at 0.
+            const enemyJustDied = enemyHPBeforeDamage > 0 && battle.enemyHP <= 0;
 
             battle.table = [];
             battle.cardsToTake = false;
@@ -1425,6 +1429,9 @@
             replenishHands(currentDefender);
             saveRunToLocal();
             renderAll();
+            // The win modal is already up (its close handler opens the shop). Don't
+            // let checkRoundEnd() replace it with a round-over modal or advance the phase.
+            if (enemyJustDied) return;
             if (!checkRoundEnd()) enterPlayerPhase();
         }
 
@@ -1459,20 +1466,27 @@
             const levelMultiplier = enemyData.abilityId === 'double_penalty' ? 2 : 1;
             const selfDamage = cardsTakenCount * enemyData.level * levelMultiplier;
 
-            // mirror_ring reflects damage based on the raw number of cards taken
-            // (the same baseline the enemy's own take-damage uses), NOT the
-            // already-scaled selfDamage above. Reflecting the scaled value let the
-            // enemy's own level/double_penalty multiplier compound with this
-            // relic's own x2, snowballing far past what "double damage" should mean.
-            if (hasRelic('mirror_ring')) {
-                damageEnemyHP(cardsTakenCount * TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER);
-            }
+            // Hooks receive the raw number of cards taken (the same baseline the
+            // enemy's own take-damage uses), NOT the already-scaled selfDamage above.
+            const enemyHPBeforeHooks = battle.enemyHP;
+            fireAllHooks('onPlayerTookCards', { cardsTakenCount });
+            // Only "just died" counts (alive before, dead now), not merely
+            // enemyHP <= 0: fixtures that never set HP start at 0.
+            const enemyJustDied = enemyHPBeforeHooks > 0 && battle.enemyHP <= 0;
 
-            if (hasRelic('ballast_drop')) {
-                discardLowestNonTrumpCards(battle.playerHand, 2);
+            // Victory takes priority: if a hook just killed the enemy, the battle is
+            // over before this take's own consequences land. Skip ballast_drop and the
+            // self-damage entirely, so the player can't be defeated (and safety_rope
+            // isn't consumed) on the same turn they won. Same "enemy death ends the
+            // turn" rule as the onEnemyTurnStart early return in executeEnemyAI().
+            let isDefeated = false;
+            let savedBySafetyRope = false;
+            if (!enemyJustDied) {
+                if (hasRelic('ballast_drop')) {
+                    discardLowestNonTrumpCards(battle.playerHand, 2);
+                }
+                ({ isDefeated, savedBySafetyRope } = applyPlayerDamage(selfDamage));
             }
-
-            const { isDefeated, savedBySafetyRope } = applyPlayerDamage(selfDamage);
 
             battle.table = [];
             battle.defender = 'player';
@@ -1481,6 +1495,10 @@
             replenishHands(currentDefender);
             saveRunToLocal();
             renderAll();
+
+            // The win modal is already up (its close handler opens the shop): no
+            // round-end modal over it and no AI turn for a dead enemy.
+            if (enemyJustDied) return;
 
             if (isDefeated) {
                 clearLocalSave();
@@ -1796,7 +1814,7 @@
         // handler per hook name, and game code calls fireHook()/fireAllHooks() at
         // one canonical point rather than every call site re-checking hasRelic()
         // individually. Migrated so far: safety_rope, coin_magnet, sharp_suit,
-        // cascade_transfer, heavy_ballast, salted_wound, ace_sleeve.
+        // cascade_transfer, heavy_ballast, salted_wound, ace_sleeve, mirror_ring.
         const RELIC_EFFECTS = {
             safety_rope: {
                 // Called from applyPlayerDamage() only when the hit would be lethal.
@@ -1877,6 +1895,21 @@
                 // so it can't trigger a second "enemy defeated" off a dead enemy.
                 onEnemyTookCards() {
                     return ACE_SLEEVE_BONUS_DAMAGE;
+                }
+            },
+            mirror_ring: {
+                // Called from handlePlayerTake() via fireAllHooks with
+                // { cardsTakenCount }. Reflects damage based on that raw count,
+                // NOT the already-scaled selfDamage: reflecting the scaled value
+                // let the enemy's own level/double_penalty multiplier compound
+                // with this relic's own MIRROR_RING_MULTIPLIER, snowballing far
+                // past the intended damage. The result is the same per-card
+                // baseline the enemy takes when it takes cards itself (scaled
+                // only by MIRROR_RING_MULTIPLIER). Dispatched via fireAllHooks (not fireHook):
+                // it's a direct damage source, so another onPlayerTookCards owner
+                // shouldn't be skipped just because this one fired.
+                onPlayerTookCards({ cardsTakenCount }) {
+                    damageEnemyHP(cardsTakenCount * TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER);
                 }
             },
             salted_wound: {
@@ -3473,7 +3506,7 @@
                     assert.equal(getEnemyDamageExcess(20), 4); // не растёт дальше кэпа
                 });
 
-                it('mirror_ring (нерф): урон = взятые карты × TAKE_DAMAGE_PER_CARD × 2, БЕЗ учёта уровня/double_penalty', () => {
+                it('mirror_ring (нерф): урон = взятые карты × TAKE_DAMAGE_PER_CARD × MIRROR_RING_MULTIPLIER, БЕЗ учёта уровня/double_penalty', () => {
                     withIsolatedGameState(
                         { floor: 12, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
                         {
@@ -3493,9 +3526,11 @@
                         },
                         () => {
                             handlePlayerTake();
-                            // 3 карты × TAKE_DAMAGE_PER_CARD(2) × 2 = 12 — не 48, как было бы при
-                            // старой формуле (3 × уровень 4 × double_penalty 2 = 24, затем ×2 = 48).
-                            assert.equal(battle.enemyHP, 88);
+                            // 3 карты × TAKE_DAMAGE_PER_CARD(2) × MIRROR_RING_MULTIPLIER(1) = 6. На этаже 12
+                            // (уровень 4, double_penalty) формула, зависящая от уровня, дала бы куда больше:
+                            // 3 × 4 × 2 = 24 урона по игроку, отражённые уже без масштабирования уровнем.
+                            assert.equal(battle.enemyHP, 100 - 3 * TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER);
+                            assert.equal(battle.enemyHP, 94);
                         }
                     );
                 });
@@ -3790,6 +3825,240 @@
                     } finally {
                         delete RELIC_EFFECTS.__test_take;
                     }
+                });
+
+                it('handlePlayerTake: onPlayerTookCards получает cardsTakenCount и вызывает всех владельцев (регрессия при миграции mirror_ring)', () => {
+                    // With a single owner (mirror_ring itself) a fireHook that
+                    // stopped after the first truthy result would look identical,
+                    // and so would a call site that forgot to pass the ctx. This
+                    // throwaway second owner proves both.
+                    let seenCount = null;
+                    RELIC_EFFECTS.__test_player_take = {
+                        onPlayerTookCards(ctx) { seenCount = ctx.cardsTakenCount; return true; }
+                    };
+                    try {
+                        withIsolatedGameState(
+                            { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: '__test_player_take' }, { id: 'mirror_ring' }], deck: [] },
+                            {
+                                drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                                discardPile: [], playerHand: [],
+                                enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                                trumpCard: null, trumpSuit: 'Hearts',
+                                table: [
+                                    { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
+                                    { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
+                                ],
+                                defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                                enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                                cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                                jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            },
+                            () => {
+                                handlePlayerTake();
+                                assert.equal(seenCount, 2, 'Хук должен получить число взятых карт в ctx.cardsTakenCount');
+                                // Первый владелец вернул truthy, но mirror_ring стоит вторым и всё равно должен сработать:
+                                // 2 карты × TAKE_DAMAGE_PER_CARD(2) × MIRROR_RING_MULTIPLIER(2) = 8
+                                assert.equal(battle.enemyHP, 100 - 2 * TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER);
+                            }
+                        );
+                    } finally {
+                        delete RELIC_EFFECTS.__test_player_take;
+                    }
+                });
+
+                it('mirror_ring: число в описании совпадает с реальным уроном за карту', () => {
+                    // The description hardcodes the number (like ace_sleeve's "+5"), so
+                    // this fails if either constant changes without the text.
+                    const relic = ALL_RELICS.find(r => r.id === 'mirror_ring');
+                    const perCard = TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER;
+                    assert.isTrue(relic.desc.includes(`${perCard} урона`), `Описание должно называть ${perCard} урона за карту: «${relic.desc}»`);
+                });
+
+                it('целостность реестра: каждый ключ RELIC_EFFECTS — существующий артефакт, каждый обработчик — известный хук', () => {
+                    // A misspelled relic id or hook name doesn't throw anywhere: the
+                    // dispatchers just never find it and the relic silently does
+                    // nothing. When a new fire*() call site is added, add its hook
+                    // name here too.
+                    const KNOWN_HOOKS = [
+                        'onTransfer', 'onEnemyTookCards', 'onPlayerTookCards', 'onEnemyTurnStart',
+                        'onCardPlayed', 'onPlayerDefend', 'onLethalDamage'
+                    ];
+                    const relicIds = ALL_RELICS.map(r => r.id);
+                    for (const [relicId, effect] of Object.entries(RELIC_EFFECTS)) {
+                        assert.isTrue(relicIds.includes(relicId), `RELIC_EFFECTS.${relicId}: нет такого артефакта в ALL_RELICS (опечатка в id?)`);
+                        for (const [key, value] of Object.entries(effect)) {
+                            if (typeof value !== 'function') continue;
+                            assert.isTrue(KNOWN_HOOKS.includes(key), `RELIC_EFFECTS.${relicId}.${key}: неизвестное имя хука (опечатка или не добавлен в KNOWN_HOOKS?)`);
+                        }
+                    }
+                });
+
+                it('mirror_ring добивает врага при взятии карт: награда выдаётся один раз, победная модалка, урон от взятия не применяется', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
+                        {
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            discardPile: [], playerHand: [],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [
+                                { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
+                                { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
+                            ],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handlePlayerTake();
+                            // 2 карты × 2 × 2 = 8 ≥ 4 HP врага
+                            assert.equal(battle.enemyHP, 0);
+                            assert.equal(run.gold, WIN_GOLD_BASE + 1 * WIN_GOLD_PER_FLOOR, 'Награда за победу должна выдаться ровно один раз');
+                            assert.equal(document.getElementById('msg-title').innerText, 'Победа в Бою!');
+                            // Победа приоритетнее: бой закончился раньше, чем урон от взятия карт был применён
+                            assert.equal(run.playerHP, 100, 'Урон по игроку от этого взятия не применяется, если враг уже добит');
+
+                            const msgBox = document.getElementById('msg-box');
+                            if (msgBox) { msgBox.classList.add('hidden'); msgBox.classList.remove('flex'); }
+                        }
+                    );
+                });
+
+                it('handlePlayerTake: если хук добил врага — ИИ не планируется, фаза остаётся RESOLVING', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
+                        {
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            discardPile: [], playerHand: [],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [
+                                { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
+                                { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
+                            ],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handlePlayerTake();
+                            assert.equal(battle.enemyHP, 0);
+                            assert.equal(battle.aiTimer, null, 'ИИ не должен ходить за мёртвого врага под модалкой победы');
+                            assert.isTrue(battle.phase !== BATTLE_PHASES.AI_WAITING, 'Фаза не должна переходить в AI_WAITING после победы');
+                            const msgBox = document.getElementById('msg-box');
+                            if (msgBox) { msgBox.classList.add('hidden'); msgBox.classList.remove('flex'); }
+                        }
+                    );
+                });
+
+                it('победа приоритетнее: хук добил врага, а взятие было бы смертельным для игрока — поражения нет, HP не тронуто', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 1, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
+                        {
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            discardPile: [], playerHand: [],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [
+                                { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
+                                { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
+                            ],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handlePlayerTake();
+                            assert.equal(battle.enemyHP, 0);
+                            assert.equal(document.getElementById('msg-title').innerText, 'Победа в Бою!', 'Модалка поражения не должна перекрывать победу');
+                            assert.equal(run.playerHP, 1);
+                            assert.equal(run.gold, WIN_GOLD_BASE + 1 * WIN_GOLD_PER_FLOOR, 'Награда выдаётся один раз');
+                            const msgBox = document.getElementById('msg-box');
+                            if (msgBox) { msgBox.classList.add('hidden'); msgBox.classList.remove('flex'); }
+                        }
+                    );
+                });
+
+                it('победа приоритетнее: safety_rope не тратится и не перекрывает модалку победы, если враг добит тем же взятием', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 1, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }, { id: 'safety_rope' }], deck: [] },
+                        {
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            discardPile: [], playerHand: [],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [
+                                { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
+                                { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
+                            ],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handlePlayerTake();
+                            assert.equal(document.getElementById('msg-title').innerText, 'Победа в Бою!');
+                            assert.isTrue(hasRelic('safety_rope'), 'Трос не должен расходоваться: смертельный урон не применялся');
+                            const msgBox = document.getElementById('msg-box');
+                            if (msgBox) { msgBox.classList.add('hidden'); msgBox.classList.remove('flex'); }
+                        }
+                    );
+                });
+
+                it('handlePlayerTake: если враг жив — ИИ по-прежнему планируется (защита от чрезмерного гарда)', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
+                        {
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            discardPile: [], playerHand: [],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [
+                                { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
+                                { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
+                            ],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handlePlayerTake();
+                            assert.isTrue(battle.enemyHP > 0);
+                            assert.isTrue(battle.aiTimer !== null, 'ИИ должен быть запланирован, пока враг жив');
+                            assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
+                        }
+                    );
+                });
+
+                it('handleEnemyTake: если враг умер от взятия карт — модалку победы не перекрывает round-end модалка, фаза не меняется', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [], playerHand: [],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }],
+                            defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
+                            enemyHP: TAKE_DAMAGE_PER_CARD, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handleEnemyTake();
+                            assert.equal(battle.enemyHP, 0);
+                            // Колода пуста, стол пуст и рука игрока пуста: без гарда checkRoundEnd()
+                            // показал бы «Раунд Выигран!» поверх победной модалки и потерял бы её openShop().
+                            assert.equal(document.getElementById('msg-title').innerText, 'Победа в Бою!');
+                            assert.equal(battle.phase, BATTLE_PHASES.RESOLVING, 'enterPlayerPhase() не должен вызываться после победы');
+                            const msgBox = document.getElementById('msg-box');
+                            if (msgBox) { msgBox.classList.add('hidden'); msgBox.classList.remove('flex'); }
+                        }
+                    );
                 });
 
                 it('ace_sleeve: при взятии карт врагом добавляет +ACE_SLEEVE_BONUS_DAMAGE к урону (через хук onEnemyTookCards)', () => {
