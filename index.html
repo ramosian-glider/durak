@@ -1414,7 +1414,6 @@
             }
 
             let damage = cardsCount * TAKE_DAMAGE_PER_CARD;
-            if (hasRelic('ace_sleeve')) damage += ACE_SLEEVE_BONUS_DAMAGE;
             damage += fireHookSum('onEnemyTookCards');
             damageEnemyHP(damage);
 
@@ -1797,7 +1796,7 @@
         // handler per hook name, and game code calls fireHook()/fireAllHooks() at
         // one canonical point rather than every call site re-checking hasRelic()
         // individually. Migrated so far: safety_rope, coin_magnet, sharp_suit,
-        // cascade_transfer, heavy_ballast, salted_wound.
+        // cascade_transfer, heavy_ballast, salted_wound, ace_sleeve.
         const RELIC_EFFECTS = {
             safety_rope: {
                 // Called from applyPlayerDamage() only when the hit would be lethal.
@@ -1869,6 +1868,15 @@
                     if (excess > 0) {
                         damageEnemyHP(excess * HEAVY_BALLAST_DAMAGE_PER_CARD);
                     }
+                }
+            },
+            ace_sleeve: {
+                // Called from handleEnemyTake() via fireHookSum, folded into the
+                // same single `damage` total as salted_wound. A flat modifier:
+                // it returns its bonus rather than calling damageEnemyHP itself,
+                // so it can't trigger a second "enemy defeated" off a dead enemy.
+                onEnemyTookCards() {
+                    return ACE_SLEEVE_BONUS_DAMAGE;
                 }
             },
             salted_wound: {
@@ -3782,6 +3790,69 @@
                     } finally {
                         delete RELIC_EFFECTS.__test_take;
                     }
+                });
+
+                it('ace_sleeve: при взятии карт врагом добавляет +ACE_SLEEVE_BONUS_DAMAGE к урону (через хук onEnemyTookCards)', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'ace_sleeve' }], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [], playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }],
+                            defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handleEnemyTake();
+                            // урон: 1 карта × TAKE_DAMAGE_PER_CARD + ACE_SLEEVE_BONUS_DAMAGE
+                            assert.equal(battle.enemyHP, 50 - (TAKE_DAMAGE_PER_CARD + ACE_SLEEVE_BONUS_DAMAGE));
+                        }
+                    );
+                });
+
+                it('ace_sleeve + salted_wound: оба бонуса onEnemyTookCards складываются в один урон', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'ace_sleeve' }, { id: 'salted_wound' }], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [], playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
+                            enemyHand: Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, suit: 'Pikes', value: 6 })),
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }],
+                            defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handleEnemyTake();
+                            // enemyHand: 6 + 1 (со стола) = 7 → избыток 1 → salted_wound: +1 × SALTED_WOUND_DAMAGE_PER_CARD
+                            const expected = TAKE_DAMAGE_PER_CARD + ACE_SLEEVE_BONUS_DAMAGE + SALTED_WOUND_DAMAGE_PER_CARD;
+                            assert.equal(battle.enemyHP, 50 - expected);
+                        }
+                    );
+                });
+
+                it('ace_sleeve: без артефакта бонус не применяется', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [], playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }],
+                            defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handleEnemyTake();
+                            assert.equal(battle.enemyHP, 50 - TAKE_DAMAGE_PER_CARD);
+                        }
+                    );
                 });
 
                 it('ballast_drop: при взятии карт сбрасывает 2 некозырные карты наименьшего ранга', () => {
