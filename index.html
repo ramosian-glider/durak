@@ -1408,9 +1408,9 @@
                 if (pair.defend) battle.enemyHand.push(pair.defend);
             }
 
-            if (hasRelic('spam_mail') && battle.drawDeck.length > 0) {
-                battle.enemyHand.push(battle.drawDeck.pop());
-            }
+            // Table cards are already in the enemy's hand; hooks that add cards
+            // must run before the damage below reads enemyHand.length (salted_wound).
+            fireAllHooks('onEnemyCollectedTable');
 
             const enemyHPBeforeDamage = battle.enemyHP;
             let damage = cardsCount * TAKE_DAMAGE_PER_CARD;
@@ -1811,7 +1811,7 @@
         // handler per hook name, and game code calls fireHook()/fireAllHooks() at
         // one canonical point rather than every call site re-checking hasRelic()
         // individually. Migrated so far: safety_rope, coin_magnet, sharp_suit,
-        // cascade_transfer, heavy_ballast, salted_wound, ace_sleeve, mirror_ring, midas_touch, ballast_drop.
+        // cascade_transfer, heavy_ballast, salted_wound, ace_sleeve, mirror_ring, midas_touch, ballast_drop, spam_mail.
         const RELIC_EFFECTS = {
             safety_rope: {
                 // Called from applyPlayerDamage() only when the hit would be lethal.
@@ -1930,6 +1930,21 @@
                 // comment for why that would be unsafe).
                 onEnemyTookCards() {
                     return getEnemyDamageExcess(battle.enemyHand.length) * SALTED_WOUND_DAMAGE_PER_CARD;
+                }
+            },
+            spam_mail: {
+                // Called from handleEnemyTake() via fireAllHooks, right after the
+                // table cards are moved into the enemy's hand and BEFORE the take
+                // damage is computed: salted_wound (onEnemyTookCards) reads
+                // battle.enemyHand.length, so the extra card must already be in the
+                // hand by then. A separate hook from onEnemyTookCards on purpose —
+                // that one is a numeric-sum hook fired after this point. No-op when
+                // the draw deck is empty. Dispatched via fireAllHooks: a pure
+                // side effect on the hand, nothing to intercept or sum.
+                onEnemyCollectedTable() {
+                    if (battle.drawDeck.length > 0) {
+                        battle.enemyHand.push(battle.drawDeck.pop());
+                    }
                 }
             },
             ballast_drop: {
@@ -3815,6 +3830,93 @@
                     );
                 });
 
+                it('spam_mail: враг добирает именно верхнюю карту колоды, колода уменьшается на одну', () => {
+                    // Both hands start full so replenishHands() after the take doesn't
+                    // draw from the same deck and blur what spam_mail itself took.
+                    const fullHand = (prefix, suit) => Array.from({ length: HAND_SIZE }, (_, i) => ({ id: `${prefix}${i}`, suit, value: 6 + (i % 5) }));
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'spam_mail' }], deck: [] },
+                        {
+                            drawDeck: [{ id: 'd_bottom', suit: 'Hearts', value: 6 }, { id: 'd_mid', suit: 'Hearts', value: 8 }, { id: 'd_top', suit: 'Hearts', value: 7 }],
+                            discardPile: [],
+                            playerHand: fullHand('p', 'Pikes'),
+                            enemyHand: fullHand('e', 'Pikes'),
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'x1', suit: 'Clubs', value: 7 }, defend: null }],
+                            defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handleEnemyTake();
+                            assert.isTrue(battle.enemyHand.some(c => c.id === 'd_top'), 'Враг должен получить верхнюю карту колоды');
+                            assert.isFalse(battle.enemyHand.some(c => c.id === 'd_bottom'), 'Нижняя карта колоды не должна попасть в руку');
+                            assert.equal(battle.drawDeck.length, 2);
+                            // spam_mail не наносит урон сам по себе: только 1 карта × TAKE_DAMAGE_PER_CARD
+                            assert.equal(battle.enemyHP, 50 - TAKE_DAMAGE_PER_CARD);
+                        }
+                    );
+                });
+
+                it('spam_mail: хук срабатывает раньше onEnemyTookCards — к моменту подсчёта урона доп. карта уже в руке', () => {
+                    // Guards the ordering that salted_wound depends on, independent of
+                    // salted_wound itself: a throwaway onEnemyTookCards owner records
+                    // the hand size it sees.
+                    let handSizeSeen = null;
+                    RELIC_EFFECTS.__test_order = {
+                        onEnemyTookCards() { handSizeSeen = battle.enemyHand.length; return 0; }
+                    };
+                    try {
+                        withIsolatedGameState(
+                            { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'spam_mail' }, { id: '__test_order' }], deck: [] },
+                            {
+                                drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                                discardPile: [],
+                                playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
+                                enemyHand: [{ id: 'e1', suit: 'Pikes', value: 6 }],
+                                trumpCard: null, trumpSuit: 'Hearts',
+                                table: [{ attack: { id: 'x1', suit: 'Clubs', value: 7 }, defend: null }],
+                                defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
+                                enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                                cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                                jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            },
+                            () => {
+                                handleEnemyTake();
+                                // 1 (исходно) + 1 (со стола) + 1 (spam_mail) = 3
+                                assert.equal(handSizeSeen, 3, 'onEnemyTookCards должен видеть руку уже с картой от spam_mail');
+                            }
+                        );
+                    } finally {
+                        delete RELIC_EFFECTS.__test_order;
+                    }
+                });
+
+                it('spam_mail: при пустой колоде враг ничего не добирает и не падает', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'spam_mail' }], deck: [] },
+                        {
+                            drawDeck: [],
+                            discardPile: [],
+                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 6 }],
+                            trumpCard: null, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }],
+                            defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handleEnemyTake();
+                            // 1 (исходно) + 1 (со стола); добирать нечего
+                            assert.equal(battle.enemyHand.length, 2);
+                            assert.equal(battle.enemyHP, 50 - TAKE_DAMAGE_PER_CARD);
+                        }
+                    );
+                });
+
                 it('handleEnemyTake: fireHookSum суммирует вклад нескольких onEnemyTookCards, а не перезаписывает (регрессия при миграции salted_wound)', () => {
                     // With a single onEnemyTookCards owner (salted_wound itself),
                     // a broken fireHookSum that kept only the *last* numeric result
@@ -3905,7 +4007,7 @@
                     const KNOWN_HOOKS = [
                         'onTransfer', 'onEnemyTookCards', 'onPlayerTookCards', 'onEnemyTurnStart',
                         'onCardPlayed', 'onPlayerDefend', 'onLethalDamage', 'onDefenseSucceeded',
-                        'onPlayerTakePenalty'
+                        'onPlayerTakePenalty', 'onEnemyCollectedTable'
                     ];
                     const relicIds = ALL_RELICS.map(r => r.id);
                     for (const [relicId, effect] of Object.entries(RELIC_EFFECTS)) {
