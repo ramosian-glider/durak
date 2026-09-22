@@ -3893,6 +3893,35 @@
                     }
                 });
 
+                it('spam_mail: если в колоде осталась одна (козырная) карта — враг забирает её, а козырная масть остаётся', () => {
+                    // Asserts outcomes only, not which end of drawDeck the card is taken
+                    // from: with a single card, any way of taking it gives the same result.
+                    const trump = { id: 't1', suit: 'Hearts', value: 6 };
+                    const fullHand = (prefix, suit) => Array.from({ length: HAND_SIZE }, (_, i) => ({ id: `${prefix}${i}`, suit, value: 6 + (i % 5) }));
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'spam_mail' }], deck: [] },
+                        {
+                            drawDeck: [trump],
+                            discardPile: [],
+                            playerHand: fullHand('p', 'Pikes'),
+                            enemyHand: fullHand('e', 'Pikes'),
+                            trumpCard: trump, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'x1', suit: 'Clubs', value: 7 }, defend: null }],
+                            defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            handleEnemyTake();
+                            assert.equal(battle.drawDeck.length, 0, 'Колода должна опустеть');
+                            assert.isTrue(battle.enemyHand.some(c => c.id === 't1'), 'Козырная карта должна оказаться в руке врага');
+                            assert.equal(battle.trumpSuit, 'Hearts', 'Козырная масть не должна пропасть вместе с картой');
+                            assert.isTrue(battle.trumpCard !== null, 'trumpCard нужен для отрисовки плашки «Козырь» при пустой колоде');
+                        }
+                    );
+                });
+
                 it('spam_mail: при пустой колоде враг ничего не добирает и не падает', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'spam_mail' }], deck: [] },
