@@ -814,7 +814,6 @@
         const MAX_RELICS = 5;
 
         const BASE_THROW_LIMIT = 6;
-        const BULLY_THROW_RELIC_LIMIT = 12;
         const AGGRESSIVE_THROW_BOSS_LIMIT = 8;
 
         const EMPTY_HAND_BASE_DAMAGE = 6;
@@ -848,7 +847,6 @@
 
         const ALL_RELICS = [
             { id: "ace_sleeve", name: "Туз в рукаве", icon: "🃏", desc: "Заставление врага взять карты наносит +5 ед. дополнительного урона.", price: 12 },
-            { id: "bully_throw", name: "Безжалостный подкидыш", icon: "💣", desc: "Позволяет подкидывать до 12 карт (ограничивается рукой защитника).", price: 15 },
             { id: "midas_touch", name: "Золотое пальто", icon: "🪙", desc: "Получайте +3$ каждый раз, когда успешно отбиваетесь.", price: 10 },
             { id: "mirror_ring", name: "Зеркальный перстень", icon: "💍", desc: "Когда вы берете карты со стола, враг получает 2 урона за каждую взятую карту.", price: 14 },
             { id: "cheat_eye", name: "Шулерский глаз", icon: "👁️", desc: "Показывает вам наименьшую карту в руке соперника.", price: 8 },
@@ -1339,8 +1337,20 @@
 
         function getMaxAllowedAttacks() {
             const enemyData = getCurrentEnemy();
-            let baseLimit = hasRelic('bully_throw') ? BULLY_THROW_RELIC_LIMIT : BASE_THROW_LIMIT;
-            if (enemyData.abilityId === 'aggressive_throw') baseLimit = AGGRESSIVE_THROW_BOSS_LIMIT;
+            // fireHook: first-truthy-wins, same as onLethalDamage — at most one
+            // relic should set the base throw limit. Falls back to BASE_THROW_LIMIT
+            // when no relic returns anything (fireHook returns null, or a future
+            // relic could validly return 0, but no such relic exists today).
+            let baseLimit = BASE_THROW_LIMIT;
+            // aggressive_throw governs how many cards the BOSS itself throws at the
+            // player — battle.defender === 'player' (player defends). It must not
+            // touch the player's own throw limit against that boss (defender ===
+            // 'enemy') — bug fixed 2026-09-22, previously this ran unconditionally
+            // and inflated the player's own limit to 8 (even above the base 6) on
+            // that boss's floor.
+            if (enemyData.abilityId === 'aggressive_throw' && battle.defender === 'player') {
+                baseLimit = AGGRESSIVE_THROW_BOSS_LIMIT;
+            }
 
             if (battle.defender === 'enemy') {
                 return Math.min(baseLimit, battle.enemyHand.length + battle.table.filter(p => p.defend).length);
@@ -2737,14 +2747,13 @@
             });
 
             runner.describe('5. Максимальное число атак (getMaxAllowedAttacks)', (it, assert) => {
-                const oldRelics = run.relics;
                 const oldFloor = run.floor;
                 const oldDefender = battle.defender;
                 const oldEnemyHand = battle.enemyHand;
+                const oldPlayerHand = battle.playerHand;
                 const oldTable = battle.table;
 
                 run.floor = 1;
-                run.relics = [];
                 battle.defender = 'enemy';
                 battle.enemyHand = [{}, {}, {}, {}, {}, {}];
                 battle.table = [];
@@ -2753,16 +2762,34 @@
                     assert.equal(getMaxAllowedAttacks(), 6);
                 });
 
-                it('С артефактом bully_throw порог повышается до 12, ограничиваясь картами врага', () => {
-                    run.relics = [{ id: 'bully_throw' }];
-                    battle.enemyHand = [{}, {}, {}, {}, {}, {}, {}, {}];
-                    assert.equal(getMaxAllowedAttacks(), 8);
+                it('Способность босса aggressive_throw ограничивает подкидки самого босса (лимит 8) на его ходу', () => {
+                    // aggressive_throw is about the boss's OWN throw limit when the boss
+                    // is attacking — that's battle.defender === 'player' (player
+                    // defends), not battle.defender === 'enemy' (player attacking).
+                    const bossFloorIdx = ENEMIES.findIndex(e => e.abilityId === 'aggressive_throw');
+                    assert.isTrue(bossFloorIdx !== -1, 'В ENEMIES должен быть хотя бы один противник с aggressive_throw');
+                    run.floor = bossFloorIdx + 1;
+                    battle.defender = 'player';
+                    battle.playerHand = Array.from({ length: 20 }, () => ({}));
+                    assert.equal(getMaxAllowedAttacks(), AGGRESSIVE_THROW_BOSS_LIMIT);
                 });
 
-                run.relics = oldRelics;
+                it('aggressive_throw НЕ влияет на собственную подкидку игрока: на этаже этого босса лимит игрока остаётся базовым (6), а не 8', () => {
+                    // Regression test for the 2026-09-22 fix: aggressive_throw used to
+                    // run unconditionally (no battle.defender check), so it silently
+                    // raised the player's own throw limit above BASE_THROW_LIMIT just
+                    // by being on that boss's floor.
+                    const bossFloorIdx = ENEMIES.findIndex(e => e.abilityId === 'aggressive_throw');
+                    run.floor = bossFloorIdx + 1;
+                    battle.defender = 'enemy'; // player is attacking, enemy defends
+                    battle.enemyHand = Array.from({ length: 20 }, () => ({}));
+                    assert.equal(getMaxAllowedAttacks(), BASE_THROW_LIMIT);
+                });
+
                 run.floor = oldFloor;
                 battle.defender = oldDefender;
                 battle.enemyHand = oldEnemyHand;
+                battle.playerHand = oldPlayerHand;
                 battle.table = oldTable;
             });
 
