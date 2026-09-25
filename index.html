@@ -1821,7 +1821,15 @@
         // handler per hook name, and game code calls fireHook()/fireAllHooks() at
         // one canonical point rather than every call site re-checking hasRelic()
         // individually. Migrated so far: safety_rope, coin_magnet, sharp_suit,
-        // cascade_transfer, heavy_ballast, salted_wound, ace_sleeve, mirror_ring, midas_touch, ballast_drop, spam_mail.
+        // cascade_transfer, heavy_ballast, salted_wound, ace_sleeve, mirror_ring, midas_touch, ballast_drop, spam_mail, pocket_discard.
+        //
+        // pocket_discard is the first of the *active* (button-triggered) relics to
+        // migrate — see isReady/onUse below. These don't fire off a game event the
+        // way the hooks above do, so they aren't dispatched via fireHook(); instead
+        // renderRelicActions() and the relic's own use*() function both call
+        // isReady() directly, which is the point of the migration: the
+        // availability condition used to be duplicated between those two call
+        // sites and is now defined once.
         const RELIC_EFFECTS = {
             safety_rope: {
                 // Called from applyPlayerDamage() only when the hit would be lethal.
@@ -1970,6 +1978,27 @@
                 onPlayerTakePenalty() {
                     discardLowestNonTrumpCards(battle.playerHand, BALLAST_DROP_DISCARD_COUNT);
                 }
+            },
+            pocket_discard: {
+                // Once per round, permanently bin a 6 or 7 from hand. Not fired
+                // from a game-event call site like the hooks above — it's a
+                // player-triggered ability rendered as a button by
+                // renderRelicActions() and executed by usePocketDiscard(). Both of
+                // those call isReady(), so the "can this fire right now" condition
+                // lives in exactly one place instead of being copy-pasted between
+                // the render check and the click-handler guard.
+                //
+                // Restricted to the player's own attacking turn (defender ===
+                // 'enemy'): using it while the player is defending against an
+                // enemy attack (defender === 'player') is deliberately disallowed,
+                // so the player can't shed a card mid-defense.
+                isReady() {
+                    return !battle.pocketDiscardUsedThisRound && canAcceptPlayerAction()
+                        && battle.defender === 'enemy'
+                        && battle.playerHand.some(c => c.value === 6 || c.value === 7);
+                },
+                label: '✂️ Сбросить 6/7 (Карманный сброс)',
+                onUse: () => usePocketDiscard()
             }
         };
 
@@ -2397,10 +2426,8 @@
 
             const buttons = [];
 
-            if (hasRelic('pocket_discard') && !battle.pocketDiscardUsedThisRound
-                && canAcceptPlayerAction()
-                && battle.playerHand.some(c => c.value === 6 || c.value === 7)) {
-                buttons.push({ id: 'btn-pocket-discard', label: '✂️ Сбросить 6/7 (Карманный сброс)', handler: usePocketDiscard });
+            if (hasRelic('pocket_discard') && RELIC_EFFECTS.pocket_discard.isReady()) {
+                buttons.push({ id: 'btn-pocket-discard', label: RELIC_EFFECTS.pocket_discard.label, handler: RELIC_EFFECTS.pocket_discard.onUse });
             }
 
             if (hasRelic('jester_discard') && !battle.jesterDiscardUsedThisBattle
@@ -2435,7 +2462,7 @@
         // Auto-picks the first matching card (lowest value first) rather than
         // prompting, to keep the interaction one tap.
         function usePocketDiscard() {
-            if (!hasRelic('pocket_discard') || battle.pocketDiscardUsedThisRound || !canAcceptPlayerAction()) return;
+            if (!hasRelic('pocket_discard') || !RELIC_EFFECTS.pocket_discard.isReady()) return;
             const idx = battle.playerHand.findIndex(c => c.value === 6 || c.value === 7);
             if (idx === -1) return;
 
@@ -2445,6 +2472,13 @@
             audio.playCardSound();
             saveRunToLocal();
             renderAll();
+            // This can be the card that empties the player's hand: if the draw
+            // deck and table are also already empty, that's a round win the
+            // normal БИТО/take/replenish call sites would catch via
+            // checkRoundEnd() but this one-off discard bypassed. Without this
+            // call the round just sits there with an empty hand and no way
+            // forward (see: discarding the last card didn't end the battle).
+            checkRoundEnd();
         }
 
         // jester_discard: once per battle, on your own attacking turn with an
@@ -4063,7 +4097,9 @@
                     const KNOWN_HOOKS = [
                         'onTransfer', 'onEnemyTookCards', 'onPlayerTookCards', 'onEnemyTurnStart',
                         'onCardPlayed', 'onPlayerDefend', 'onLethalDamage', 'onDefenseSucceeded',
-                        'onPlayerTakePenalty', 'onEnemyCollectedTable'
+                        'onPlayerTakePenalty', 'onEnemyCollectedTable',
+                        // Active (button-triggered) relic ability hooks — see pocket_discard.
+                        'isReady', 'onUse'
                     ];
                     const relicIds = ALL_RELICS.map(r => r.id);
                     for (const [relicId, effect] of Object.entries(RELIC_EFFECTS)) {
@@ -4482,6 +4518,71 @@
                             const handSizeBefore = battle.playerHand.length;
                             usePocketDiscard(); // уже использовано в этом раунде
                             assert.equal(battle.playerHand.length, handSizeBefore);
+                        }
+                    );
+                });
+
+                it('pocket_discard: isReady() — единый источник условия для рендера кнопки и хендлера', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [],
+                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }, { id: 'p2', suit: 'Hearts', value: 10 }],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
+                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            // No 6/7 in hand: not ready.
+                            assert.isFalse(RELIC_EFFECTS.pocket_discard.isReady(), 'без 6/7 в руке способность недоступна');
+
+                            battle.playerHand.push({ id: 'p3', suit: 'Pikes', value: 6 });
+                            assert.isTrue(RELIC_EFFECTS.pocket_discard.isReady(), 'с 6/7 в руке и неиспользованным зарядом способность доступна');
+
+                            battle.pocketDiscardUsedThisRound = true;
+                            assert.isFalse(RELIC_EFFECTS.pocket_discard.isReady(), 'уже использовано в этом раунде — недоступна');
+
+                            battle.pocketDiscardUsedThisRound = false;
+                            battle.phase = BATTLE_PHASES.RESOLVING;
+                            assert.isFalse(RELIC_EFFECTS.pocket_discard.isReady(), 'нельзя использовать вне фазы принятия действий игрока');
+
+                            battle.phase = BATTLE_PHASES.PLAYER_DEFENSE;
+                            battle.defender = 'player';
+                            assert.isFalse(RELIC_EFFECTS.pocket_discard.isReady(), 'нельзя сбрасывать карту, пока защищаешься от атаки соперника');
+
+                            battle.defender = 'enemy';
+                            assert.isTrue(RELIC_EFFECTS.pocket_discard.isReady(), 'на своём ходу атаки способность снова доступна');
+                        }
+                    );
+                });
+
+                it('pocket_discard: сброс последней карты руки завершает раунд (когда колода и стол уже пусты)', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 23, maxHP: 30, gold: 16, relics: [{ id: 'pocket_discard' }], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [],
+                            playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Hearts', value: 10 }],
+                            trumpCard: { id: 't1', suit: 'Pikes', value: 6 }, trumpSuit: 'Pikes',
+                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 6, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            usePocketDiscard();
+                            assert.equal(battle.playerHand.length, 0, 'последняя карта должна уйти в отбой');
+                            // Раньше usePocketDiscard() не звал checkRoundEnd(), и опустевшая
+                            // рука при уже пустых колоде и столе никак не завершала раунд —
+                            // игра зависала на "Ваш ход: Атака" без карт и без доступных
+                            // действий (баг из отчёта пользователя).
+                            assert.equal(battle.phase, BATTLE_PHASES.ROUND_OVER, 'checkRoundEnd() должен был сработать и завершить раунд');
+                            assert.equal(document.getElementById('msg-title').innerText, 'Раунд Выигран!');
+                            const msgBox = document.getElementById('msg-box');
+                            if (msgBox) { msgBox.classList.add('hidden'); msgBox.classList.remove('flex'); }
                         }
                     );
                 });
