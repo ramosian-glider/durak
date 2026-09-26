@@ -1040,6 +1040,34 @@
             }
         }
 
+        // Snapshots the given battle/run fields, runs testFn, and restores them
+        // afterward no matter what — including when an assertion throws — instead
+        // of each test block hand-writing "const oldX = battle.x; ... battle.x =
+        // oldX;" for every field it touches. Also clears any AI timer left behind
+        // by the test, mirroring withIsolatedGameState()'s safety net. Use this for
+        // tests that only need to override a few fields on the real run/battle;
+        // use withIsolatedGameState() instead when a test needs a full throwaway
+        // run/battle pair.
+        function withFieldSnapshot(fields, testFn) {
+            const targets = { battle, run };
+            const saved = {};
+            for (const key in fields) {
+                const obj = targets[key];
+                saved[key] = {};
+                fields[key].forEach(f => { saved[key][f] = obj[f]; });
+            }
+            clearAITimer();
+            try {
+                testFn();
+            } finally {
+                clearAITimer();
+                for (const key in fields) {
+                    const obj = targets[key];
+                    fields[key].forEach(f => { obj[f] = saved[key][f]; });
+                }
+            }
+        }
+
         function setBattlePhase(phase) {
             battle.phase = phase;
             battle.actionToken++;
@@ -2725,40 +2753,39 @@
             const runner = new TinyTestRunner();
 
             runner.describe('1. Сравнение карт (canBeat)', (it, assert) => {
-                const oldTrump = battle.trumpSuit;
-                battle.trumpSuit = 'Hearts';
+                withFieldSnapshot({ battle: ['trumpSuit'] }, () => {
+                    battle.trumpSuit = 'Hearts';
 
-                it('Карта той же масти и старшего достоинства побивает атаку', () => {
-                    const attack = { suit: 'Pikes', value: 8 };
-                    const defend = { suit: 'Pikes', value: 10 };
-                    assert.isTrue(canBeat(attack, defend));
+                    it('Карта той же масти и старшего достоинства побивает атаку', () => {
+                        const attack = { suit: 'Pikes', value: 8 };
+                        const defend = { suit: 'Pikes', value: 10 };
+                        assert.isTrue(canBeat(attack, defend));
+                    });
+
+                    it('Карта той же масти и младшего достоинства НЕ побивает атаку', () => {
+                        const attack = { suit: 'Pikes', value: 10 };
+                        const defend = { suit: 'Pikes', value: 8 };
+                        assert.isFalse(canBeat(attack, defend));
+                    });
+
+                    it('Козырь побивает некозырную карту любой величины', () => {
+                        const attack = { suit: 'Pikes', value: 14 };
+                        const defend = { suit: 'Hearts', value: 6 };
+                        assert.isTrue(canBeat(attack, defend));
+                    });
+
+                    it('Старший козырь побивает младший козырь', () => {
+                        const attack = { suit: 'Hearts', value: 9 };
+                        const defend = { suit: 'Hearts', value: 12 };
+                        assert.isTrue(canBeat(attack, defend));
+                    });
+
+                    it('Некозырная карта другой масти НЕ побивает атаку', () => {
+                        const attack = { suit: 'Pikes', value: 7 };
+                        const defend = { suit: 'Tiles', value: 10 };
+                        assert.isFalse(canBeat(attack, defend));
+                    });
                 });
-
-                it('Карта той же масти и младшего достоинства НЕ побивает атаку', () => {
-                    const attack = { suit: 'Pikes', value: 10 };
-                    const defend = { suit: 'Pikes', value: 8 };
-                    assert.isFalse(canBeat(attack, defend));
-                });
-
-                it('Козырь побивает некозырную карту любой величины', () => {
-                    const attack = { suit: 'Pikes', value: 14 };
-                    const defend = { suit: 'Hearts', value: 6 };
-                    assert.isTrue(canBeat(attack, defend));
-                });
-
-                it('Старший козырь побивает младший козырь', () => {
-                    const attack = { suit: 'Hearts', value: 9 };
-                    const defend = { suit: 'Hearts', value: 12 };
-                    assert.isTrue(canBeat(attack, defend));
-                });
-
-                it('Некозырная карта другой масти НЕ побивает атаку', () => {
-                    const attack = { suit: 'Pikes', value: 7 };
-                    const defend = { suit: 'Tiles', value: 10 };
-                    assert.isFalse(canBeat(attack, defend));
-                });
-
-                battle.trumpSuit = oldTrump;
             });
 
             runner.describe('2. Генерация колоды (generateStandardDeck)', (it, assert) => {
@@ -2782,134 +2809,109 @@
             });
 
             runner.describe('3. Система артефактов (hasRelic)', (it, assert) => {
-                const oldRelics = run.relics;
-                run.relics = [{ id: 'ace_sleeve' }, { id: 'midas_touch' }];
+                withFieldSnapshot({ run: ['relics'] }, () => {
+                    run.relics = [{ id: 'ace_sleeve' }, { id: 'midas_touch' }];
 
-                it('Возвращает true если артефакт экипирован', () => {
-                    assert.isTrue(hasRelic('ace_sleeve'));
-                    assert.isTrue(hasRelic('midas_touch'));
+                    it('Возвращает true если артефакт экипирован', () => {
+                        assert.isTrue(hasRelic('ace_sleeve'));
+                        assert.isTrue(hasRelic('midas_touch'));
+                    });
+
+                    it('Возвращает false если артефакта нет', () => {
+                        assert.isFalse(hasRelic('cheat_eye'));
+                    });
                 });
-
-                it('Возвращает false если артефакта нет', () => {
-                    assert.isFalse(hasRelic('cheat_eye'));
-                });
-
-                run.relics = oldRelics;
             });
 
             runner.describe('4. Проверка номиналов на столе (isRankOnTable)', (it, assert) => {
-                const oldTable = battle.table;
-                battle.table = [
-                    { attack: { suit: 'Pikes', value: 8 }, defend: { suit: 'Pikes', value: 10 } },
-                    { attack: { suit: 'Hearts', value: 14 }, defend: null }
-                ];
+                withFieldSnapshot({ battle: ['table'] }, () => {
+                    battle.table = [
+                        { attack: { suit: 'Pikes', value: 8 }, defend: { suit: 'Pikes', value: 10 } },
+                        { attack: { suit: 'Hearts', value: 14 }, defend: null }
+                    ];
 
-                it('Находит номинал атакующей карты', () => {
-                    assert.isTrue(isRankOnTable(14));
-                    assert.isTrue(isRankOnTable(8));
+                    it('Находит номинал атакующей карты', () => {
+                        assert.isTrue(isRankOnTable(14));
+                        assert.isTrue(isRankOnTable(8));
+                    });
+
+                    it('Находит номинал защищающейся карты', () => {
+                        assert.isTrue(isRankOnTable(10));
+                    });
+
+                    it('Возвращает false для отсутствующих номиналов', () => {
+                        assert.isFalse(isRankOnTable(6));
+                        assert.isFalse(isRankOnTable(12));
+                    });
                 });
-
-                it('Находит номинал защищающейся карты', () => {
-                    assert.isTrue(isRankOnTable(10));
-                });
-
-                it('Возвращает false для отсутствующих номиналов', () => {
-                    assert.isFalse(isRankOnTable(6));
-                    assert.isFalse(isRankOnTable(12));
-                });
-
-                battle.table = oldTable;
             });
 
             runner.describe('5. Максимальное число атак (getMaxAllowedAttacks)', (it, assert) => {
-                const oldFloor = run.floor;
-                const oldDefender = battle.defender;
-                const oldEnemyHand = battle.enemyHand;
-                const oldPlayerHand = battle.playerHand;
-                const oldTable = battle.table;
+                withFieldSnapshot({ run: ['floor'], battle: ['defender', 'enemyHand', 'playerHand', 'table'] }, () => {
+                    run.floor = 1;
+                    battle.defender = 'enemy';
+                    battle.enemyHand = [{}, {}, {}, {}, {}, {}];
+                    battle.table = [];
 
-                run.floor = 1;
-                battle.defender = 'enemy';
-                battle.enemyHand = [{}, {}, {}, {}, {}, {}];
-                battle.table = [];
+                    it('Базовый лимит атак ограничен картами противника (6)', () => {
+                        assert.equal(getMaxAllowedAttacks(), 6);
+                    });
 
-                it('Базовый лимит атак ограничен картами противника (6)', () => {
-                    assert.equal(getMaxAllowedAttacks(), 6);
+                    it('Способность босса aggressive_throw ограничивает подкидки самого босса (лимит 8) на его ходу', () => {
+                        // aggressive_throw is about the boss's OWN throw limit when the boss
+                        // is attacking — that's battle.defender === 'player' (player
+                        // defends), not battle.defender === 'enemy' (player attacking).
+                        const bossFloorIdx = ENEMIES.findIndex(e => e.abilityId === 'aggressive_throw');
+                        assert.isTrue(bossFloorIdx !== -1, 'В ENEMIES должен быть хотя бы один противник с aggressive_throw');
+                        run.floor = bossFloorIdx + 1;
+                        battle.defender = 'player';
+                        battle.playerHand = Array.from({ length: 20 }, () => ({}));
+                        assert.equal(getMaxAllowedAttacks(), AGGRESSIVE_THROW_BOSS_LIMIT);
+                    });
+
+                    it('aggressive_throw НЕ влияет на собственную подкидку игрока: на этаже этого босса лимит игрока остаётся базовым (6), а не 8', () => {
+                        // Regression test for the 2026-09-22 fix: aggressive_throw used to
+                        // run unconditionally (no battle.defender check), so it silently
+                        // raised the player's own throw limit above BASE_THROW_LIMIT just
+                        // by being on that boss's floor.
+                        const bossFloorIdx = ENEMIES.findIndex(e => e.abilityId === 'aggressive_throw');
+                        run.floor = bossFloorIdx + 1;
+                        battle.defender = 'enemy'; // player is attacking, enemy defends
+                        battle.enemyHand = Array.from({ length: 20 }, () => ({}));
+                        assert.equal(getMaxAllowedAttacks(), BASE_THROW_LIMIT);
+                    });
                 });
-
-                it('Способность босса aggressive_throw ограничивает подкидки самого босса (лимит 8) на его ходу', () => {
-                    // aggressive_throw is about the boss's OWN throw limit when the boss
-                    // is attacking — that's battle.defender === 'player' (player
-                    // defends), not battle.defender === 'enemy' (player attacking).
-                    const bossFloorIdx = ENEMIES.findIndex(e => e.abilityId === 'aggressive_throw');
-                    assert.isTrue(bossFloorIdx !== -1, 'В ENEMIES должен быть хотя бы один противник с aggressive_throw');
-                    run.floor = bossFloorIdx + 1;
-                    battle.defender = 'player';
-                    battle.playerHand = Array.from({ length: 20 }, () => ({}));
-                    assert.equal(getMaxAllowedAttacks(), AGGRESSIVE_THROW_BOSS_LIMIT);
-                });
-
-                it('aggressive_throw НЕ влияет на собственную подкидку игрока: на этаже этого босса лимит игрока остаётся базовым (6), а не 8', () => {
-                    // Regression test for the 2026-09-22 fix: aggressive_throw used to
-                    // run unconditionally (no battle.defender check), so it silently
-                    // raised the player's own throw limit above BASE_THROW_LIMIT just
-                    // by being on that boss's floor.
-                    const bossFloorIdx = ENEMIES.findIndex(e => e.abilityId === 'aggressive_throw');
-                    run.floor = bossFloorIdx + 1;
-                    battle.defender = 'enemy'; // player is attacking, enemy defends
-                    battle.enemyHand = Array.from({ length: 20 }, () => ({}));
-                    assert.equal(getMaxAllowedAttacks(), BASE_THROW_LIMIT);
-                });
-
-                run.floor = oldFloor;
-                battle.defender = oldDefender;
-                battle.enemyHand = oldEnemyHand;
-                battle.playerHand = oldPlayerHand;
-                battle.table = oldTable;
             });
 
             runner.describe('6. Правила Перевода карт (isTransferAllowedForPlayer)', (it, assert) => {
-                const oldFloor = run.floor;
-                const oldDefender = battle.defender;
-                const oldTable = battle.table;
-                const oldPlayerHand = battle.playerHand;
-                const oldEnemyHand = battle.enemyHand;
+                withFieldSnapshot({ run: ['floor'], battle: ['defender', 'table', 'playerHand', 'enemyHand'] }, () => {
+                    it('Запрещено, если защищается соперник', () => {
+                        battle.defender = 'enemy';
+                        assert.isFalse(isTransferAllowedForPlayer());
+                    });
 
-                it('Запрещено, если защищается соперник', () => {
-                    battle.defender = 'enemy';
-                    assert.isFalse(isTransferAllowedForPlayer());
+                    it('Разрешено при наличии совпадения номинала и свободных карт у противника', () => {
+                        run.floor = 1;
+                        battle.defender = 'player';
+                        battle.table = [{ attack: { suit: 'Pikes', value: 8 }, defend: null }];
+                        battle.playerHand = [{ suit: 'Hearts', value: 8 }];
+                        battle.enemyHand = [{}, {}, {}];
+                        assert.isTrue(isTransferAllowedForPlayer());
+                    });
+
+                    it('Запрещено на 3 этаже (Босс Трактирщик блокирует перевод)', () => {
+                        run.floor = 3;
+                        battle.defender = 'player';
+                        battle.table = [{ attack: { suit: 'Pikes', value: 8 }, defend: null }];
+                        battle.playerHand = [{ suit: 'Hearts', value: 8 }];
+                        battle.enemyHand = [{}, {}, {}];
+                        assert.isFalse(isTransferAllowedForPlayer());
+                    });
                 });
-
-                it('Разрешено при наличии совпадения номинала и свободных карт у противника', () => {
-                    run.floor = 1;
-                    battle.defender = 'player';
-                    battle.table = [{ attack: { suit: 'Pikes', value: 8 }, defend: null }];
-                    battle.playerHand = [{ suit: 'Hearts', value: 8 }];
-                    battle.enemyHand = [{}, {}, {}];
-                    assert.isTrue(isTransferAllowedForPlayer());
-                });
-
-                it('Запрещено на 3 этаже (Босс Трактирщик блокирует перевод)', () => {
-                    run.floor = 3;
-                    battle.defender = 'player';
-                    battle.table = [{ attack: { suit: 'Pikes', value: 8 }, defend: null }];
-                    battle.playerHand = [{ suit: 'Hearts', value: 8 }];
-                    battle.enemyHand = [{}, {}, {}];
-                    assert.isFalse(isTransferAllowedForPlayer());
-                });
-
-                run.floor = oldFloor;
-                battle.defender = oldDefender;
-                battle.table = oldTable;
-                battle.playerHand = oldPlayerHand;
-                battle.enemyHand = oldEnemyHand;
             });
 
             runner.describe('7. Переходы состояния боя', (it, assert) => {
-                const oldPhase = battle.phase;
-                const oldDefender = battle.defender;
-                const oldTimer = battle.aiTimer;
-
+              withFieldSnapshot({ battle: ['phase', 'defender', 'aiTimer'] }, () => {
                 it('Игрок может действовать только в своих фазах', () => {
                     battle.phase = BATTLE_PHASES.PLAYER_ATTACK;
                     assert.isTrue(canAcceptPlayerAction());
@@ -2929,196 +2931,114 @@
                 });
 
                 it('Первая атака игрока переводит бой в ожидание AI', () => {
-                    const oldDefender = battle.defender;
-                    const oldPhase = battle.phase;
-                    const oldTable = battle.table;
-                    const oldPlayerHand = battle.playerHand;
-                    const oldEnemyHand = battle.enemyHand;
-                    const oldTimer = battle.aiTimer;
+                    withFieldSnapshot({ battle: ['defender', 'phase', 'table', 'playerHand', 'enemyHand', 'aiTimer'] }, () => {
+                        battle.defender = 'enemy';
+                        battle.phase = BATTLE_PHASES.PLAYER_ATTACK;
+                        battle.table = [];
+                        battle.playerHand = [{ id: 'test_attack', suit: 'Pikes', value: 6 }];
+                        battle.enemyHand = [{ id: 'test_defend', suit: 'Pikes', value: 10 }];
 
-                    battle.defender = 'enemy';
-                    battle.phase = BATTLE_PHASES.PLAYER_ATTACK;
-                    battle.table = [];
-                    battle.playerHand = [{ id: 'test_attack', suit: 'Pikes', value: 6 }];
-                    battle.enemyHand = [{ id: 'test_defend', suit: 'Pikes', value: 10 }];
-                    clearAITimer();
+                        window.onPlayerCardClick(0);
 
-                    window.onPlayerCardClick(0);
-
-                    assert.equal(battle.table.length, 1);
-                    assert.equal(battle.table[0].attack.id, 'test_attack');
-                    assert.equal(battle.playerHand.length, 0);
-                    assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
-                    assert.isTrue(battle.aiTimer !== null);
-
-                    clearAITimer();
-                    battle.defender = oldDefender;
-                    battle.phase = oldPhase;
-                    battle.table = oldTable;
-                    battle.playerHand = oldPlayerHand;
-                    battle.enemyHand = oldEnemyHand;
-                    battle.aiTimer = oldTimer;
+                        assert.equal(battle.table.length, 1);
+                        assert.equal(battle.table[0].attack.id, 'test_attack');
+                        assert.equal(battle.playerHand.length, 0);
+                        assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
+                        assert.isTrue(battle.aiTimer !== null);
+                    });
                 });
 
                 it('Если AI не может отбить карту и у игрока есть карты для подкидывания, ход возвращается игроку', () => {
-                    const oldPhase = battle.phase;
-                    const oldDefender = battle.defender;
-                    const oldTable = battle.table;
-                    const oldPlayerHand = battle.playerHand;
-                    const oldEnemyHand = battle.enemyHand;
-                    const oldTrumpSuit = battle.trumpSuit;
-                    const oldCardsToTake = battle.cardsToTake;
-                    const oldTimer = battle.aiTimer;
+                    withFieldSnapshot({ battle: ['phase', 'defender', 'table', 'playerHand', 'enemyHand', 'trumpSuit', 'cardsToTake', 'aiTimer'] }, () => {
+                        battle.defender = 'enemy';
+                        battle.phase = BATTLE_PHASES.AI_WAITING;
+                        battle.table = [
+                            { attack: { id: 'test_attack_1', suit: 'Pikes', value: 6 }, defend: { id: 'test_defend', suit: 'Pikes', value: 10 } },
+                            { attack: { id: 'test_throw', suit: 'Hearts', value: 8 }, defend: null }
+                        ];
+                        battle.playerHand = [
+                            { id: 'test_more_throw', suit: 'Tiles', value: 8 }
+                        ];
+                        battle.enemyHand = [
+                            { id: 'test_low', suit: 'Clovers', value: 7 },
+                            { id: 'test_low_2', suit: 'Clovers', value: 9 }
+                        ];
+                        battle.trumpSuit = 'Hearts';
+                        battle.cardsToTake = false;
 
-                    clearAITimer();
-                    battle.defender = 'enemy';
-                    battle.phase = BATTLE_PHASES.AI_WAITING;
-                    battle.table = [
-                        { attack: { id: 'test_attack_1', suit: 'Pikes', value: 6 }, defend: { id: 'test_defend', suit: 'Pikes', value: 10 } },
-                        { attack: { id: 'test_throw', suit: 'Hearts', value: 8 }, defend: null }
-                    ];
-                    battle.playerHand = [
-                        { id: 'test_more_throw', suit: 'Tiles', value: 8 }
-                    ];
-                    battle.enemyHand = [
-                        { id: 'test_low', suit: 'Clovers', value: 7 },
-                        { id: 'test_low_2', suit: 'Clovers', value: 9 }
-                    ];
-                    battle.trumpSuit = 'Hearts';
-                    battle.cardsToTake = false;
+                        executeEnemyAI();
 
-                    executeEnemyAI();
-
-                    assert.isTrue(battle.cardsToTake);
-                    assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
-
-                    clearAITimer();
-                    battle.phase = oldPhase;
-                    battle.defender = oldDefender;
-                    battle.table = oldTable;
-                    battle.playerHand = oldPlayerHand;
-                    battle.enemyHand = oldEnemyHand;
-                    battle.trumpSuit = oldTrumpSuit;
-                    battle.cardsToTake = oldCardsToTake;
-                    battle.aiTimer = oldTimer;
+                        assert.isTrue(battle.cardsToTake);
+                        assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
+                    });
                 });
 
                 it('Если AI не может отбить карту и подкидывать нечего, он автоматически забирает стол', () => {
-                    const oldPhase = battle.phase;
-                    const oldDefender = battle.defender;
-                    const oldTable = battle.table;
-                    const oldPlayerHand = battle.playerHand;
-                    const oldEnemyHand = battle.enemyHand;
-                    const oldTrumpSuit = battle.trumpSuit;
-                    const oldCardsToTake = battle.cardsToTake;
-                    const oldTimer = battle.aiTimer;
+                    withFieldSnapshot({ battle: ['phase', 'defender', 'table', 'playerHand', 'enemyHand', 'trumpSuit', 'cardsToTake', 'aiTimer'] }, () => {
+                        battle.defender = 'enemy';
+                        battle.phase = BATTLE_PHASES.AI_WAITING;
+                        battle.table = [
+                            { attack: { id: 'test_attack_1', suit: 'Pikes', value: 6 }, defend: { id: 'test_defend', suit: 'Pikes', value: 10 } },
+                            { attack: { id: 'test_throw', suit: 'Hearts', value: 8 }, defend: null }
+                        ];
+                        battle.playerHand = [
+                            { id: 'test_no_throw', suit: 'Tiles', value: 9 }
+                        ];
+                        battle.enemyHand = [
+                            { id: 'test_low', suit: 'Clovers', value: 7 },
+                            { id: 'test_low_2', suit: 'Clovers', value: 12 }
+                        ];
+                        battle.trumpSuit = 'Hearts';
+                        battle.cardsToTake = false;
 
-                    clearAITimer();
-                    battle.defender = 'enemy';
-                    battle.phase = BATTLE_PHASES.AI_WAITING;
-                    battle.table = [
-                        { attack: { id: 'test_attack_1', suit: 'Pikes', value: 6 }, defend: { id: 'test_defend', suit: 'Pikes', value: 10 } },
-                        { attack: { id: 'test_throw', suit: 'Hearts', value: 8 }, defend: null }
-                    ];
-                    battle.playerHand = [
-                        { id: 'test_no_throw', suit: 'Tiles', value: 9 }
-                    ];
-                    battle.enemyHand = [
-                        { id: 'test_low', suit: 'Clovers', value: 7 },
-                        { id: 'test_low_2', suit: 'Clovers', value: 12 }
-                    ];
-                    battle.trumpSuit = 'Hearts';
-                    battle.cardsToTake = false;
+                        executeEnemyAI();
 
-                    executeEnemyAI();
-
-                    assert.isTrue(battle.cardsToTake);
-                    assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
-                    assert.isTrue(battle.aiTimer !== null);
-
-                    clearAITimer();
-                    battle.phase = oldPhase;
-                    battle.defender = oldDefender;
-                    battle.table = oldTable;
-                    battle.playerHand = oldPlayerHand;
-                    battle.enemyHand = oldEnemyHand;
-                    battle.trumpSuit = oldTrumpSuit;
-                    battle.cardsToTake = oldCardsToTake;
-                    battle.aiTimer = oldTimer;
+                        assert.isTrue(battle.cardsToTake);
+                        assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
+                        assert.isTrue(battle.aiTimer !== null);
+                    });
                 });
 
                 it('После ответа AI управление возвращается игроку', () => {
-                    const oldDefender = battle.defender;
-                    const oldPhase = battle.phase;
-                    const oldTable = battle.table;
-                    const oldPlayerHand = battle.playerHand;
-                    const oldEnemyHand = battle.enemyHand;
-                    const oldTimer = battle.aiTimer;
-                    const oldTrumpSuit = battle.trumpSuit;
-                    const oldCardsToTake = battle.cardsToTake;
+                    withFieldSnapshot({ battle: ['defender', 'phase', 'table', 'playerHand', 'enemyHand', 'aiTimer', 'trumpSuit', 'cardsToTake'] }, () => {
+                        battle.defender = 'enemy';
+                        battle.phase = BATTLE_PHASES.AI_WAITING;
+                        battle.table = [{
+                            attack: { id: 'test_attack', suit: 'Pikes', value: 6 },
+                            defend: null
+                        }];
+                        battle.playerHand = [{ id: 'test_player', suit: 'Tiles', value: 7 }];
+                        battle.enemyHand = [
+                            { id: 'test_defend', suit: 'Pikes', value: 10 },
+                            { id: 'test_reserve', suit: 'Tiles', value: 8 }
+                        ];
+                        battle.trumpSuit = 'Hearts';
+                        battle.cardsToTake = false;
 
-                    clearAITimer();
-                    battle.defender = 'enemy';
-                    battle.phase = BATTLE_PHASES.AI_WAITING;
-                    battle.table = [{
-                        attack: { id: 'test_attack', suit: 'Pikes', value: 6 },
-                        defend: null
-                    }];
-                    battle.playerHand = [{ id: 'test_player', suit: 'Tiles', value: 7 }];
-                    battle.enemyHand = [
-                        { id: 'test_defend', suit: 'Pikes', value: 10 },
-                        { id: 'test_reserve', suit: 'Tiles', value: 8 }
-                    ];
-                    battle.trumpSuit = 'Hearts';
-                    battle.cardsToTake = false;
+                        executeEnemyAI();
 
-                    executeEnemyAI();
-
-                    assert.equal(battle.table.length, 1);
-                    assert.equal(battle.table[0].defend.id, 'test_defend');
-                    assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
-
-                    clearAITimer();
-                    battle.defender = oldDefender;
-                    battle.phase = oldPhase;
-                    battle.table = oldTable;
-                    battle.playerHand = oldPlayerHand;
-                    battle.enemyHand = oldEnemyHand;
-                    battle.aiTimer = oldTimer;
-                    battle.trumpSuit = oldTrumpSuit;
-                    battle.cardsToTake = oldCardsToTake;
+                        assert.equal(battle.table.length, 1);
+                        assert.equal(battle.table[0].defend.id, 'test_defend');
+                        assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
+                    });
                 });
 
                 it('Когда AI закончил подкидывать, он планирует бито с задержкой', () => {
-                    const oldDefender = battle.defender;
-                    const oldPhase = battle.phase;
-                    const oldTable = battle.table;
-                    const oldPlayerHand = battle.playerHand;
-                    const oldEnemyHand = battle.enemyHand;
-                    const oldTimer = battle.aiTimer;
+                    withFieldSnapshot({ battle: ['defender', 'phase', 'table', 'playerHand', 'enemyHand', 'aiTimer'] }, () => {
+                        battle.defender = 'player';
+                        battle.phase = BATTLE_PHASES.AI_WAITING;
+                        battle.table = [{
+                            attack: { id: 'test_attack', suit: 'Pikes', value: 6 },
+                            defend: { id: 'test_defend', suit: 'Pikes', value: 10 }
+                        }];
+                        battle.playerHand = [{ id: 'test_player', suit: 'Tiles', value: 7 }];
+                        battle.enemyHand = [{ id: 'test_other', suit: 'Clovers', value: 9 }];
 
-                    clearAITimer();
-                    battle.defender = 'player';
-                    battle.phase = BATTLE_PHASES.AI_WAITING;
-                    battle.table = [{
-                        attack: { id: 'test_attack', suit: 'Pikes', value: 6 },
-                        defend: { id: 'test_defend', suit: 'Pikes', value: 10 }
-                    }];
-                    battle.playerHand = [{ id: 'test_player', suit: 'Tiles', value: 7 }];
-                    battle.enemyHand = [{ id: 'test_other', suit: 'Clovers', value: 9 }];
+                        executeEnemyAI();
 
-                    executeEnemyAI();
-
-                    assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
-                    assert.isTrue(battle.aiTimer !== null);
-
-                    clearAITimer();
-                    battle.defender = oldDefender;
-                    battle.phase = oldPhase;
-                    battle.table = oldTable;
-                    battle.playerHand = oldPlayerHand;
-                    battle.enemyHand = oldEnemyHand;
-                    battle.aiTimer = oldTimer;
+                        assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
+                        assert.isTrue(battle.aiTimer !== null);
+                    });
                 });
 
                 // checkRoundEnd() itself only had indirect coverage (via the
@@ -3225,10 +3145,7 @@
                         }
                     );
                 });
-
-                battle.phase = oldPhase;
-                battle.defender = oldDefender;
-                battle.aiTimer = oldTimer;
+              });
             });
 
             runner.describe('8. Сохранение прогресса (LocalStorage)', (it, assert) => {
@@ -3478,46 +3395,41 @@
             });
 
             runner.describe('9. Магазин и здоровье игрока', (it, assert) => {
-                const oldHP = run.playerHP;
-                const oldMaxHP = run.maxHP;
-                const oldGold = run.gold;
+                withFieldSnapshot({ run: ['playerHP', 'maxHP', 'gold'] }, () => {
+                    it('openShop корректно обновляет отображение здоровья и золота', () => {
+                        run.playerHP = 18;
+                        run.maxHP = 30;
+                        run.gold = 25;
+                        openShop();
+                        const hpEl = document.getElementById('shop-hp-display');
+                        const goldEl = document.getElementById('shop-gold-display');
+                        assert.equal(hpEl ? hpEl.innerText : '', '18/30');
+                        assert.equal(goldEl ? goldEl.innerText : '', '25$');
+                    });
 
-                it('openShop корректно обновляет отображение здоровья и золота', () => {
-                    run.playerHP = 18;
-                    run.maxHP = 30;
-                    run.gold = 25;
-                    openShop();
-                    const hpEl = document.getElementById('shop-hp-display');
-                    const goldEl = document.getElementById('shop-gold-display');
-                    assert.equal(hpEl ? hpEl.innerText : '', '18/30');
-                    assert.equal(goldEl ? goldEl.innerText : '', '25$');
+                    it('Покупка лечения восстанавливает здоровье и обновляет отображение', () => {
+                        run.playerHP = 15;
+                        run.maxHP = 30;
+                        run.gold = 20;
+                        buyHeal();
+                        assert.equal(run.playerHP, 25);
+                        assert.equal(run.gold, 10);
+                        const hpEl = document.getElementById('shop-hp-display');
+                        assert.equal(hpEl ? hpEl.innerText : '', '25/30');
+                    });
+
+                    it('Лечение не превышает максимальный запас здоровья', () => {
+                        run.playerHP = 26;
+                        run.maxHP = 30;
+                        run.gold = 20;
+                        buyHeal();
+                        assert.equal(run.playerHP, 30);
+                        assert.equal(run.gold, 10);
+                        const hpEl = document.getElementById('shop-hp-display');
+                        assert.equal(hpEl ? hpEl.innerText : '', '30/30');
+                    });
                 });
 
-                it('Покупка лечения восстанавливает здоровье и обновляет отображение', () => {
-                    run.playerHP = 15;
-                    run.maxHP = 30;
-                    run.gold = 20;
-                    buyHeal();
-                    assert.equal(run.playerHP, 25);
-                    assert.equal(run.gold, 10);
-                    const hpEl = document.getElementById('shop-hp-display');
-                    assert.equal(hpEl ? hpEl.innerText : '', '25/30');
-                });
-
-                it('Лечение не превышает максимальный запас здоровья', () => {
-                    run.playerHP = 26;
-                    run.maxHP = 30;
-                    run.gold = 20;
-                    buyHeal();
-                    assert.equal(run.playerHP, 30);
-                    assert.equal(run.gold, 10);
-                    const hpEl = document.getElementById('shop-hp-display');
-                    assert.equal(hpEl ? hpEl.innerText : '', '30/30');
-                });
-
-                run.playerHP = oldHP;
-                run.maxHP = oldMaxHP;
-                run.gold = oldGold;
                 const shopModal = document.getElementById('shop-modal');
                 if (shopModal) {
                     shopModal.classList.add('hidden');
@@ -3526,9 +3438,7 @@
             });
 
             runner.describe('9b. Слоты артефактов в магазине (покупка/продажа)', (it, assert) => {
-                const oldRelics = run.relics;
-                const oldGold = run.gold;
-
+              withFieldSnapshot({ run: ['relics', 'gold'] }, () => {
                 it('Купленный артефакт занимает самый левый свободный слот', () => {
                     run.relics = [];
                     run.gold = 100;
@@ -3574,9 +3484,8 @@
                     assert.equal(run.gold, 3, 'Золото не должно измениться при отмене');
                     assert.equal(run.relics.length, 1, 'Артефакт не должен быть удалён при отмене');
                 });
+              });
 
-                run.relics = oldRelics;
-                run.gold = oldGold;
                 const shopModal2 = document.getElementById('shop-modal');
                 if (shopModal2) {
                     shopModal2.classList.add('hidden');
@@ -3610,105 +3519,79 @@
                 });
 
                 it('handlePlayerTake: урон игроку = количество карт × уровень соперника', () => {
-                    const oldRun = run;
-                    const oldBattle = battle;
-                    const oldTimer = battle.aiTimer;
-
-                    clearAITimer();
-                    run = { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [], deck: [] };
-                    battle = {
-                        drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                        discardPile: [],
-                        playerHand: [],
-                        enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                        trumpCard: null,
-                        trumpSuit: 'Hearts',
-                        table: [
-                            { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
-                            { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
-                            { attack: { id: 'x3', suit: 'Hearts', value: 8 }, defend: null },
-                        ],
-                        defender: 'player',
-                        selectedCardIndex: null,
-                        cardsToTake: false,
-                        isTransferActive: false,
-                        enemyHP: 10,
-                        phase: BATTLE_PHASES.PLAYER_DEFENSE,
-                        aiTimer: null,
-                        actionToken: 0
-                    };
-
-                    handlePlayerTake();
-
-                    assert.equal(run.playerHP, 97); // 3 карты × уровень 1
-
-                    clearAITimer();
-                    run = oldRun;
-                    battle = oldBattle;
-                    battle.aiTimer = oldTimer;
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [], deck: [] },
+                        {
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            discardPile: [],
+                            playerHand: [],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                            trumpCard: null,
+                            trumpSuit: 'Hearts',
+                            table: [
+                                { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
+                                { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
+                                { attack: { id: 'x3', suit: 'Hearts', value: 8 }, defend: null },
+                            ],
+                            defender: 'player',
+                            selectedCardIndex: null,
+                            cardsToTake: false,
+                            isTransferActive: false,
+                            enemyHP: 10,
+                            phase: BATTLE_PHASES.PLAYER_DEFENSE,
+                            aiTimer: null,
+                            actionToken: 0
+                        },
+                        () => {
+                            handlePlayerTake();
+                            assert.equal(run.playerHP, 97); // 3 карты × уровень 1
+                        }
+                    );
                 });
 
                 it('handlePlayerTake: способность double_penalty финального босса удваивает урон', () => {
-                    const oldRun = run;
-                    const oldBattle = battle;
-                    const oldTimer = battle.aiTimer;
-
-                    clearAITimer();
-                    run = { floor: 12, playerHP: 100, maxHP: 100, gold: 0, relics: [], deck: [] };
-                    battle = {
-                        drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                        discardPile: [],
-                        playerHand: [],
-                        enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                        trumpCard: null,
-                        trumpSuit: 'Hearts',
-                        table: [
-                            { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
-                            { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
-                            { attack: { id: 'x3', suit: 'Hearts', value: 8 }, defend: null },
-                        ],
-                        defender: 'player',
-                        selectedCardIndex: null,
-                        cardsToTake: false,
-                        isTransferActive: false,
-                        enemyHP: 10,
-                        phase: BATTLE_PHASES.PLAYER_DEFENSE,
-                        aiTimer: null,
-                        actionToken: 0
-                    };
-
-                    handlePlayerTake();
-
-                    assert.equal(run.playerHP, 76); // 3 карты × уровень 4 × 2 (double_penalty) = 24
-
-                    clearAITimer();
-                    run = oldRun;
-                    battle = oldBattle;
-                    battle.aiTimer = oldTimer;
+                    withIsolatedGameState(
+                        { floor: 12, playerHP: 100, maxHP: 100, gold: 0, relics: [], deck: [] },
+                        {
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            discardPile: [],
+                            playerHand: [],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                            trumpCard: null,
+                            trumpSuit: 'Hearts',
+                            table: [
+                                { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
+                                { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
+                                { attack: { id: 'x3', suit: 'Hearts', value: 8 }, defend: null },
+                            ],
+                            defender: 'player',
+                            selectedCardIndex: null,
+                            cardsToTake: false,
+                            isTransferActive: false,
+                            enemyHP: 10,
+                            phase: BATTLE_PHASES.PLAYER_DEFENSE,
+                            aiTimer: null,
+                            actionToken: 0
+                        },
+                        () => {
+                            handlePlayerTake();
+                            assert.equal(run.playerHP, 76); // 3 карты × уровень 4 × 2 (double_penalty) = 24
+                        }
+                    );
                 });
 
                 it('Победа над боссом увеличивает maxHP и лечит игрока на ту же величину', () => {
-                    const oldFloor = run.floor;
-                    const oldMaxHP = run.maxHP;
-                    const oldPlayerHP = run.playerHP;
-                    const oldGold = run.gold;
-                    const oldEnemyHP = battle.enemyHP;
+                    withFieldSnapshot({ run: ['floor', 'maxHP', 'playerHP', 'gold'], battle: ['enemyHP'] }, () => {
+                        run.floor = 3; // Карточный Трактирщик (первый босс)
+                        run.maxHP = 30;
+                        run.playerHP = 20;
+                        battle.enemyHP = 5;
 
-                    run.floor = 3; // Карточный Трактирщик (первый босс)
-                    run.maxHP = 30;
-                    run.playerHP = 20;
-                    battle.enemyHP = 5;
+                        damageEnemyHP(50);
 
-                    damageEnemyHP(50);
-
-                    assert.equal(run.maxHP, 35);
-                    assert.equal(run.playerHP, 25);
-
-                    run.floor = oldFloor;
-                    run.maxHP = oldMaxHP;
-                    run.playerHP = oldPlayerHP;
-                    run.gold = oldGold;
-                    battle.enemyHP = oldEnemyHP;
+                        assert.equal(run.maxHP, 35);
+                        assert.equal(run.playerHP, 25);
+                    });
                     const msgBox = document.getElementById('msg-box');
                     if (msgBox) {
                         msgBox.classList.add('hidden');
@@ -3717,23 +3600,15 @@
                 });
 
                 it('Победа над рядовым противником НЕ увеличивает maxHP', () => {
-                    const oldFloor = run.floor;
-                    const oldMaxHP = run.maxHP;
-                    const oldGold = run.gold;
-                    const oldEnemyHP = battle.enemyHP;
+                    withFieldSnapshot({ run: ['floor', 'maxHP', 'gold'], battle: ['enemyHP'] }, () => {
+                        run.floor = 1; // рядовой филлер
+                        run.maxHP = 30;
+                        battle.enemyHP = 5;
 
-                    run.floor = 1; // рядовой филлер
-                    run.maxHP = 30;
-                    battle.enemyHP = 5;
+                        damageEnemyHP(50);
 
-                    damageEnemyHP(50);
-
-                    assert.equal(run.maxHP, 30);
-
-                    run.floor = oldFloor;
-                    run.maxHP = oldMaxHP;
-                    run.gold = oldGold;
-                    battle.enemyHP = oldEnemyHP;
+                        assert.equal(run.maxHP, 30);
+                    });
                     const msgBox = document.getElementById('msg-box');
                     if (msgBox) {
                         msgBox.classList.add('hidden');
