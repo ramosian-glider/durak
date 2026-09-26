@@ -2484,6 +2484,13 @@
             renderRelicActions();
         }
 
+        // The active (button-triggered) relic abilities, in display order. Each
+        // has an isReady/label/onUse entry in RELIC_EFFECTS and a fixed
+        // 'btn-<id-with-hyphens>' element id (see renderRelicActions()/
+        // useActiveRelic() below) — adding a new one here is enough to wire up
+        // both the button and its guard.
+        const ACTIVE_RELIC_IDS = ['pocket_discard', 'jester_discard', 'sleight_of_hand'];
+
         // Renders the row of one-off relic ability buttons (pocket_discard,
         // jester_discard, sleight_of_hand) — only the ones currently owned,
         // not yet used for their scope (round/battle), and legal to use right now.
@@ -2491,19 +2498,13 @@
             const container = document.getElementById('relic-actions');
             if (!container) return;
 
-            const buttons = [];
-
-            if (hasRelic('pocket_discard') && RELIC_EFFECTS.pocket_discard.isReady()) {
-                buttons.push({ id: 'btn-pocket-discard', label: RELIC_EFFECTS.pocket_discard.label, handler: RELIC_EFFECTS.pocket_discard.onUse });
-            }
-
-            if (hasRelic('jester_discard') && RELIC_EFFECTS.jester_discard.isReady()) {
-                buttons.push({ id: 'btn-jester-discard', label: RELIC_EFFECTS.jester_discard.label, handler: RELIC_EFFECTS.jester_discard.onUse });
-            }
-
-            if (hasRelic('sleight_of_hand') && RELIC_EFFECTS.sleight_of_hand.isReady()) {
-                buttons.push({ id: 'btn-sleight-of-hand', label: RELIC_EFFECTS.sleight_of_hand.label, handler: RELIC_EFFECTS.sleight_of_hand.onUse });
-            }
+            const buttons = ACTIVE_RELIC_IDS
+                .filter(id => hasRelic(id) && RELIC_EFFECTS[id].isReady())
+                .map(id => ({
+                    id: 'btn-' + id.replace(/_/g, '-'),
+                    label: RELIC_EFFECTS[id].label,
+                    handler: RELIC_EFFECTS[id].onUse
+                }));
 
             container.innerHTML = '';
             if (buttons.length === 0) {
@@ -2522,27 +2523,45 @@
             });
         }
 
+        // Shared plumbing for the active relic abilities above: guards on
+        // hasRelic + isReady() (the single source of truth for "can this fire
+        // right now", also used by renderRelicActions()), then runs the
+        // relic-specific effect. effectFn returns:
+        //   - false: the effect couldn't find a valid target (e.g. no 6/7 in
+        //     hand) — bail out with no sound/save/render.
+        //   - 'checkRound': the effect may have emptied the player's hand, so
+        //     run checkRoundEnd() after the usual sound/save/render.
+        //   - anything else (including undefined): ran normally, no round
+        //     check needed.
+        function useActiveRelic(id, effectFn) {
+            if (!hasRelic(id) || !RELIC_EFFECTS[id].isReady()) return;
+            const result = effectFn();
+            if (result === false) return;
+            audio.playCardSound();
+            saveRunToLocal();
+            renderAll();
+            if (result === 'checkRound') checkRoundEnd();
+        }
+
         // pocket_discard: once per round, permanently bin a 6 or 7 from hand.
         // Auto-picks the first matching card (lowest value first) rather than
         // prompting, to keep the interaction one tap.
         function usePocketDiscard() {
-            if (!hasRelic('pocket_discard') || !RELIC_EFFECTS.pocket_discard.isReady()) return;
-            const idx = battle.playerHand.findIndex(c => c.value === 6 || c.value === 7);
-            if (idx === -1) return;
+            useActiveRelic('pocket_discard', () => {
+                const idx = battle.playerHand.findIndex(c => c.value === 6 || c.value === 7);
+                if (idx === -1) return false;
 
-            const [card] = battle.playerHand.splice(idx, 1);
-            battle.discardPile.push(card);
-            battle.pocketDiscardUsedThisRound = true;
-            audio.playCardSound();
-            saveRunToLocal();
-            renderAll();
-            // This can be the card that empties the player's hand: if the draw
-            // deck and table are also already empty, that's a round win the
-            // normal БИТО/take/replenish call sites would catch via
-            // checkRoundEnd() but this one-off discard bypassed. Without this
-            // call the round just sits there with an empty hand and no way
-            // forward (see: discarding the last card didn't end the battle).
-            checkRoundEnd();
+                const [card] = battle.playerHand.splice(idx, 1);
+                battle.discardPile.push(card);
+                battle.pocketDiscardUsedThisRound = true;
+                // This can be the card that empties the player's hand: if the draw
+                // deck and table are also already empty, that's a round win the
+                // normal БИТО/take/replenish call sites would catch via
+                // checkRoundEnd() but this one-off discard bypassed. Without this
+                // call the round just sits there with an empty hand and no way
+                // forward (see: discarding the last card didn't end the battle).
+                return 'checkRound';
+            });
         }
 
         // jester_discard: once per battle, on your own attacking turn with an
@@ -2550,46 +2569,40 @@
         // isReady() guarantees the deck has enough cards for a full redraw, so
         // this always returns the same hand size it started with.
         function useJesterDiscard() {
-            if (!hasRelic('jester_discard') || !RELIC_EFFECTS.jester_discard.isReady()) return;
+            useActiveRelic('jester_discard', () => {
+                const handSize = battle.playerHand.length;
+                battle.discardPile.push(...battle.playerHand);
+                battle.playerHand = [];
+                for (let i = 0; i < handSize; i++) {
+                    battle.playerHand.push(battle.drawDeck.pop());
+                }
+                sortPlayerHand();
 
-            const handSize = battle.playerHand.length;
-            battle.discardPile.push(...battle.playerHand);
-            battle.playerHand = [];
-            for (let i = 0; i < handSize; i++) {
-                battle.playerHand.push(battle.drawDeck.pop());
-            }
-            sortPlayerHand();
-
-            battle.jesterDiscardUsedThisBattle = true;
-            audio.playCardSound();
-            saveRunToLocal();
-            renderAll();
-            // Defensive: isReady() ensures the redraw is always full, so the hand
-            // shouldn't come back empty here — but this mirrors the same call in
-            // usePocketDiscard() in case that ever stops holding, rather than
-            // leave the round unable to end.
-            checkRoundEnd();
+                battle.jesterDiscardUsedThisBattle = true;
+                // Defensive: isReady() ensures the redraw is always full, so the
+                // hand shouldn't come back empty here — but this mirrors the same
+                // call in usePocketDiscard() in case that ever stops holding,
+                // rather than leave the round unable to end.
+                return 'checkRound';
+            });
         }
 
         // sleight_of_hand: once per battle, while defending against an
         // undefended attack, swap that attack card for a random card from the
         // draw deck. The original attack card goes to the discard pile.
         function useSleightOfHand() {
-            if (!hasRelic('sleight_of_hand') || !RELIC_EFFECTS.sleight_of_hand.isReady()) return;
+            useActiveRelic('sleight_of_hand', () => {
+                const pair = battle.table.find(p => p.defend === null);
+                if (!pair) return false;
 
-            const pair = battle.table.find(p => p.defend === null);
-            if (!pair) return;
+                const oldCard = pair.attack;
+                const randomIdx = Math.floor(Math.random() * battle.drawDeck.length);
+                const [newCard] = battle.drawDeck.splice(randomIdx, 1);
+                pair.attack = newCard;
+                battle.discardPile.push(oldCard);
 
-            const oldCard = pair.attack;
-            const randomIdx = Math.floor(Math.random() * battle.drawDeck.length);
-            const [newCard] = battle.drawDeck.splice(randomIdx, 1);
-            pair.attack = newCard;
-            battle.discardPile.push(oldCard);
-
-            battle.sleightOfHandUsedThisBattle = true;
-            audio.playCardSound();
-            saveRunToLocal();
-            renderAll();
+                battle.sleightOfHandUsedThisBattle = true;
+            });
         }
 
         function showModal(title, text, onClose) {
