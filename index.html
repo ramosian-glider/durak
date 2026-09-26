@@ -1821,15 +1821,15 @@
         // handler per hook name, and game code calls fireHook()/fireAllHooks() at
         // one canonical point rather than every call site re-checking hasRelic()
         // individually. Migrated so far: safety_rope, coin_magnet, sharp_suit,
-        // cascade_transfer, heavy_ballast, salted_wound, ace_sleeve, mirror_ring, midas_touch, ballast_drop, spam_mail, pocket_discard, jester_discard.
+        // cascade_transfer, heavy_ballast, salted_wound, ace_sleeve, mirror_ring, midas_touch, ballast_drop, spam_mail, pocket_discard, jester_discard, sleight_of_hand.
         //
-        // pocket_discard and jester_discard are *active* (button-triggered)
-        // relics — see isReady/onUse below. These don't fire off a game event the
-        // way the hooks above do, so they aren't dispatched via fireHook(); instead
-        // renderRelicActions() and the relic's own use*() function both call
-        // isReady() directly, which is the point of the migration: the
-        // availability condition used to be duplicated between those two call
-        // sites and is now defined once.
+        // pocket_discard, jester_discard, and sleight_of_hand are *active*
+        // (button-triggered) relics — see isReady/onUse below. These don't fire
+        // off a game event the way the hooks above do, so they aren't dispatched
+        // via fireHook(); instead renderRelicActions() and the relic's own
+        // use*() function both call isReady() directly, which is the point of
+        // the migration: the availability condition used to be duplicated
+        // between those two call sites and is now defined once.
         const RELIC_EFFECTS = {
             safety_rope: {
                 // Called from applyPlayerDamage() only when the hit would be lethal.
@@ -2018,6 +2018,26 @@
                 },
                 label: '🃏 Пересдать руку (Шутовской сброс)',
                 onUse: () => useJesterDiscard()
+            },
+            sleight_of_hand: {
+                // Once per battle, while defending against an undefended attack
+                // card, swap that card for a random card from the draw deck.
+                // Same active-ability shape as pocket_discard/jester_discard
+                // above: isReady() is the single source of truth, called from
+                // both renderRelicActions() and useSleightOfHand().
+                //
+                // Restricted to the player defending (defender === 'player')
+                // against an attack that still has an unanswered pair on the
+                // table, with at least one card left in the draw deck to swap
+                // in.
+                isReady() {
+                    return !battle.sleightOfHandUsedThisBattle && canAcceptPlayerAction()
+                        && battle.defender === 'player'
+                        && battle.table.some(p => p.defend === null)
+                        && battle.drawDeck.length > 0;
+                },
+                label: '🪄 Подменить карту (Ловкость рук)',
+                onUse: () => useSleightOfHand()
             }
         };
 
@@ -2105,15 +2125,15 @@
             const healList = document.getElementById('shop-heal-list');
             if (healList) {
                 healList.innerHTML = `
-                    <div class="flex items-center justify-between p-2.5 bg-slate-900 border border-emerald-800/60 rounded-xl">
-                        <div class="flex items-center gap-2.5">
+                    <div class="flex items-center justify-between gap-3 p-2.5 bg-slate-900 border border-emerald-800/60 rounded-xl">
+                        <div class="flex items-center gap-2.5 min-w-0 flex-1">
                             <span class="text-2xl">❤️</span>
-                            <div>
+                            <div class="min-w-0">
                                 <div class="text-xs font-bold text-rose-300">Принять лекарство (+10 HP)</div>
                                 <div class="text-[10px] text-slate-400 leading-tight">Восстановить до 10 здоровья (до макс. ${run.maxHP})</div>
                             </div>
                         </div>
-                        <button class="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-lg shadow border border-rose-400 active:scale-95 transition" onclick="buyHeal()">
+                        <button class="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-lg shadow border border-rose-400 active:scale-95 transition flex-shrink-0" onclick="buyHeal()">
                             10$
                         </button>
                     </div>
@@ -2126,16 +2146,16 @@
                 const available = ALL_RELICS.filter(r => !hasRelic(r.id));
                 available.forEach(relic => {
                     const item = document.createElement('div');
-                    item.className = "flex items-center justify-between p-2.5 bg-slate-900 border border-emerald-800/60 rounded-xl";
+                    item.className = "flex items-center justify-between gap-3 p-2.5 bg-slate-900 border border-emerald-800/60 rounded-xl";
                     item.innerHTML = `
-                        <div class="flex items-center gap-2.5">
+                        <div class="flex items-center gap-2.5 min-w-0 flex-1">
                             <span class="text-2xl">${relic.icon}</span>
-                            <div>
+                            <div class="min-w-0">
                                 <div class="text-xs font-bold text-amber-300">${relic.name}</div>
                                 <div class="text-[10px] text-slate-400 leading-tight">${relic.desc}</div>
                             </div>
                         </div>
-                        <button class="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-lg shadow border border-amber-300" onclick="buyRelic('${relic.id}')">
+                        <button class="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-lg shadow border border-amber-300 flex-shrink-0" onclick="buyRelic('${relic.id}')">
                             ${relic.price}$
                         </button>
                     `;
@@ -2453,10 +2473,8 @@
                 buttons.push({ id: 'btn-jester-discard', label: RELIC_EFFECTS.jester_discard.label, handler: RELIC_EFFECTS.jester_discard.onUse });
             }
 
-            if (hasRelic('sleight_of_hand') && !battle.sleightOfHandUsedThisBattle
-                && canAcceptPlayerAction() && battle.defender === 'player'
-                && battle.table.some(p => p.defend === null) && battle.drawDeck.length > 0) {
-                buttons.push({ id: 'btn-sleight-of-hand', label: '🪄 Подменить карту (Ловкость рук)', handler: useSleightOfHand });
+            if (hasRelic('sleight_of_hand') && RELIC_EFFECTS.sleight_of_hand.isReady()) {
+                buttons.push({ id: 'btn-sleight-of-hand', label: RELIC_EFFECTS.sleight_of_hand.label, handler: RELIC_EFFECTS.sleight_of_hand.onUse });
             }
 
             container.innerHTML = '';
@@ -2529,8 +2547,7 @@
         // undefended attack, swap that attack card for a random card from the
         // draw deck. The original attack card goes to the discard pile.
         function useSleightOfHand() {
-            if (!hasRelic('sleight_of_hand') || battle.sleightOfHandUsedThisBattle || !canAcceptPlayerAction()) return;
-            if (battle.defender !== 'player' || battle.drawDeck.length === 0) return;
+            if (!hasRelic('sleight_of_hand') || !RELIC_EFFECTS.sleight_of_hand.isReady()) return;
 
             const pair = battle.table.find(p => p.defend === null);
             if (!pair) return;
@@ -4869,6 +4886,41 @@
                             assert.equal(battle.drawDeck.length, 0);
                             assert.equal(battle.discardPile[0].id, 'a1');
                             assert.isTrue(battle.sleightOfHandUsedThisBattle);
+                        }
+                    );
+                });
+
+                it('sleight_of_hand: isReady() — единый источник условия для рендера кнопки и хендлера', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'sleight_of_hand' }], deck: [] },
+                        {
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
+                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
+                            table: [{ attack: { id: 'a1', suit: 'Pikes', value: 14 }, defend: null }],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            assert.isTrue(RELIC_EFFECTS.sleight_of_hand.isReady(), 'защита от неотбитой атаки, карты в колоде есть — доступна');
+
+                            battle.sleightOfHandUsedThisBattle = true;
+                            assert.isFalse(RELIC_EFFECTS.sleight_of_hand.isReady(), 'уже использовано в этом бою — недоступна');
+                            battle.sleightOfHandUsedThisBattle = false;
+
+                            battle.defender = 'enemy';
+                            assert.isFalse(RELIC_EFFECTS.sleight_of_hand.isReady(), 'нельзя использовать на своём ходу атаки');
+                            battle.defender = 'player';
+
+                            battle.table = [{ attack: { id: 'a1', suit: 'Pikes', value: 14 }, defend: { id: 'd0', suit: 'Pikes', value: 8 } }];
+                            assert.isFalse(RELIC_EFFECTS.sleight_of_hand.isReady(), 'все атаки на столе уже отбиты — нечего подменять');
+                            battle.table = [{ attack: { id: 'a1', suit: 'Pikes', value: 14 }, defend: null }];
+
+                            battle.drawDeck = [];
+                            assert.isFalse(RELIC_EFFECTS.sleight_of_hand.isReady(), 'в колоде нет карт для подмены — недоступна');
                         }
                     );
                 });
