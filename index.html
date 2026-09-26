@@ -256,6 +256,25 @@
             cursor: pointer;
             transition: transform 0.15s ease, border-color 0.15s ease;
         }
+        .relic-highlight {
+            animation: relic-highlight-pulse 0.7s ease-out;
+        }
+        @keyframes relic-highlight-pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.9);
+                border-color: rgba(250, 204, 21, 1);
+                transform: scale(1.12);
+            }
+            60% {
+                box-shadow: 0 0 10px 4px rgba(250, 204, 21, 0.55);
+                border-color: rgba(250, 204, 21, 0.9);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(250, 204, 21, 0);
+                border-color: rgba(251, 191, 36, 0.6);
+                transform: scale(1);
+            }
+        }
         .relic-slot-sellable:hover {
             border-color: rgba(244, 63, 94, 0.85);
             transform: scale(1.08);
@@ -839,6 +858,10 @@
         const COIN_MAGNET_GOLD_PER_SIX = 1;
         const SHARP_SUIT_DAMAGE = 1;
         const MIRROR_RING_MULTIPLIER = 1;
+
+        // How long a relic's slot in the relics bar stays visually highlighted
+        // after one of its hooks fires successfully (see highlightRelic()).
+        const RELIC_HIGHLIGHT_DURATION_MS = 700;
 
         const AI_QUICK_DELAY_MS = 400;
         const AI_STANDARD_DELAY_MS = 500;
@@ -1881,6 +1904,7 @@
                 onCardPlayed(card) {
                     if (card.value === 6) {
                         run.gold += COIN_MAGNET_GOLD_PER_SIX;
+                        return true;
                     }
                 }
             },
@@ -1892,6 +1916,7 @@
                 onPlayerDefend(card) {
                     if (card.suit === battle.trumpSuit) {
                         damageEnemyHP(SHARP_SUIT_DAMAGE);
+                        return true;
                     }
                 }
             },
@@ -1905,6 +1930,7 @@
                 // so dispatched via fireAllHooks().
                 onDefenseSucceeded() {
                     run.gold += MIDAS_TOUCH_GOLD_ON_DEFEND;
+                    return true;
                 }
             },
             cascade_transfer: {
@@ -1923,6 +1949,7 @@
                     if (battle.cascadeTransferUsedThisTurn) return;
                     battle.cascadeTransferUsedThisTurn = true;
                     damageEnemyHP(CASCADE_TRANSFER_DAMAGE);
+                    return true;
                 }
             },
             heavy_ballast: {
@@ -1940,6 +1967,7 @@
                     const excess = getEnemyDamageExcess(battle.enemyHand.length);
                     if (excess > 0) {
                         damageEnemyHP(excess * HEAVY_BALLAST_DAMAGE_PER_CARD);
+                        return true;
                     }
                 }
             },
@@ -1965,6 +1993,7 @@
                 // shouldn't be skipped just because this one fired.
                 onPlayerTookCards({ cardsTakenCount }) {
                     damageEnemyHP(cardsTakenCount * TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER);
+                    return cardsTakenCount > 0;
                 }
             },
             salted_wound: {
@@ -1990,6 +2019,7 @@
                 onEnemyCollectedTable() {
                     if (battle.drawDeck.length > 0) {
                         battle.enemyHand.push(battle.drawDeck.pop());
+                        return true;
                     }
                 }
             },
@@ -2005,6 +2035,7 @@
                 // hand, nothing to intercept or sum.
                 onPlayerTakePenalty() {
                     discardLowestNonTrumpCards(battle.playerHand, BALLAST_DROP_DISCARD_COUNT);
+                    return true;
                 }
             },
             pocket_discard: {
@@ -2069,6 +2100,34 @@
             }
         };
 
+        // Relic id -> timestamp (ms) until which its relics-bar slot should
+        // render with the `relic-highlight` flash class. Populated by
+        // highlightRelic(), read by the relics-bar rendering in renderAll().
+        // Most relic effects are silent otherwise (a hook just changes numbers
+        // behind the scenes), so this is the only visible cue that a given
+        // relic — as opposed to some other one, or none — is the one that just
+        // acted, especially when several are owned at once.
+        const relicHighlightUntil = {};
+
+        // Flags relic `relicId`'s slot to flash for RELIC_HIGHLIGHT_DURATION_MS.
+        // Called only for a hook invocation that actually *did* something (see
+        // the success checks in fireHook/fireAllHooks/fireHookSum below, and the
+        // useActiveRelic() call site for button-triggered relics) — a hook that
+        // no-op'd (e.g. spam_mail with an empty draw deck) does not flash.
+        // Schedules its own cleanup render so the class comes off again once the
+        // window elapses, even if no other game action causes a render in the
+        // meantime; a re-render that happens to land inside the window (e.g. a
+        // second relic firing the same tick) just re-reads this map and keeps
+        // the flash going, it doesn't need to re-schedule anything itself.
+        function highlightRelic(relicId) {
+            relicHighlightUntil[relicId] = Date.now() + RELIC_HIGHLIGHT_DURATION_MS;
+            setTimeout(() => {
+                if (Date.now() >= (relicHighlightUntil[relicId] || 0)) {
+                    renderAll();
+                }
+            }, RELIC_HIGHLIGHT_DURATION_MS + 20);
+        }
+
         // Fires `hookName` on every owned relic that defines it, in slot order,
         // stopping at (and returning) the first truthy result. Use this for
         // *intercepting* hooks — where at most one relic should act, and later
@@ -2080,7 +2139,10 @@
                 const effect = RELIC_EFFECTS[relic.id];
                 if (effect && typeof effect[hookName] === 'function') {
                     const result = effect[hookName](ctx);
-                    if (result) return result;
+                    if (result) {
+                        highlightRelic(relic.id);
+                        return result;
+                    }
                 }
             }
             return null;
@@ -2090,12 +2152,16 @@
         // with no early-exit. Use this for *additive/notification* hooks — where
         // every relic that cares about the event should act independently (e.g.
         // gold-on-card-played: two such relics, if they existed, should both pay
-        // out, not just the first).
+        // out, not just the first). Handlers dispatched this way signal whether
+        // they actually did something by returning a truthy value (see each
+        // RELIC_EFFECTS entry) — fireAllHooks itself doesn't use that value for
+        // anything but deciding whether to flash the relic.
         function fireAllHooks(hookName, ctx) {
             for (const relic of run.relics) {
                 const effect = RELIC_EFFECTS[relic.id];
                 if (effect && typeof effect[hookName] === 'function') {
-                    effect[hookName](ctx);
+                    const result = effect[hookName](ctx);
+                    if (result) highlightRelic(relic.id);
                 }
             }
         }
@@ -2107,14 +2173,19 @@
         // damageEnemyHP) — unlike fireAllHooks, whose handlers each cause their own
         // side effects independently. Splitting a modifier like salted_wound into
         // its own damageEnemyHP call instead would risk a second "enemy defeated"
-        // trigger firing off an already-dead enemy.
+        // trigger firing off an already-dead enemy. A relic only flashes if its
+        // own contribution was actually positive (a salted_wound with zero excess
+        // cards contributed nothing this time, so it shouldn't flash).
         function fireHookSum(hookName, ctx) {
             let total = 0;
             for (const relic of run.relics) {
                 const effect = RELIC_EFFECTS[relic.id];
                 if (effect && typeof effect[hookName] === 'function') {
                     const result = effect[hookName](ctx);
-                    if (typeof result === 'number') total += result;
+                    if (typeof result === 'number' && result !== 0) {
+                        total += result;
+                        highlightRelic(relic.id);
+                    }
                 }
             }
             return total;
@@ -2403,7 +2474,8 @@
                     const slot = document.createElement('div');
                     if (run.relics[i]) {
                         const r = run.relics[i];
-                        slot.className = "relic-slot-base relic-slot-filled";
+                        const isHighlighted = relicHighlightUntil[r.id] && Date.now() < relicHighlightUntil[r.id];
+                        slot.className = "relic-slot-base relic-slot-filled" + (isHighlighted ? " relic-highlight" : "");
                         slot.title = `${r.name}: ${r.desc}`;
                         slot.innerText = r.icon;
                     } else {
@@ -2537,6 +2609,7 @@
             if (!hasRelic(id) || !RELIC_EFFECTS[id].isReady()) return;
             const result = effectFn();
             if (result === false) return;
+            highlightRelic(id);
             audio.playCardSound();
             saveRunToLocal();
             renderAll();
@@ -4964,6 +5037,101 @@
                     );
                     renderAll();
                     assert.equal(document.getElementById('enemy-name').innerText, realName);
+                });
+            });
+
+            runner.describe('13. Подсветка артефактов при успешном срабатывании хука (relicHighlightUntil)', (it, assert) => {
+                it('fireHookSum: подсвечивает артефакт, только если его вклад в хук ненулевой', () => {
+                    RELIC_EFFECTS.__test_sum_zero = { onTestSumHook: () => 0 };
+                    RELIC_EFFECTS.__test_sum_pos = { onTestSumHook: () => 5 };
+                    const savedRelics = run.relics;
+                    run.relics = [{ id: '__test_sum_zero' }, { id: '__test_sum_pos' }];
+                    delete relicHighlightUntil.__test_sum_zero;
+                    delete relicHighlightUntil.__test_sum_pos;
+                    try {
+                        const total = fireHookSum('onTestSumHook');
+                        assert.equal(total, 5);
+                        assert.isTrue(relicHighlightUntil.__test_sum_zero === undefined, 'нулевой вклад не должен подсвечивать артефакт');
+                        assert.isTrue(relicHighlightUntil.__test_sum_pos > Date.now(), 'положительный вклад должен подсвечивать артефакт');
+                    } finally {
+                        run.relics = savedRelics;
+                        delete RELIC_EFFECTS.__test_sum_zero;
+                        delete RELIC_EFFECTS.__test_sum_pos;
+                        delete relicHighlightUntil.__test_sum_zero;
+                        delete relicHighlightUntil.__test_sum_pos;
+                    }
+                });
+
+                it('fireAllHooks: подсвечивает артефакт, только если его обработчик вернул truthy', () => {
+                    RELIC_EFFECTS.__test_all_noop = { onTestAllHook: () => {} };
+                    RELIC_EFFECTS.__test_all_fired = { onTestAllHook: () => true };
+                    const savedRelics = run.relics;
+                    run.relics = [{ id: '__test_all_noop' }, { id: '__test_all_fired' }];
+                    delete relicHighlightUntil.__test_all_noop;
+                    delete relicHighlightUntil.__test_all_fired;
+                    try {
+                        fireAllHooks('onTestAllHook');
+                        assert.isTrue(relicHighlightUntil.__test_all_noop === undefined, 'обработчик без видимого эффекта не должен подсвечивать артефакт');
+                        assert.isTrue(relicHighlightUntil.__test_all_fired > Date.now(), 'обработчик, вернувший truthy, должен подсвечивать артефакт');
+                    } finally {
+                        run.relics = savedRelics;
+                        delete RELIC_EFFECTS.__test_all_noop;
+                        delete RELIC_EFFECTS.__test_all_fired;
+                        delete relicHighlightUntil.__test_all_noop;
+                        delete relicHighlightUntil.__test_all_fired;
+                    }
+                });
+
+                it('fireHook: подсвечивает только перехвативший хук артефакт, до следующих владельцев дело не доходит', () => {
+                    RELIC_EFFECTS.__test_hook_a = { onTestHook: () => false };
+                    RELIC_EFFECTS.__test_hook_b = { onTestHook: () => true };
+                    RELIC_EFFECTS.__test_hook_c = { onTestHook: () => true };
+                    const savedRelics = run.relics;
+                    run.relics = [{ id: '__test_hook_a' }, { id: '__test_hook_b' }, { id: '__test_hook_c' }];
+                    delete relicHighlightUntil.__test_hook_a;
+                    delete relicHighlightUntil.__test_hook_b;
+                    delete relicHighlightUntil.__test_hook_c;
+                    try {
+                        const result = fireHook('onTestHook');
+                        assert.isTrue(result);
+                        assert.isTrue(relicHighlightUntil.__test_hook_a === undefined, 'артефакт, чей обработчик вернул falsy, не подсвечивается');
+                        assert.isTrue(relicHighlightUntil.__test_hook_b > Date.now(), 'первый перехвативший хук артефакт должен подсвечиваться');
+                        assert.isTrue(relicHighlightUntil.__test_hook_c === undefined, 'fireHook останавливается на первом truthy — до третьего артефакта не доходит');
+                    } finally {
+                        run.relics = savedRelics;
+                        delete RELIC_EFFECTS.__test_hook_a;
+                        delete RELIC_EFFECTS.__test_hook_b;
+                        delete RELIC_EFFECTS.__test_hook_c;
+                        delete relicHighlightUntil.__test_hook_a;
+                        delete relicHighlightUntil.__test_hook_b;
+                        delete relicHighlightUntil.__test_hook_c;
+                    }
+                });
+
+                it('renderAll(): слот в relics-bar получает класс relic-highlight, пока действует подсветка, и теряет его после истечения окна', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'safety_rope', name: 'Страховочный трос', icon: '🪢', desc: 'x', price: 18 }], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [], playerHand: [], enemyHand: [],
+                            trumpCard: null, trumpSuit: 'Hearts', table: [],
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            relicHighlightUntil['safety_rope'] = Date.now() + 5000;
+                            renderAll();
+                            const relicsBar = document.getElementById('relics-bar');
+                            assert.isTrue(relicsBar.children[0].className.includes('relic-highlight'), 'В пределах окна подсветки слот должен иметь класс relic-highlight');
+
+                            relicHighlightUntil['safety_rope'] = Date.now() - 1000; // окно уже истекло
+                            renderAll();
+                            assert.isFalse(relicsBar.children[0].className.includes('relic-highlight'), 'После истечения окна класс должен исчезать');
+
+                            delete relicHighlightUntil['safety_rope'];
+                        }
+                    );
                 });
             });
 
