@@ -244,7 +244,7 @@
             border-color: rgba(251, 191, 36, 0.6);
             font-size: 1.125rem;
             box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-            cursor: help;
+            cursor: pointer;
         }
         .relic-slot-empty {
             border-style: dashed;
@@ -278,6 +278,16 @@
         .relic-slot-sellable:hover {
             border-color: rgba(244, 63, 94, 0.85);
             transform: scale(1.08);
+        }
+        /* Persistent ring on a relic slot whose active ability is currently
+           usable (isReady() === true) — a standing invitation to tap it,
+           distinct from .relic-highlight's one-shot flash on a just-fired hook. */
+        .relic-ready-glow {
+            animation: relic-ready-pulse 1.6s ease-in-out infinite;
+        }
+        @keyframes relic-ready-pulse {
+            0%, 100% { box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.9); }
+            50% { box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.35); }
         }
     </style>
 </head>
@@ -409,7 +419,6 @@
                     ВЗЯТЬ
                 </button>
             </div>
-            <div id="relic-actions" class="grid grid-cols-1 gap-1.5 hidden"></div>
         </section>
     </main>
 
@@ -1877,7 +1886,7 @@
         // pocket_discard, jester_discard, and sleight_of_hand are *active*
         // (button-triggered) relics — see isReady/onUse below. These don't fire
         // off a game event the way the hooks above do, so they aren't dispatched
-        // via fireHook(); instead renderRelicActions() and the relic's own
+        // via fireHook(); instead showRelicPopover() and the relic's own
         // use*() function both call isReady() directly, which is the point of
         // the migration: the availability condition used to be duplicated
         // between those two call sites and is now defined once.
@@ -2042,7 +2051,7 @@
                 // Once per round, permanently bin a 6 or 7 from hand. Not fired
                 // from a game-event call site like the hooks above — it's a
                 // player-triggered ability rendered as a button by
-                // renderRelicActions() and executed by usePocketDiscard(). Both of
+                // showRelicPopover() and executed by usePocketDiscard(). Both of
                 // those call isReady(), so the "can this fire right now" condition
                 // lives in exactly one place instead of being copy-pasted between
                 // the render check and the click-handler guard.
@@ -2083,7 +2092,7 @@
                 // card, swap that card for a random card from the draw deck.
                 // Same active-ability shape as pocket_discard/jester_discard
                 // above: isReady() is the single source of truth, called from
-                // both renderRelicActions() and useSleightOfHand().
+                // both showRelicPopover() and useSleightOfHand().
                 //
                 // Restricted to the player defending (defender === 'player')
                 // against an attack that still has an unanswered pair on the
@@ -2475,9 +2484,12 @@
                     if (run.relics[i]) {
                         const r = run.relics[i];
                         const isHighlighted = relicHighlightUntil[r.id] && Date.now() < relicHighlightUntil[r.id];
-                        slot.className = "relic-slot-base relic-slot-filled" + (isHighlighted ? " relic-highlight" : "");
-                        slot.title = `${r.name}: ${r.desc}`;
+                        const isReadyToActivate = ACTIVE_RELIC_IDS.includes(r.id) && RELIC_EFFECTS[r.id].isReady();
+                        slot.className = "relic-slot-base relic-slot-filled"
+                            + (isHighlighted ? " relic-highlight" : "")
+                            + (isReadyToActivate ? " relic-ready-glow" : "");
                         slot.innerText = r.icon;
+                        slot.onclick = () => showRelicPopover(r.id);
                     } else {
                         slot.className = "relic-slot-base relic-slot-empty";
                         slot.innerText = "+";
@@ -2553,51 +2565,115 @@
                 }
             }
 
-            renderRelicActions();
+            refreshRelicPopoverIfOpen();
         }
 
-        // The active (button-triggered) relic abilities, in display order. Each
-        // has an isReady/label/onUse entry in RELIC_EFFECTS and a fixed
-        // 'btn-<id-with-hyphens>' element id (see renderRelicActions()/
-        // useActiveRelic() below) — adding a new one here is enough to wire up
-        // both the button and its guard.
+        // The active (button-triggered) relic abilities. Each has an
+        // isReady/label/onUse entry in RELIC_EFFECTS — this list is what makes
+        // showRelicPopover() decide whether to offer an activate button at all,
+        // and what makes a relic's relics-bar slot get the "ready to tap"
+        // .relic-ready-glow ring.
         const ACTIVE_RELIC_IDS = ['pocket_discard', 'jester_discard', 'sleight_of_hand'];
 
-        // Renders the row of one-off relic ability buttons (pocket_discard,
-        // jester_discard, sleight_of_hand) — only the ones currently owned,
-        // not yet used for their scope (round/battle), and legal to use right now.
-        function renderRelicActions() {
-            const container = document.getElementById('relic-actions');
-            if (!container) return;
+        // Which relic's popover (the reused #msg-box modal) is currently open,
+        // if any — so renderAll() can keep its button's enabled/disabled state
+        // (and label, in case the relic's ability status changes) in sync with
+        // live game state while the player has it open, and close it if the
+        // relic itself is gone (e.g. safety_rope consuming itself).
+        let openRelicPopoverId = null;
 
-            const buttons = ACTIVE_RELIC_IDS
-                .filter(id => hasRelic(id) && RELIC_EFFECTS[id].isReady())
-                .map(id => ({
-                    id: 'btn-' + id.replace(/_/g, '-'),
-                    label: RELIC_EFFECTS[id].label,
-                    handler: RELIC_EFFECTS[id].onUse
-                }));
+        function closeRelicPopover() {
+            const modal = document.getElementById('msg-box');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                modal.onclick = null;
+            }
+            openRelicPopoverId = null;
+        }
 
-            container.innerHTML = '';
-            if (buttons.length === 0) {
-                container.classList.add('hidden');
+        // Opens the shared #msg-box modal as a relic info popover: icon, name
+        // and description always; for an active-ability relic (ACTIVE_RELIC_IDS),
+        // also an activate button using that relic's own label/isReady/onUse —
+        // replacing the old always-on relic-actions button row below the hand,
+        // which used to pop in and out on every turn change. The button stays
+        // present but disabled while the ability isn't currently usable, so
+        // tapping the relic always shows *something*, not just a blank card.
+        function showRelicPopover(relicId) {
+            const relic = run.relics.find(r => r.id === relicId);
+            if (!relic) return;
+            openRelicPopoverId = relicId;
+            renderRelicPopoverContent(relic);
+        }
+
+        function renderRelicPopoverContent(relic) {
+            const modal = document.getElementById('msg-box');
+            if (!modal) return;
+            setElText('msg-title', `${relic.icon} ${relic.name}`);
+            setElText('msg-body', relic.desc);
+
+            // Tapping the dimmed backdrop (not the card itself) dismisses the
+            // popover without activating anything — same as the explicit close
+            // button, just for people who tap outside instead of hunting for it.
+            modal.onclick = (e) => {
+                if (e.target === modal) closeRelicPopover();
+            };
+
+            const cancelBtn = document.getElementById('msg-btn-cancel');
+            const confirmBtn = document.getElementById('msg-btn');
+            if (!confirmBtn) return;
+
+            if (ACTIVE_RELIC_IDS.includes(relic.id)) {
+                // An activatable relic gets two buttons: activate, and an explicit
+                // close so choosing not to activate is never a dead end — closing
+                // via the "Х" of a modal isn't a pattern used elsewhere in this
+                // game, so this reuses the existing cancel-button slot instead.
+                if (cancelBtn) {
+                    cancelBtn.classList.remove('hidden');
+                    cancelBtn.innerText = "ЗАКРЫТЬ";
+                    cancelBtn.onclick = () => closeRelicPopover();
+                }
+                const effect = RELIC_EFFECTS[relic.id];
+                const ready = effect.isReady();
+                confirmBtn.innerText = effect.label;
+                confirmBtn.disabled = !ready;
+                confirmBtn.classList.toggle('opacity-40', !ready);
+                confirmBtn.onclick = () => {
+                    if (!RELIC_EFFECTS[relic.id].isReady()) return;
+                    closeRelicPopover();
+                    effect.onUse();
+                };
+            } else {
+                if (cancelBtn) {
+                    cancelBtn.classList.add('hidden');
+                    cancelBtn.onclick = null;
+                }
+                confirmBtn.innerText = "ПОНЯТНО";
+                confirmBtn.disabled = false;
+                confirmBtn.classList.remove('opacity-40');
+                confirmBtn.onclick = () => closeRelicPopover();
+            }
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        // Called at the end of every renderAll() so an open relic popover's
+        // activate button doesn't go stale (e.g. isReady() flips false mid-turn)
+        // and so it closes itself if the relic it's showing is no longer owned.
+        function refreshRelicPopoverIfOpen() {
+            if (!openRelicPopoverId) return;
+            const relic = run.relics.find(r => r.id === openRelicPopoverId);
+            if (!relic) {
+                closeRelicPopover();
                 return;
             }
-            container.classList.remove('hidden');
-
-            buttons.forEach(b => {
-                const btn = document.createElement('button');
-                btn.id = b.id;
-                btn.className = "btn-action-base btn-action-amber text-[11px] leading-tight py-1.5";
-                btn.innerText = b.label;
-                btn.onclick = b.handler;
-                container.appendChild(btn);
-            });
+            renderRelicPopoverContent(relic);
         }
 
         // Shared plumbing for the active relic abilities above: guards on
         // hasRelic + isReady() (the single source of truth for "can this fire
-        // right now", also used by renderRelicActions()), then runs the
+        // right now", also used by showRelicPopover()), then runs the
         // relic-specific effect. effectFn returns:
         //   - false: the effect couldn't find a valid target (e.g. no 6/7 in
         //     hand) — bail out with no sound/save/render.
@@ -2681,6 +2757,11 @@
         function showModal(title, text, onClose) {
             const modal = document.getElementById('msg-box');
             if (!modal) return;
+            // This modal is shared with the relic popover — clear its state so a
+            // leftover backdrop-close handler or stale openRelicPopoverId from a
+            // previous relic view can't interfere with this dialog's own onClose.
+            openRelicPopoverId = null;
+            modal.onclick = null;
             setElText('msg-title', title);
             setElText('msg-body', text);
             
@@ -2693,6 +2774,8 @@
             const confirmBtn = document.getElementById('msg-btn');
             if (confirmBtn) {
                 confirmBtn.innerText = "ПОНЯТНО";
+                confirmBtn.disabled = false;
+                confirmBtn.classList.remove('opacity-40');
                 confirmBtn.onclick = () => {
                     modal.classList.add('hidden');
                     modal.classList.remove('flex');
@@ -2710,6 +2793,10 @@
         function showConfirm(title, text, onConfirm) {
             const modal = document.getElementById('msg-box');
             if (!modal) return;
+            // Same reasoning as showModal(): reset relic-popover state so it
+            // can't leak into this dialog.
+            openRelicPopoverId = null;
+            modal.onclick = null;
             setElText('msg-title', title);
             setElText('msg-body', text);
 
@@ -2726,6 +2813,8 @@
             const confirmBtn = document.getElementById('msg-btn');
             if (confirmBtn) {
                 confirmBtn.innerText = "ПРОДАТЬ";
+                confirmBtn.disabled = false;
+                confirmBtn.classList.remove('opacity-40');
                 confirmBtn.onclick = () => {
                     modal.classList.add('hidden');
                     modal.classList.remove('flex');
@@ -4601,11 +4690,11 @@
                     );
                 });
 
-                it('renderRelicActions(): кнопки появляются/исчезают по isReady() и клик по ним реально работает', () => {
+                it('showRelicPopover(): активная способность — кнопка активна/задизейблена по isReady(), клик по ней реально работает', () => {
                     // Все предыдущие тесты на pocket_discard/jester_discard звали
-                    // isReady()/use*() напрямую, минуя renderRelicActions() и сам
-                    // DOM — то есть сам слой отрисовки кнопок был вообще не
-                    // покрыт тестами. Этот тест кликает по настоящей кнопке.
+                    // isReady()/use*() напрямую, минуя showRelicPopover() и сам
+                    // DOM — то есть сам слой попапа был вообще не покрыт тестами.
+                    // Этот тест кликает по настоящей кнопке внутри попапа.
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }, { id: 'jester_discard' }], deck: [] },
                         {
@@ -4620,28 +4709,154 @@
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
                         },
                         () => {
-                            renderRelicActions();
-                            const container = document.getElementById('relic-actions');
-                            assert.isFalse(container.classList.contains('hidden'), 'обе способности доступны — блок должен быть виден');
-                            const pocketBtn = document.getElementById('btn-pocket-discard');
-                            const jesterBtn = document.getElementById('btn-jester-discard');
-                            assert.isTrue(!!pocketBtn, 'кнопка pocket_discard должна отрисоваться');
-                            assert.isTrue(!!jesterBtn, 'кнопка jester_discard должна отрисоваться');
+                            showRelicPopover('pocket_discard');
+                            const modal = document.getElementById('msg-box');
+                            const confirmBtn = document.getElementById('msg-btn');
+                            const cancelBtn = document.getElementById('msg-btn-cancel');
+                            assert.isFalse(modal.classList.contains('hidden'), 'попап должен открыться');
+                            assert.equal(confirmBtn.innerText, RELIC_EFFECTS.pocket_discard.label, 'кнопка должна называться как способность');
+                            assert.isFalse(confirmBtn.disabled, 'способность доступна — кнопка активна');
+                            assert.isFalse(cancelBtn.classList.contains('hidden'), 'у активной способности всегда должна быть видна кнопка закрытия без активации');
+                            assert.equal(cancelBtn.innerText, 'ЗАКРЫТЬ');
 
-                            pocketBtn.click();
+                            // Закрытие без активации не должно ничего трогать в игре.
+                            const handLenUntouched = battle.playerHand.length;
+                            cancelBtn.click();
+                            assert.isTrue(modal.classList.contains('hidden'), 'кнопка "ЗАКРЫТЬ" должна закрыть попап');
+                            assert.equal(battle.playerHand.length, handLenUntouched, 'закрытие без активации не должно менять состояние игры');
+                            assert.isFalse(battle.pocketDiscardUsedThisRound, 'способность не считается использованной, если её просто закрыли');
+
+                            showRelicPopover('pocket_discard');
+                            confirmBtn.click();
                             assert.equal(battle.playerHand.length, 1, 'клик по настоящей кнопке должен был реально сбросить карту');
                             assert.isTrue(battle.pocketDiscardUsedThisRound);
+                            assert.isTrue(modal.classList.contains('hidden'), 'после успешного использования попап должен закрыться');
 
-                            renderRelicActions();
-                            assert.equal(document.getElementById('btn-pocket-discard'), null, 'после использования кнопка pocket_discard должна пропасть');
-                            assert.isTrue(!!document.getElementById('btn-jester-discard'), 'jester_discard не тронут — кнопка остаётся');
-
-                            document.getElementById('btn-jester-discard').click();
+                            // jester_discard всё ещё доступен: кнопка активна, клик срабатывает
+                            showRelicPopover('jester_discard');
+                            assert.isFalse(confirmBtn.disabled, 'jester_discard не тронут — кнопка активна');
+                            confirmBtn.click();
                             assert.equal(battle.playerHand.length, 1, 'у jester_discard рука та же длина после пересдачи');
                             assert.isTrue(battle.jesterDiscardUsedThisBattle);
 
-                            renderRelicActions();
-                            assert.isTrue(container.classList.contains('hidden'), 'обе способности использованы — блок должен спрятаться');
+                            // Теперь обе способности использованы: попап на pocket_discard
+                            // должен показать задизейбленную кнопку, а не молчать.
+                            showRelicPopover('pocket_discard');
+                            assert.isTrue(confirmBtn.disabled, 'способность уже использована в этом раунде — кнопка задизейблена');
+                            const handLenBefore = battle.playerHand.length;
+                            confirmBtn.click();
+                            assert.equal(battle.playerHand.length, handLenBefore, 'задизейбленная кнопка не должна ничего менять в состоянии игры');
+                        }
+                    );
+                });
+
+                it('showRelicPopover(): тап по затемнённому фону закрывает попап без активации способности', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }], deck: [] },
+                        {
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            discardPile: [],
+                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }, { id: 'p2', suit: 'Hearts', value: 10 }],
+                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
+                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            showRelicPopover('pocket_discard');
+                            const modal = document.getElementById('msg-box');
+                            assert.isFalse(modal.classList.contains('hidden'));
+
+                            // Клик прямо на затемнённом фоне (сам #msg-box), а не на
+                            // внутренней карточке с текстом и кнопками.
+                            modal.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                            assert.isTrue(modal.classList.contains('hidden'), 'тап по фону должен закрыть попап');
+                            assert.equal(battle.playerHand.length, 2, 'тап по фону не должен активировать способность');
+                            assert.isFalse(battle.pocketDiscardUsedThisRound);
+                        }
+                    );
+                });
+
+                it('showRelicPopover(): пассивный артефакт показывает только описание, без кнопки активации', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'ace_sleeve', name: 'Туз в рукаве', icon: '🃏', desc: 'Тестовое описание', price: 12 }], deck: [] },
+                        { aiTimer: null },
+                        () => {
+                            showRelicPopover('ace_sleeve');
+                            const modal = document.getElementById('msg-box');
+                            const confirmBtn = document.getElementById('msg-btn');
+                            const cancelBtn = document.getElementById('msg-btn-cancel');
+                            assert.isFalse(modal.classList.contains('hidden'), 'попап должен открыться');
+                            assert.equal(document.getElementById('msg-body').innerText, 'Тестовое описание');
+                            assert.equal(confirmBtn.innerText, 'ПОНЯТНО', 'для пассивного артефакта — только кнопка закрытия');
+                            assert.isTrue(cancelBtn.classList.contains('hidden'));
+                            confirmBtn.click();
+                            assert.isTrue(modal.classList.contains('hidden'), 'клик по "ПОНЯТНО" закрывает попап');
+                        }
+                    );
+                });
+
+                it('relics-bar: готовый к активации артефакт подсвечен кольцом (relic-ready-glow), а недоступный — нет', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }], deck: [] },
+                        {
+                            drawDeck: [], discardPile: [],
+                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }],
+                            enemyHand: [], trumpCard: null, trumpSuit: 'Hearts',
+                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            renderAll();
+                            const relicsBar = document.getElementById('relics-bar');
+                            assert.isTrue(relicsBar.children[0].className.includes('relic-ready-glow'), 'способность доступна — слот должен подсвечиваться кольцом');
+
+                            battle.pocketDiscardUsedThisRound = true;
+                            renderAll();
+                            assert.isFalse(relicsBar.children[0].className.includes('relic-ready-glow'), 'способность уже использована — кольца быть не должно');
+                        }
+                    );
+                });
+
+                it('showModal()/showConfirm(): РЕГРЕССИЯ — сбрасывают disabled/opacity-40, оставшиеся от задизейбленной кнопки активации артефакта', () => {
+                    // Баг: showRelicPopover() оставляет msg-btn задизейбленной и с
+                    // классом opacity-40, когда способность недоступна. Любой
+                    // следующий showModal()/showConfirm() (например, "Недопустимый
+                    // ход") переиспользует ту же самую кнопку и раньше не сбрасывал
+                    // эти два свойства — диалог открывался с виду рабочим, но кнопка
+                    // "ПОНЯТНО"/"ПРОДАТЬ" не реагировала на клик.
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }], deck: [] },
+                        { aiTimer: null },
+                        () => {
+                            // pocket_discard недоступен (нет 6/7 в руке нет вовсе, т.к.
+                            // battle тут не настроен под бой) — isReady() === false,
+                            // кнопка активации в попапе будет задизейблена.
+                            showRelicPopover('pocket_discard');
+                            const confirmBtn = document.getElementById('msg-btn');
+                            assert.isTrue(confirmBtn.disabled, 'предусловие: кнопка активации должна быть задизейблена');
+                            assert.isTrue(confirmBtn.classList.contains('opacity-40'), 'предусловие: должен быть класс opacity-40');
+
+                            let closed = false;
+                            showModal('Недопустимый ход', 'Текст ошибки', () => { closed = true; });
+                            assert.isFalse(confirmBtn.disabled, 'showModal() должен снимать disabled с кнопки');
+                            assert.isFalse(confirmBtn.classList.contains('opacity-40'), 'showModal() должен снимать opacity-40 с кнопки');
+                            confirmBtn.click();
+                            assert.isTrue(closed, 'после починки клик по "ПОНЯТНО" должен реально закрывать диалог и звать onClose');
+
+                            showRelicPopover('pocket_discard');
+                            assert.isTrue(confirmBtn.disabled);
+
+                            let confirmed = false;
+                            showConfirm('Продать артефакт?', 'Текст', () => { confirmed = true; });
+                            assert.isFalse(confirmBtn.disabled, 'showConfirm() должен снимать disabled с кнопки');
+                            assert.isFalse(confirmBtn.classList.contains('opacity-40'), 'showConfirm() должен снимать opacity-40 с кнопки');
+                            confirmBtn.click();
+                            assert.isTrue(confirmed);
                         }
                     );
                 });
