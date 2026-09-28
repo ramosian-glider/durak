@@ -1170,9 +1170,21 @@
             }
         }
 
+        // Phases that only mark "a handler is mid-mutation". They still invalidate
+        // pending AI callbacks (token bump) but are never persisted or painted: a
+        // save taken between the phase flip and the state changes that follow would
+        // capture a half-applied action, and resumeFromSave() already treats a saved
+        // RESOLVING as indeterminate.
+        const TRANSIENT_BATTLE_PHASES = Object.freeze([BATTLE_PHASES.RESOLVING]);
+
+        // The ONLY place allowed to write battle.phase (guarded by a source-scan
+        // test in suite 8e). Every transition bumps actionToken and — for stable
+        // phases — persists and repaints, so autosave of phase changes holds by
+        // construction instead of by each call site remembering to do it.
         function setBattlePhase(phase) {
             battle.phase = phase;
             battle.actionToken++;
+            if (TRANSIENT_BATTLE_PHASES.includes(phase)) return;
             saveRunToLocal();
             renderAll();
         }
@@ -1184,10 +1196,11 @@
 
         function scheduleEnemyAI(delay = AI_STANDARD_DELAY_MS) {
             clearAITimer();
+            // Set the phase first (it bumps actionToken), then capture the token, so
+            // the pending callback's staleness check compares against the value this
+            // very transition produced.
+            setBattlePhase(BATTLE_PHASES.AI_WAITING);
             const token = battle.actionToken;
-            battle.phase = BATTLE_PHASES.AI_WAITING;
-            saveRunToLocal();
-            renderAll();
 
             battle.aiTimer = setTimeout(() => {
                 battle.aiTimer = null;
@@ -1198,10 +1211,8 @@
 
         function scheduleEnemyAction(action, delay = AI_STANDARD_DELAY_MS) {
             clearAITimer();
+            setBattlePhase(BATTLE_PHASES.AI_WAITING); // bumps the token; capture it afterwards
             const token = battle.actionToken;
-            battle.phase = BATTLE_PHASES.AI_WAITING;
-            saveRunToLocal();
-            renderAll();
             battle.aiTimer = setTimeout(() => {
                 battle.aiTimer = null;
                 if (battle.actionToken !== token || battle.phase !== BATTLE_PHASES.AI_WAITING) return;
@@ -1330,9 +1341,7 @@
             battle.selectedCardIndex = null;
             battle.cardsToTake = false;
             battle.isTransferActive = false;
-            battle.phase = BATTLE_PHASES.PLAYER_ATTACK;
             battle.aiTimer = null;
-            battle.actionToken++;
             battle.pocketDiscardUsedThisRound = false;
             resetTurnScopedFlags();
 
@@ -1340,7 +1349,9 @@
             battle.trumpSuit = battle.trumpCard.suit;
 
             replenishHands();
-            renderAll();
+            // Last on purpose: setBattlePhase() persists, and the save must see the
+            // fully rebuilt round (new trump, dealt hands), not a half-reset one.
+            setBattlePhase(BATTLE_PHASES.PLAYER_ATTACK);
         }
 
         function replenishHands(currentDefender = battle.defender) {
@@ -1495,8 +1506,7 @@
             if (isAIAction) {
                 if (battle.phase !== BATTLE_PHASES.AI_WAITING) return;
                 clearAITimer();
-                battle.phase = BATTLE_PHASES.RESOLVING;
-                battle.actionToken++;
+                setBattlePhase(BATTLE_PHASES.RESOLVING);
             } else if (!canAcceptPlayerAction()) {
                 return;
             }
@@ -1538,8 +1548,7 @@
         function handleEnemyTake() {
             if (battle.phase !== BATTLE_PHASES.AI_WAITING && !canAcceptPlayerAction()) return;
             clearAITimer();
-            battle.phase = BATTLE_PHASES.RESOLVING;
-            battle.actionToken++;
+            setBattlePhase(BATTLE_PHASES.RESOLVING);
             battle.isTransferActive = false;
             if (battle.table.length === 0) return;
 
@@ -1578,7 +1587,7 @@
 
         function handlePlayerTake() {
             if (!canAcceptPlayerAction() || battle.defender !== 'player') return;
-            battle.phase = BATTLE_PHASES.RESOLVING;
+            setBattlePhase(BATTLE_PHASES.RESOLVING);
             battle.isTransferActive = false;
             if (battle.defender !== 'player' || battle.table.length === 0) return;
 
@@ -1674,7 +1683,7 @@
         function executeEnemyAI() {
             if (battle.phase !== BATTLE_PHASES.AI_WAITING && battle.phase !== BATTLE_PHASES.RESOLVING && battle.phase !== BATTLE_PHASES.IDLE) return;
             if (checkRoundEnd()) return;
-            battle.phase = BATTLE_PHASES.RESOLVING;
+            setBattlePhase(BATTLE_PHASES.RESOLVING);
 
             const enemyData = getCurrentEnemy();
 
@@ -3871,6 +3880,92 @@
                             clearLocalSave();
                         }
                     );
+                });
+            });
+
+            runner.describe('8e. Централизация переходов фазы (setBattlePhase — единственный писатель battle.phase)', (it, assert) => {
+                const makeFixtureBattle = (overrides = {}) => Object.assign({
+                    drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
+                    playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
+                    enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
+                    table: [{ attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: null }],
+                    trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
+                    defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                    cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                    jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                }, overrides);
+                const makeFixtureRun = () => ({ floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() });
+
+                // Static guard: production code (everything before the test runner) must
+                // never assign battle.phase outside setBattlePhase(). Tests may still
+                // assign it directly to build fixtures — they live after the marker.
+                it('В боевом коде нет прямых присваиваний battle.phase вне setBattlePhase()', () => {
+                    const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
+                    const productionSource = fullSource.slice(0, fullSource.indexOf('class TinyTestRunner'));
+                    assert.isTrue(productionSource.length > 1000, 'не удалось выделить боевой код для проверки');
+                    const withoutSetter = productionSource.replace(/function setBattlePhase\(phase\) \{[\s\S]*?\n        \}\n/, '');
+                    assert.isTrue(withoutSetter.length < productionSource.length, 'тело setBattlePhase() не найдено');
+                    const offenders = withoutSetter.match(/battle\.phase\s*=(?!=)/g) || [];
+                    assert.equal(offenders.length, 0, 'найдены прямые присваивания battle.phase: ' + offenders.length);
+                });
+
+                it('setBattlePhase(RESOLVING) — транзитная фаза: инвалидирует токен, но не пишет сейв', () => {
+                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => {
+                        clearLocalSave();
+                        setBattlePhase(BATTLE_PHASES.RESOLVING);
+                        assert.equal(battle.phase, BATTLE_PHASES.RESOLVING);
+                        assert.equal(battle.actionToken, 1, 'токен должен увеличиваться при любом переходе');
+                        assert.isTrue(localStorage.getItem(SAVE_KEY) === null, 'полупримённое действие не должно попадать в сейв');
+                        clearLocalSave();
+                    });
+                });
+
+                // Previously startNewRound() flipped the phase at the top and never saved;
+                // routing it through setBattlePhase() at the end means the round start is
+                // persisted too, and only once the round is fully rebuilt.
+                it('startNewRound() сохраняет полностью собранный раунд', () => {
+                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({ phase: BATTLE_PHASES.ROUND_OVER, table: [] }), () => {
+                        clearLocalSave();
+                        startNewRound();
+                        clearAITimer();
+                        const raw = localStorage.getItem(SAVE_KEY);
+                        assert.isTrue(!!raw, 'начало раунда должно сохраняться');
+                        const saved = JSON.parse(raw);
+                        assert.isTrue(validateSaveData(saved), 'сейв начала раунда должен быть валиден');
+                        assert.equal(saved.battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
+                        assert.equal(saved.battle.trumpSuit, saved.battle.trumpCard.suit, 'козырь в сейве должен относиться к новому раунду');
+                        assert.isTrue(saved.battle.playerHand.length > 0, 'руки уже должны быть розданы к моменту сохранения');
+                        clearLocalSave();
+                    });
+                });
+
+                // scheduleEnemyAI/Action now capture actionToken AFTER setBattlePhase()
+                // bumps it. Drive the captured timer callback by hand to prove the
+                // staleness check still works in both directions.
+                it('scheduleEnemyAction(): отложенное действие выполняется, если токен не менялся, и отбрасывается, если фаза сменилась', () => {
+                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({ phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy' }), () => {
+                        const realSetTimeout = window.setTimeout;
+                        const callbacks = [];
+                        window.setTimeout = (fn) => { callbacks.push(fn); return 1; };
+                        try {
+                            clearLocalSave();
+                            let fired = 0;
+                            scheduleEnemyAction(() => { fired++; });
+                            assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
+                            callbacks[0]();
+                            assert.equal(fired, 1, 'действие с актуальным токеном должно выполниться');
+
+                            scheduleEnemyAction(() => { fired++; });
+                            setBattlePhase(BATTLE_PHASES.PLAYER_ATTACK); // any later transition makes the pending action stale
+                            callbacks[1]();
+                            assert.equal(fired, 1, 'устаревшее действие не должно выполняться');
+                        } finally {
+                            window.setTimeout = realSetTimeout;
+                            clearAITimer();
+                            clearLocalSave();
+                        }
+                    });
                 });
             });
 
