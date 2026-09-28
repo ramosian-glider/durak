@@ -574,9 +574,63 @@
         }
 
         /**
+         * Checks that a parsed save is not just present, but internally consistent
+         * enough to safely resume from. A save can pass the version/shape check and
+         * still be broken — e.g. a merge that changed the run/battle shape without
+         * bumping SAVE_VERSION, or a save written mid-mutation — so this does real
+         * structural + sanity checks, not just "the keys exist".
+         *
+         * The central check is the round-end invariant: checkRoundEnd() ends the round
+         * the instant the draw deck AND the table are both empty and at least one hand
+         * is empty, so a save can never legitimately sit in an active battle phase in
+         * that state — the game would have already resolved win/loss/draw before the
+         * next autosave. Seeing it anyway (as in the reported bug: an empty player hand
+         * during "Ваш ход: Атака") means the save is inconsistent, not just old.
+         *
+         * Read-only — safe to call from hasSavedGame() (no load/mutation) as well as
+         * loadGameState().
+         */
+        function validateSaveData(parsed) {
+            if (!parsed || parsed.version !== SAVE_VERSION) return false;
+
+            const savedRun = parsed.run;
+            const savedBattle = parsed.battle;
+            if (!savedRun || typeof savedRun !== 'object') return false;
+            if (!savedBattle || typeof savedBattle !== 'object') return false;
+
+            // --- run: structural + sanity checks ---
+            if (!Number.isFinite(savedRun.floor) || savedRun.floor < 1 || savedRun.floor > ENEMIES.length) return false;
+            if (!Number.isFinite(savedRun.maxHP) || savedRun.maxHP <= 0) return false;
+            if (!Number.isFinite(savedRun.playerHP) || savedRun.playerHP < 0 || savedRun.playerHP > savedRun.maxHP) return false;
+            if (!Number.isFinite(savedRun.gold) || savedRun.gold < 0) return false;
+            if (!Array.isArray(savedRun.relics)) return false;
+            if (!Array.isArray(savedRun.deck) || savedRun.deck.length === 0) return false;
+
+            // --- battle: structural checks ---
+            const arrayFields = ['drawDeck', 'discardPile', 'playerHand', 'enemyHand', 'table'];
+            for (const key of arrayFields) {
+                if (!Array.isArray(savedBattle[key])) return false;
+            }
+            if (savedBattle.defender !== 'player' && savedBattle.defender !== 'enemy') return false;
+            if (!Object.values(BATTLE_PHASES).includes(savedBattle.phase)) return false;
+            if (!Number.isFinite(savedBattle.enemyHP)) return false;
+
+            // --- battle: the round-end invariant (see doc comment above) ---
+            const ACTIVE_PHASES = [BATTLE_PHASES.PLAYER_ATTACK, BATTLE_PHASES.PLAYER_DEFENSE, BATTLE_PHASES.AI_WAITING, BATTLE_PHASES.RESOLVING];
+            if (ACTIVE_PHASES.includes(savedBattle.phase)) {
+                const deckAndTableEmpty = savedBattle.drawDeck.length === 0 && savedBattle.table.length === 0;
+                const aHandIsEmpty = savedBattle.playerHand.length === 0 || savedBattle.enemyHand.length === 0;
+                if (deckAndTableEmpty && aHandIsEmpty) return false;
+            }
+
+            return true;
+        }
+
+        /**
          * Loads the full game state from localStorage.
          * If the version doesn't match, the outdated save is removed.
-         * Returns true on successful load, false if there is no save or it is corrupted.
+         * Returns true on successful load, false if there is no save or it is corrupted
+         * or internally inconsistent (see validateSaveData()).
          */
         function loadGameState() {
             try {
@@ -585,14 +639,11 @@
 
                 const parsed = JSON.parse(raw);
 
-                // Format version check — clear an outdated save
-                if (!parsed || parsed.version !== SAVE_VERSION) {
-                    console.info("Save version mismatch — clearing old save.");
+                if (!validateSaveData(parsed)) {
+                    console.info("Save missing, outdated, or inconsistent — clearing it.");
                     clearLocalSave();
                     return false;
                 }
-
-                if (!parsed.run || !parsed.battle) return false;
 
                 run = parsed.run;
 
@@ -663,7 +714,7 @@
                 const raw = localStorage.getItem(SAVE_KEY);
                 if (!raw) return false;
                 const parsed = JSON.parse(raw);
-                return !!(parsed && parsed.version === SAVE_VERSION && parsed.run && parsed.battle);
+                return validateSaveData(parsed);
             } catch (err) {
                 return false;
             }
@@ -1100,9 +1151,29 @@
             }
         }
 
+        // The helpers above cancel the real battle's pending AI move while tests
+        // run, and nothing else re-arms it. These two bracket a whole test run:
+        // capture what the real game was doing, then put it back afterward, so
+        // running the tests mid-battle can never freeze the game on "Ход соперника".
+        function captureRealBattleForTests() {
+            return {
+                battle,
+                inBattle: battle.phase !== BATTLE_PHASES.IDLE,
+                aiPending: battle.phase === BATTLE_PHASES.AI_WAITING && battle.aiTimer !== null
+            };
+        }
+
+        function restoreRealBattleAfterTests(snapshot) {
+            if (snapshot.inBattle && battle === snapshot.battle && snapshot.aiPending) {
+                syncEnemyDisplay();
+                scheduleEnemyAI(AI_STANDARD_DELAY_MS);
+            }
+        }
+
         function setBattlePhase(phase) {
             battle.phase = phase;
             battle.actionToken++;
+            saveRunToLocal();
             renderAll();
         }
 
@@ -1115,6 +1186,7 @@
             clearAITimer();
             const token = battle.actionToken;
             battle.phase = BATTLE_PHASES.AI_WAITING;
+            saveRunToLocal();
             renderAll();
 
             battle.aiTimer = setTimeout(() => {
@@ -1128,6 +1200,7 @@
             clearAITimer();
             const token = battle.actionToken;
             battle.phase = BATTLE_PHASES.AI_WAITING;
+            saveRunToLocal();
             renderAll();
             battle.aiTimer = setTimeout(() => {
                 battle.aiTimer = null;
@@ -1339,8 +1412,7 @@
                 if (isDefeated) {
                     clearLocalSave();
                     showModal("Поражение!", `Соперник первым скинул все карты. Вы получили ${damage} ед. урона и погибли.`, () => {
-                        const splash = document.getElementById('splash-screen');
-                        if (splash) splash.classList.remove('hidden');
+                        showSplashScreen();
                     });
                 } else {
                     const safetyNote = savedBySafetyRope ? " Страховочный трос спас вас, оставив 1 HP!" : "";
@@ -1570,8 +1642,7 @@
             if (isDefeated) {
                 clearLocalSave();
                 showModal("Поражение!", "Вы потеряли всё здоровье. Забег окончен.", () => {
-                    const splash = document.getElementById('splash-screen');
-                    if (splash) splash.classList.remove('hidden');
+                    showSplashScreen();
                 });
             } else {
                 if (savedBySafetyRope) {
@@ -2366,8 +2437,7 @@
             if (run.floor > ENEMIES.length) {
                 clearLocalSave();
                 showModal("ПОБЕДА В ЗАБЕГЕ!", "Вы прошли все этажи подземелья и стали Легендой Дурака!", () => {
-                    const splash = document.getElementById('splash-screen');
-                    if (splash) splash.classList.remove('hidden');
+                    showSplashScreen();
                 });
             } else {
                 startFloorBattle();
@@ -2827,8 +2897,7 @@
         }
 
         bindClick('btn-open-menu', () => {
-            const splash = document.getElementById('splash-screen');
-            if (splash) splash.classList.remove('hidden');
+            showSplashScreen();
         });
 
         bindClick('btn-toggle-audio', () => {
@@ -2925,6 +2994,8 @@
         }
 
         function runGameUnitTests() {
+            const realBattleSnapshot = captureRealBattleForTests();
+
             const runner = new TinyTestRunner();
 
             runner.describe('1. Сравнение карт (canBeat)', (it, assert) => {
@@ -3380,8 +3451,8 @@
 
                 it('loadGameState восстанавливает run и battle', () => {
                     withIsolatedGameState(
-                        { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
-                        { enemyHP: 0, playerHand: [], aiTimer: null },
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
+                        { drawDeck: [], discardPile: [], playerHand: [], enemyHand: [], table: [], defender: 'enemy', phase: BATTLE_PHASES.IDLE, trumpSuit: null, enemyHP: 0, aiTimer: null },
                         () => {
                             run.floor = 3;
                             battle.enemyHP = 55;
@@ -3405,8 +3476,8 @@
 
                 it('После загрузки aiTimer === null', () => {
                     withIsolatedGameState(
-                        { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
-                        { enemyHP: 10, playerHand: [], aiTimer: null },
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
+                        { drawDeck: [], discardPile: [], playerHand: [], enemyHand: [], table: [], defender: 'enemy', phase: BATTLE_PHASES.IDLE, trumpSuit: null, enemyHP: 10, aiTimer: null },
                         () => {
                             saveGameState();
                             loadGameState();
@@ -3566,6 +3637,240 @@
                     assert.isTrue(threw);
                     assert.equal(localStorage.getItem(SAVE_KEY), realSave);
                     clearLocalSave();
+                });
+            });
+
+            runner.describe('8c. validateSaveData (консистентность сохранения)', (it, assert) => {
+                // A well-formed save that should pass every check below unmodified.
+                // Individual tests deep-clone and corrupt one piece of it.
+                function buildGoodSave() {
+                    return {
+                        version: SAVE_VERSION,
+                        run: { floor: 2, playerHP: 20, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
+                        battle: {
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            discardPile: [],
+                            playerHand: [{ id: 'p1', suit: 'Hearts', value: 7 }],
+                            enemyHand: [{ id: 'e1', suit: 'Hearts', value: 8 }],
+                            table: [],
+                            defender: 'enemy',
+                            phase: BATTLE_PHASES.PLAYER_ATTACK,
+                            trumpSuit: 'Hearts',
+                            enemyHP: 10
+                        }
+                    };
+                }
+
+                it('Корректное сохранение проходит валидацию', () => {
+                    assert.isTrue(validateSaveData(buildGoodSave()));
+                });
+
+                it('РЕГРЕССИЯ: пустая рука игрока в активной фазе при пустых колоде и столе — невалидно (баг из репорта: "Ваш ход: Атака" с пустой рукой)', () => {
+                    const save = buildGoodSave();
+                    save.battle.drawDeck = [];
+                    save.battle.table = [];
+                    save.battle.playerHand = [];
+                    // enemyHand stays non-empty — checkRoundEnd() would already have
+                    // resolved the round (win/loss/draw) before this state could exist
+                    // in a real save, so it must be rejected as inconsistent.
+                    assert.isFalse(validateSaveData(save));
+                });
+
+                it('Пустая рука врага в активной фазе при пустых колоде и столе — тоже невалидно', () => {
+                    const save = buildGoodSave();
+                    save.battle.drawDeck = [];
+                    save.battle.table = [];
+                    save.battle.enemyHand = [];
+                    assert.isFalse(validateSaveData(save));
+                });
+
+                it('Та же комбинация пустых рук/колоды/стола допустима в фазе ROUND_OVER', () => {
+                    const save = buildGoodSave();
+                    save.battle.drawDeck = [];
+                    save.battle.table = [];
+                    save.battle.playerHand = [];
+                    save.battle.phase = BATTLE_PHASES.ROUND_OVER;
+                    assert.isTrue(validateSaveData(save));
+                });
+
+                it('Непустой стол снимает подозрение в застревании, даже если руки и колода пусты', () => {
+                    const save = buildGoodSave();
+                    save.battle.drawDeck = [];
+                    save.battle.playerHand = [];
+                    save.battle.enemyHand = [];
+                    save.battle.table = [{ attack: { id: 'a', suit: 'Hearts', value: 6 }, defend: null }];
+                    assert.isTrue(validateSaveData(save));
+                });
+
+                it('run.deck пустой массив — невалидно', () => {
+                    const save = buildGoodSave();
+                    save.run.deck = [];
+                    assert.isFalse(validateSaveData(save));
+                });
+
+                it('run.floor вне диапазона (0 или больше числа этажей) — невалидно', () => {
+                    const tooLow = buildGoodSave();
+                    tooLow.run.floor = 0;
+                    assert.isFalse(validateSaveData(tooLow));
+
+                    const tooHigh = buildGoodSave();
+                    tooHigh.run.floor = ENEMIES.length + 1;
+                    assert.isFalse(validateSaveData(tooHigh));
+                });
+
+                it('run.playerHP больше run.maxHP — невалидно', () => {
+                    const save = buildGoodSave();
+                    save.run.playerHP = save.run.maxHP + 5;
+                    assert.isFalse(validateSaveData(save));
+                });
+
+                it('Нечисловой battle.enemyHP — невалидно', () => {
+                    const save = buildGoodSave();
+                    save.battle.enemyHP = 'many';
+                    assert.isFalse(validateSaveData(save));
+                });
+
+                it('battle.playerHand не массив (например, потерян при мёрдже) — невалидно', () => {
+                    const save = buildGoodSave();
+                    save.battle.playerHand = undefined;
+                    assert.isFalse(validateSaveData(save));
+                });
+
+                it('Недопустимое значение battle.phase — невалидно', () => {
+                    const save = buildGoodSave();
+                    save.battle.phase = 'not_a_real_phase';
+                    assert.isFalse(validateSaveData(save));
+                });
+
+                it('Недопустимое значение battle.defender — невалидно', () => {
+                    const save = buildGoodSave();
+                    save.battle.defender = 'nobody';
+                    assert.isFalse(validateSaveData(save));
+                });
+
+                it('hasSavedGame() и loadGameState() согласованы: неконсистентный сейв — false у обоих, без побочных мутаций реального run/battle', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
+                        { drawDeck: [], discardPile: [], playerHand: [], enemyHand: [], table: [], defender: 'enemy', phase: BATTLE_PHASES.IDLE, trumpSuit: null, enemyHP: 0, aiTimer: null },
+                        () => {
+                            const corrupted = buildGoodSave();
+                            corrupted.battle.drawDeck = [];
+                            corrupted.battle.table = [];
+                            corrupted.battle.playerHand = [];
+                            localStorage.setItem(SAVE_KEY, JSON.stringify(corrupted));
+
+                            assert.isFalse(hasSavedGame());
+                            // hasSavedGame() must not touch the stored save or the live state
+                            assert.isTrue(!!localStorage.getItem(SAVE_KEY));
+                            assert.equal(run.floor, 1);
+
+                            assert.isFalse(loadGameState());
+                            // loadGameState() clears the bad save once it detects it
+                            assert.equal(localStorage.getItem(SAVE_KEY), null);
+                            // and never touched the live run — still the fixture, not the corrupted floor 2
+                            assert.equal(run.floor, 1);
+
+                            clearLocalSave();
+                        }
+                    );
+                });
+            });
+
+            runner.describe('8d. Автосохранение внутри раунда (setBattlePhase/scheduleEnemyAI/scheduleEnemyAction)', (it, assert) => {
+                // РЕГРЕССИЯ (репорт): выйти в меню посреди боя (например, сразу после
+                // того, как соперник подкинул карту) не сохранялось нигде — до этой
+                // правки saveRunToLocal() вызывался только на границах раунда (bito/
+                // take), а не после каждого отдельного хода. Если вкладка выгружалась
+                // (типично для Android Chrome при переключении приложений), при
+                // восстановлении игра откатывалась к началу раунда.
+                it('setBattlePhase() сохраняет игру при каждом переходе фазы', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() },
+                        {
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
+                            playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
+                            enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
+                            table: [{ attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: null }],
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
+                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 40, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            clearLocalSave();
+                            setBattlePhase(BATTLE_PHASES.PLAYER_ATTACK);
+                            const raw = localStorage.getItem(SAVE_KEY);
+                            assert.isTrue(!!raw, 'setBattlePhase() должен был вызвать автосохранение');
+                            const saved = JSON.parse(raw);
+                            assert.equal(saved.battle.table.length, 1, 'Сохранённый стол должен отражать текущее (недоигранное) состояние раунда');
+                            clearLocalSave();
+                        }
+                    );
+                });
+
+                it('scheduleEnemyAI() сохраняет игру, входя в ai_waiting — именно тот момент "соперник подкинул карту"', () => {
+                    withIsolatedGameState(
+                        { floor: 2, playerHP: 25, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() },
+                        {
+                            drawDeck: [], discardPile: [],
+                            playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
+                            enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
+                            table: [
+                                { attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: { id: 'd1', suit: 'Hearts', value: 10 } },
+                                { attack: { id: 'a2', suit: 'Hearts', value: 8 }, defend: null }
+                            ],
+                            trumpCard: null, trumpSuit: 'Spades',
+                            defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 20, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 5,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            clearLocalSave();
+                            scheduleEnemyAI();
+                            const raw = localStorage.getItem(SAVE_KEY);
+                            assert.isTrue(!!raw);
+                            const saved = JSON.parse(raw);
+                            assert.equal(saved.run.floor, 2);
+                            assert.equal(saved.battle.table.length, 2, 'Обе пары на столе (включая только что подкинутую) должны попасть в сейв');
+                            assert.equal(saved.battle.phase, BATTLE_PHASES.AI_WAITING);
+                            clearAITimer();
+                            clearLocalSave();
+                        }
+                    );
+                });
+
+                it('РЕГРЕССИЯ: одиночный ход игрока (onPlayerCardClick) переживает полную перезагрузку страницы (эмуляция выгрузки вкладки)', () => {
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
+                        {
+                            drawDeck: [{ id: 'd1', suit: 'Spades', value: 6 }], discardPile: [],
+                            playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }, { id: 'p2', suit: 'Hearts', value: 7 }],
+                            enemyHand: [{ id: 'e1', suit: 'Hearts', value: 9 }],
+                            table: [],
+                            trumpCard: { id: 't1', suit: 'Spades', value: 6 }, trumpSuit: 'Spades',
+                            defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                            enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                        },
+                        () => {
+                            clearLocalSave();
+                            window.onPlayerCardClick(0); // player throws the 6 of Hearts onto the empty table
+                            clearAITimer(); // don't let the fixture's scheduled AI turn fire
+
+                            // Nothing "reloads the page" in a unit test, so simulate it the
+                            // same way this suite already treats a reload: read back through
+                            // loadGameState() as a fresh instance would.
+                            const restoredOk = loadGameState();
+                            assert.isTrue(restoredOk, 'Мид-раундовый сейв должен пройти validateSaveData()');
+                            assert.equal(battle.table.length, 1, 'Карта, только что сыгранная игроком, должна быть на столе после восстановления');
+                            assert.equal(battle.playerHand.length, 1, 'Рука игрока должна остаться уменьшенной (карта не должна вернуться)');
+                            clearAITimer();
+                            clearLocalSave();
+                        }
+                    );
                 });
             });
 
@@ -5350,6 +5655,65 @@
                 });
             });
 
+            runner.describe('14. Изоляция реального боя от прогона тестов (AI-таймер)', (it, assert) => {
+                function aiWaitingFixture() {
+                    return {
+                        drawDeck: [], discardPile: [],
+                        playerHand: [{ id: 'p1', suit: 'Pikes', value: 10 }],
+                        enemyHand: [{ id: 'e1', suit: 'Clubs', value: 8 }],
+                        trumpCard: null, trumpSuit: 'Hearts',
+                        table: [{ attack: { id: 'a1', suit: 'Clubs', value: 8 }, defend: null }],
+                        defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                        enemyHP: 40, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
+                        cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                        jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                    };
+                }
+                const fixtureRun = () => ({ floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] });
+
+                it('РЕГРЕССИЯ: тестовые хелперы отменяют таймер AI, а restoreRealBattleAfterTests возвращает его (игра не виснет на "Ход соперника")', () => {
+                    withIsolatedGameState(fixtureRun(), aiWaitingFixture(), () => {
+                        // Stand-in for the real battle: the AI's move is pending.
+                        battle.aiTimer = setTimeout(() => {}, 60000);
+                        const snapshot = captureRealBattleForTests();
+                        assert.isTrue(snapshot.aiPending, 'Снимок должен зафиксировать ожидающий ход AI');
+
+                        // What a test helper does to the real battle.
+                        withFieldSnapshot({ battle: ['phase'] }, () => {});
+                        assert.equal(battle.aiTimer, null, 'Хелпер теста отменяет таймер AI (это и был источник зависания)');
+
+                        restoreRealBattleAfterTests(snapshot);
+                        assert.isTrue(battle.aiTimer !== null, 'Ход AI должен быть запланирован заново');
+                        assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
+                        clearAITimer();
+                    });
+                });
+
+                it('Если AI не ждал хода, restoreRealBattleAfterTests ничего не планирует', () => {
+                    withIsolatedGameState(fixtureRun(), Object.assign(aiWaitingFixture(), { phase: BATTLE_PHASES.PLAYER_DEFENSE }), () => {
+                        const snapshot = captureRealBattleForTests();
+                        assert.isFalse(snapshot.aiPending);
+                        restoreRealBattleAfterTests(snapshot);
+                        assert.equal(battle.aiTimer, null);
+                        assert.equal(battle.phase, BATTLE_PHASES.PLAYER_DEFENSE);
+                    });
+                });
+
+                it('Если реальный battle подменён, ход AI не планируется на чужом объекте', () => {
+                    withIsolatedGameState(fixtureRun(), aiWaitingFixture(), () => {
+                        battle.aiTimer = setTimeout(() => {}, 60000);
+                        const snapshot = captureRealBattleForTests();
+                        clearAITimer();
+                        const other = aiWaitingFixture();
+                        const original = battle;
+                        battle = other;
+                        restoreRealBattleAfterTests(snapshot);
+                        assert.equal(other.aiTimer, null);
+                        battle = original;
+                    });
+                });
+            });
+
             // Some tests call game functions (e.g. handlePlayerTake) that autosave as a
             // side effect, which would otherwise overwrite the player's real save with
             // fake test fixtures. preserveLocalSaveAround guarantees the real save is
@@ -5375,6 +5739,7 @@
                 if (confirmBtn) confirmBtn.onclick = null;
                 const cancelBtn = document.getElementById('msg-btn-cancel');
                 if (cancelBtn) cancelBtn.onclick = null;
+
                 clearAITimer();
                 // Tests drive real game functions (startFloorBattle, executeEnemyAI,
                 // etc.) against throwaway fixtures, which paint the DOM with fixture
@@ -5386,6 +5751,9 @@
                 } catch (err) {
                     console.warn("Failed to repaint screen after tests:", err);
                 }
+
+                // Must come AFTER the clearAITimer() above.
+                restoreRealBattleAfterTests(realBattleSnapshot);
             }
         }
 
@@ -5511,12 +5879,35 @@
             });
         }
 
+        /**
+         * Keeps the splash screen's primary button in sync with whether a valid save
+         * exists. With no save (first visit, or after a defeat/victory clears it), the
+         * primary button is a plain "НОВАЯ ИГРА" and the separate reset button is
+         * hidden — there's nothing to reset. With a save, the primary button becomes
+         * "ПРОДОЛЖИТЬ ИГРУ" and the reset button reappears as the way to abandon it.
+         */
         function updateStartButtonForSavedRun() {
-            if (!hasSavedGame()) return;
             const btnStart = document.getElementById('btn-start-game');
+            const btnNewRun = document.getElementById('btn-new-run');
             if (!btnStart) return;
             const span = btnStart.querySelector('span');
-            if (span) span.innerText = "▶ ПРОДОЛЖИТЬ ИГРУ";
+            if (hasSavedGame()) {
+                if (span) span.innerText = "▶ ПРОДОЛЖИТЬ ИГРУ";
+                if (btnNewRun) btnNewRun.classList.remove('hidden');
+            } else {
+                if (span) span.innerText = "▶ НОВАЯ ИГРА";
+                if (btnNewRun) btnNewRun.classList.add('hidden');
+            }
+        }
+
+        /**
+         * Shows the splash screen and refreshes its "continue" button state in the same
+         * place, so no call site can forget to sync it (see updateStartButtonForSavedRun).
+         */
+        function showSplashScreen() {
+            const splash = document.getElementById('splash-screen');
+            if (splash) splash.classList.remove('hidden');
+            updateStartButtonForSavedRun();
         }
 
         window.addEventListener('DOMContentLoaded', () => {
