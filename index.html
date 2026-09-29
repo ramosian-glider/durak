@@ -580,25 +580,25 @@
          * bumping SAVE_VERSION, or a save written mid-mutation — so this does real
          * structural + sanity checks, not just "the keys exist".
          *
-         * The central check is the round-end invariant: checkRoundEnd() ends the round
-         * the instant the draw deck AND the table are both empty and at least one hand
-         * is empty, so a save can never legitimately sit in an active battle phase in
-         * that state — the game would have already resolved win/loss/draw before the
-         * next autosave. Seeing it anyway (as in the reported bug: an empty player hand
-         * during "Ваш ход: Атака") means the save is inconsistent, not just old.
+         * The rules live in two focused validators — validateRunState() and
+         * validateBattleState() — so each can be read, tested and extended on its
+         * own; this function only checks the envelope (version) and combines them.
          *
          * Read-only — safe to call from hasSavedGame() (no load/mutation) as well as
          * loadGameState().
          */
         function validateSaveData(parsed) {
             if (!parsed || parsed.version !== SAVE_VERSION) return false;
+            return validateRunState(parsed.run) && validateBattleState(parsed.battle);
+        }
 
-            const savedRun = parsed.run;
-            const savedBattle = parsed.battle;
+        /**
+         * Structural + sanity checks for the persisted run (floor, HP, gold, relics,
+         * deck). Pure and read-only; returns true when the run is safe to resume.
+         */
+        function validateRunState(savedRun) {
             if (!savedRun || typeof savedRun !== 'object') return false;
-            if (!savedBattle || typeof savedBattle !== 'object') return false;
 
-            // --- run: structural + sanity checks ---
             if (!Number.isFinite(savedRun.floor) || savedRun.floor < 1 || savedRun.floor > ENEMIES.length) return false;
             if (!Number.isFinite(savedRun.maxHP) || savedRun.maxHP <= 0) return false;
             if (!Number.isFinite(savedRun.playerHP) || savedRun.playerHP < 0 || savedRun.playerHP > savedRun.maxHP) return false;
@@ -606,7 +606,25 @@
             if (!Array.isArray(savedRun.relics)) return false;
             if (!Array.isArray(savedRun.deck) || savedRun.deck.length === 0) return false;
 
-            // --- battle: structural checks ---
+            return true;
+        }
+
+        /**
+         * Structural checks plus the round-end invariant for the persisted battle.
+         *
+         * The central check is the round-end invariant: checkRoundEnd() ends the round
+         * the instant the draw deck AND the table are both empty and at least one hand
+         * is empty, so a save can never legitimately sit in an active battle phase in
+         * that state — the game would have already resolved win/loss/draw before the
+         * next autosave. Seeing it anyway (as in the reported bug: an empty player hand
+         * during "Ваш ход: Атака") means the save is inconsistent, not just old.
+         *
+         * Pure and read-only; returns true when the battle is safe to resume.
+         */
+        function validateBattleState(savedBattle) {
+            if (!savedBattle || typeof savedBattle !== 'object') return false;
+
+            // --- structural checks ---
             const arrayFields = ['drawDeck', 'discardPile', 'playerHand', 'enemyHand', 'table'];
             for (const key of arrayFields) {
                 if (!Array.isArray(savedBattle[key])) return false;
@@ -615,7 +633,7 @@
             if (!Object.values(BATTLE_PHASES).includes(savedBattle.phase)) return false;
             if (!Number.isFinite(savedBattle.enemyHP)) return false;
 
-            // --- battle: the round-end invariant (see doc comment above) ---
+            // --- the round-end invariant (see doc comment above) ---
             const ACTIVE_PHASES = [BATTLE_PHASES.PLAYER_ATTACK, BATTLE_PHASES.PLAYER_DEFENSE, BATTLE_PHASES.AI_WAITING, BATTLE_PHASES.RESOLVING];
             if (ACTIVE_PHASES.includes(savedBattle.phase)) {
                 const deckAndTableEmpty = savedBattle.drawDeck.length === 0 && savedBattle.table.length === 0;
@@ -3966,6 +3984,67 @@
                             clearLocalSave();
                         }
                     });
+                });
+            });
+
+            runner.describe('8f. validateRunState / validateBattleState (раздельная валидация)', (it, assert) => {
+                const goodRun = () => ({ floor: 2, playerHP: 20, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() });
+                const goodBattle = () => ({
+                    drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
+                    playerHand: [{ id: 'p1', suit: 'Hearts', value: 7 }],
+                    enemyHand: [{ id: 'e1', suit: 'Hearts', value: 8 }],
+                    table: [], defender: 'enemy', phase: BATTLE_PHASES.PLAYER_ATTACK, enemyHP: 30
+                });
+
+                it('validateRunState() принимает корректный run и отвергает не-объекты', () => {
+                    assert.isTrue(validateRunState(goodRun()));
+                    assert.isFalse(validateRunState(null));
+                    assert.isFalse(validateRunState(undefined));
+                    assert.isFalse(validateRunState('run'));
+                });
+
+                it('validateRunState() отвергает битые поля run', () => {
+                    const bad = (mutate) => { const r = goodRun(); mutate(r); return validateRunState(r); };
+                    assert.isFalse(bad(r => { r.floor = 0; }), 'этаж < 1');
+                    assert.isFalse(bad(r => { r.floor = ENEMIES.length + 1; }), 'этаж за пределами лестницы');
+                    assert.isFalse(bad(r => { r.maxHP = 0; }), 'maxHP <= 0');
+                    assert.isFalse(bad(r => { r.playerHP = r.maxHP + 1; }), 'HP выше максимума');
+                    assert.isFalse(bad(r => { r.gold = -1; }), 'отрицательное золото');
+                    assert.isFalse(bad(r => { r.relics = null; }), 'relics не массив');
+                    assert.isFalse(bad(r => { r.deck = []; }), 'пустая колода');
+                });
+
+                it('validateBattleState() принимает корректный бой и отвергает не-объекты', () => {
+                    assert.isTrue(validateBattleState(goodBattle()));
+                    assert.isFalse(validateBattleState(null));
+                    assert.isFalse(validateBattleState(undefined));
+                    assert.isFalse(validateBattleState(42));
+                });
+
+                it('validateBattleState() отвергает структурные ошибки боя', () => {
+                    const bad = (mutate) => { const b = goodBattle(); mutate(b); return validateBattleState(b); };
+                    assert.isFalse(bad(b => { b.table = 'x'; }), 'table не массив');
+                    assert.isFalse(bad(b => { b.defender = 'nobody'; }), 'неизвестный защитник');
+                    assert.isFalse(bad(b => { b.phase = 'not_a_real_phase'; }), 'неизвестная фаза');
+                    assert.isFalse(bad(b => { b.enemyHP = NaN; }), 'enemyHP не число');
+                });
+
+                it('validateBattleState() держит инвариант конца раунда только для активных фаз', () => {
+                    const stuck = () => { const b = goodBattle(); b.drawDeck = []; b.playerHand = []; return b; };
+                    assert.isFalse(validateBattleState(stuck()), 'активная фаза + пустые колода/стол/рука = битый сейв');
+                    const over = stuck(); over.phase = BATTLE_PHASES.ROUND_OVER;
+                    assert.isTrue(validateBattleState(over), 'в неактивной фазе то же состояние допустимо');
+                });
+
+                it('validateSaveData() — композиция: отвергает, если любая из частей невалидна', () => {
+                    const save = () => ({ version: SAVE_VERSION, run: goodRun(), battle: goodBattle() });
+                    assert.isTrue(validateSaveData(save()));
+                    const badRun = save(); badRun.run.floor = 0;
+                    assert.isFalse(validateSaveData(badRun));
+                    const badBattle = save(); badBattle.battle.phase = 'x';
+                    assert.isFalse(validateSaveData(badBattle));
+                    const badVersion = save(); badVersion.version = SAVE_VERSION + 1;
+                    assert.isFalse(validateSaveData(badVersion));
                 });
             });
 
