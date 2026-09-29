@@ -1188,31 +1188,31 @@
             }
         }
 
-        // Phases that only mark "a handler is mid-mutation". They still invalidate
-        // pending AI callbacks (token bump) but are never persisted or painted: a
-        // save taken between the phase flip and the state changes that follow would
-        // capture a half-applied action, and resumeFromSave() already treats a saved
-        // RESOLVING as indeterminate.
-        const TRANSIENT_BATTLE_PHASES = Object.freeze([BATTLE_PHASES.RESOLVING]);
-
-        // Phases that are persisted but NOT repainted by the transition itself.
-        // BATTLE_OVER is entered from inside damageEnemyHP(), i.e. mid-mutation of
-        // whichever handler dealt the lethal damage; that handler repaints when it is
-        // done (and the win modal / shop takes over the screen), so repainting here
-        // would render a half-applied state.
-        const SAVE_ONLY_BATTLE_PHASES = Object.freeze([BATTLE_PHASES.BATTLE_OVER]);
-
         // The ONLY place allowed to write battle.phase (guarded by a source-scan
-        // test in suite 8e). Every transition bumps actionToken and — for stable
-        // phases — persists and repaints, so autosave of phase changes holds by
-        // construction instead of by each call site remembering to do it.
+        // test in suite 8e). This is a pure state transition: it flips the phase
+        // and bumps actionToken (so any pending AI callback becomes stale) and
+        // does NOTHING else — no save, no repaint. That keeps it safe to call in
+        // the middle of a handler that still has more fields to update: the
+        // caller finishes all its mutations and then calls commitBattleState()
+        // once, so a save/paint never sees a half-applied action.
+        //
+        // RESOLVING is a transient marker ("a handler is mid-mutation") and is
+        // deliberately never committed: resumeFromSave() already treats a saved
+        // RESOLVING as indeterminate.
         function setBattlePhase(phase) {
             battle.phase = phase;
             battle.actionToken++;
-            if (TRANSIENT_BATTLE_PHASES.includes(phase)) return;
+        }
+
+        // Persist + repaint the current battle state. Call it AFTER the state
+        // transition and every related field update are complete.
+        //   render: false -> persist only. Used when the transition happens
+        //   mid-mutation of another handler that repaints itself when it is done
+        //   (BATTLE_OVER is entered from inside damageEnemyHP(), and a repaint
+        //   there would show a half-applied state under the win modal).
+        function commitBattleState({ render = true } = {}) {
             saveRunToLocal();
-            if (SAVE_ONLY_BATTLE_PHASES.includes(phase)) return;
-            renderAll();
+            if (render) renderAll();
         }
 
         function canAcceptPlayerAction() {
@@ -1222,8 +1222,8 @@
 
         // The ONE place that hands the turn to the AI (guarded by a source-scan test
         // in suite 8g). It owns the whole transition:
-        //   cancel any pending AI timer -> AI_WAITING (persist + repaint via
-        //   setBattlePhase) -> arm a timer for `action`.
+        //   cancel any pending AI timer -> AI_WAITING (setBattlePhase) -> persist +
+        //   repaint (commitBattleState) -> arm a timer for `action`.
         // The token is captured AFTER setBattlePhase() bumps it, so the callback's
         // staleness check compares against the value this very transition produced:
         // any later phase change (player click, round end, another transition)
@@ -1231,6 +1231,7 @@
         function enterAIWaitingPhase(action, delay = AI_STANDARD_DELAY_MS) {
             clearAITimer();
             setBattlePhase(BATTLE_PHASES.AI_WAITING);
+            commitBattleState();
             const token = battle.actionToken;
             battle.aiTimer = setTimeout(() => {
                 battle.aiTimer = null;
@@ -1272,6 +1273,7 @@
                     ? BATTLE_PHASES.PLAYER_ATTACK
                     : BATTLE_PHASES.PLAYER_DEFENSE
             );
+            commitBattleState();
         }
 
         function finishAIPhase() {
@@ -1357,7 +1359,10 @@
             // was applied when the enemy died, so don't pay it again — just take the
             // player on to the shop, as closing the victory modal would have.
             if (battle.enemyHP <= 0) {
-                if (battle.phase !== BATTLE_PHASES.BATTLE_OVER) setBattlePhase(BATTLE_PHASES.BATTLE_OVER);
+                if (battle.phase !== BATTLE_PHASES.BATTLE_OVER) {
+                    setBattlePhase(BATTLE_PHASES.BATTLE_OVER);
+                    commitBattleState({ render: false });
+                }
                 showModal("Победа в Бою!", "Вы уже одолели этого соперника, награда получена. Загляните в магазин перед следующим боем.", () => {
                     openShop();
                 });
@@ -1391,9 +1396,10 @@
             battle.trumpSuit = battle.trumpCard.suit;
 
             replenishHands();
-            // Last on purpose: setBattlePhase() persists, and the save must see the
+            // Last on purpose: the commit persists, and the save must see the
             // fully rebuilt round (new trump, dealt hands), not a half-reset one.
             setBattlePhase(BATTLE_PHASES.PLAYER_ATTACK);
+            commitBattleState();
         }
 
         function replenishHands(currentDefender = battle.defender) {
@@ -1436,6 +1442,7 @@
 
             if (playerEmpty && enemyEmpty) {
                 setBattlePhase(BATTLE_PHASES.ROUND_OVER);
+                commitBattleState();
                 showModal("Ничья в кону", "Колода и карты обоих игроков закончились! Перемешиваем колоду...", () => {
                     startNewRound();
                 });
@@ -1444,6 +1451,7 @@
 
             if (playerEmpty) {
                 setBattlePhase(BATTLE_PHASES.ROUND_OVER);
+                commitBattleState();
                 const enemyCardsLeft = battle.enemyHand.length;
                 const damage = EMPTY_HAND_BASE_DAMAGE + (enemyCardsLeft * EMPTY_HAND_DAMAGE_PER_CARD);
                 showModal("Раунд Выигран!", `Вы первыми скинули все карты! Противник остается в дураках и получает ${damage} ед. урона.`, () => {
@@ -1460,7 +1468,10 @@
                 const playerCardsLeft = battle.playerHand.length;
                 const damage = EMPTY_HAND_BASE_DAMAGE + (playerCardsLeft * EMPTY_HAND_DAMAGE_PER_CARD);
                 const { isDefeated, savedBySafetyRope } = applyPlayerDamage(damage);
-                renderAll();
+                // One commit after phase AND damage (and a possibly consumed
+                // safety_rope) are applied, so the save never holds ROUND_OVER
+                // together with the pre-damage HP.
+                commitBattleState();
 
                 if (isDefeated) {
                     clearLocalSave();
@@ -1991,6 +2002,7 @@
                 // caller writes right after this returns) must resume as "battle won,
                 // shop pending", never as a live round against a 0-HP enemy.
                 setBattlePhase(BATTLE_PHASES.BATTLE_OVER);
+                commitBattleState({ render: false });
                 showModal("Победа в Бою!", rewardText, () => {
                     openShop();
                 });
@@ -3839,7 +3851,7 @@
                 // take), а не после каждого отдельного хода. Если вкладка выгружалась
                 // (типично для Android Chrome при переключении приложений), при
                 // восстановлении игра откатывалась к началу раунда.
-                it('setBattlePhase() сохраняет игру при каждом переходе фазы', () => {
+                it('commitBattleState() сохраняет текущее состояние боя после смены фазы', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() },
                         {
@@ -3856,9 +3868,11 @@
                         () => {
                             clearLocalSave();
                             setBattlePhase(BATTLE_PHASES.PLAYER_ATTACK);
+                            commitBattleState();
                             const raw = localStorage.getItem(SAVE_KEY);
-                            assert.isTrue(!!raw, 'setBattlePhase() должен был вызвать автосохранение');
+                            assert.isTrue(!!raw, 'commitBattleState() должен был вызвать автосохранение');
                             const saved = JSON.parse(raw);
+                            assert.equal(saved.battle.phase, BATTLE_PHASES.PLAYER_ATTACK, 'Сохранённая фаза должна быть новой');
                             assert.equal(saved.battle.table.length, 1, 'Сохранённый стол должен отражать текущее (недоигранное) состояние раунда');
                             clearLocalSave();
                         }
@@ -3966,6 +3980,75 @@
                         assert.isTrue(localStorage.getItem(SAVE_KEY) === null, 'полупримённое действие не должно попадать в сейв');
                         clearLocalSave();
                     });
+                });
+
+                // setBattlePhase() is a pure state transition: no persistence, no paint.
+                // Static guard on its body + a behavioural check for a stable phase.
+                it('setBattlePhase() — чистый переход состояния: не сохраняет и не перерисовывает', () => {
+                    const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
+                    const body = (fullSource.match(/function setBattlePhase\(phase\) \{[\s\S]*?\n        \}\n/) || [''])[0];
+                    assert.isTrue(body.length > 0, 'тело setBattlePhase() не найдено');
+                    assert.isFalse(/saveRunToLocal|saveGameState|renderAll|commitBattleState/.test(body), 'setBattlePhase() не должен сохранять или рисовать');
+
+                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => {
+                        const realRenderAll = window.renderAll;
+                        let renders = 0;
+                        window.renderAll = () => { renders++; };
+                        try {
+                            clearLocalSave();
+                            setBattlePhase(BATTLE_PHASES.PLAYER_ATTACK);
+                            assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
+                            assert.equal(battle.actionToken, 1, 'токен должен увеличиваться при переходе');
+                            assert.isTrue(localStorage.getItem(SAVE_KEY) === null, 'смена фазы сама не должна писать сейв');
+                            assert.equal(renders, 0, 'смена фазы сама не должна перерисовывать экран');
+                        } finally {
+                            window.renderAll = realRenderAll;
+                            clearLocalSave();
+                        }
+                    });
+                });
+
+                it('commitBattleState(): по умолчанию сохраняет и перерисовывает; { render: false } — только сохраняет', () => {
+                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => {
+                        const realRenderAll = window.renderAll;
+                        let renders = 0;
+                        window.renderAll = () => { renders++; };
+                        try {
+                            clearLocalSave();
+                            commitBattleState();
+                            assert.isTrue(localStorage.getItem(SAVE_KEY) !== null, 'должен сохранять');
+                            assert.equal(renders, 1, 'должен перерисовывать один раз');
+
+                            clearLocalSave();
+                            commitBattleState({ render: false });
+                            assert.isTrue(localStorage.getItem(SAVE_KEY) !== null, 'должен сохранять и без перерисовки');
+                            assert.equal(renders, 1, 'с render:false перерисовки быть не должно');
+                        } finally {
+                            window.renderAll = realRenderAll;
+                            clearLocalSave();
+                        }
+                    });
+                });
+
+                // Several fields updated "atomically": the save taken by the single
+                // commit must hold the new phase TOGETHER with the applied damage.
+                // Before the split, the save was written by setBattlePhase() before
+                // applyPlayerDamage() ran, so it held ROUND_OVER with pre-damage HP.
+                it('checkRoundEnd() (враг без карт): сейв содержит фазу ROUND_OVER вместе с уже применённым уроном', () => {
+                    withIsolatedGameState(
+                        Object.assign(makeFixtureRun(), { playerHP: 30 }),
+                        makeFixtureBattle({ drawDeck: [], table: [], enemyHand: [], phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy' }),
+                        () => {
+                            clearLocalSave();
+                            const hpBefore = run.playerHP;
+                            assert.isTrue(checkRoundEnd(), 'раунд должен завершиться');
+                            const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
+                            assert.equal(saved.battle.phase, BATTLE_PHASES.ROUND_OVER);
+                            assert.isTrue(run.playerHP < hpBefore, 'урон должен быть применён');
+                            assert.equal(saved.run.playerHP, run.playerHP, 'сейв должен содержать HP после урона, а не до него');
+                            clearLocalSave();
+                        }
+                    );
                 });
 
                 // Previously startNewRound() flipped the phase at the top and never saved;
