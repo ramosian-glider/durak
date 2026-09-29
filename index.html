@@ -1195,6 +1195,13 @@
         // RESOLVING as indeterminate.
         const TRANSIENT_BATTLE_PHASES = Object.freeze([BATTLE_PHASES.RESOLVING]);
 
+        // Phases that are persisted but NOT repainted by the transition itself.
+        // BATTLE_OVER is entered from inside damageEnemyHP(), i.e. mid-mutation of
+        // whichever handler dealt the lethal damage; that handler repaints when it is
+        // done (and the win modal / shop takes over the screen), so repainting here
+        // would render a half-applied state.
+        const SAVE_ONLY_BATTLE_PHASES = Object.freeze([BATTLE_PHASES.BATTLE_OVER]);
+
         // The ONLY place allowed to write battle.phase (guarded by a source-scan
         // test in suite 8e). Every transition bumps actionToken and — for stable
         // phases — persists and repaints, so autosave of phase changes holds by
@@ -1204,6 +1211,7 @@
             battle.actionToken++;
             if (TRANSIENT_BATTLE_PHASES.includes(phase)) return;
             saveRunToLocal();
+            if (SAVE_ONLY_BATTLE_PHASES.includes(phase)) return;
             renderAll();
         }
 
@@ -1336,12 +1344,25 @@
          * Restores the game from a loaded state.
          * Doesn't touch the deck or hands — they are already restored by loadGameState().
          * If the battle was in the AI_WAITING phase (e.g. the player moved and closed the
-         * tab), we re-schedule the AI turn so the game doesn't get stuck.
+         * tab), we re-schedule the AI turn so the game doesn't get stuck. If the enemy was
+         * already defeated, we resume at the shop instead of a live round.
          */
         function resumeFromSave() {
             clearAITimer();
             syncEnemyDisplay();
             renderAll();
+
+            // The enemy is already dead (phase BATTLE_OVER, or a legacy save written
+            // before that phase existed: an active phase with enemyHP <= 0). The reward
+            // was applied when the enemy died, so don't pay it again — just take the
+            // player on to the shop, as closing the victory modal would have.
+            if (battle.enemyHP <= 0) {
+                if (battle.phase !== BATTLE_PHASES.BATTLE_OVER) setBattlePhase(BATTLE_PHASES.BATTLE_OVER);
+                showModal("Победа в Бою!", "Вы уже одолели этого соперника, награда получена. Загляните в магазин перед следующим боем.", () => {
+                    openShop();
+                });
+                return;
+            }
 
             // If the game was saved while the AI was thinking — restart it
             if (battle.phase === BATTLE_PHASES.AI_WAITING) {
@@ -1965,6 +1986,11 @@
                     rewardText += ` и +${BOSS_MAX_HP_BONUS} к максимальному здоровью за победу над боссом!`;
                 }
 
+                // The reward is already in run.gold / run.maxHP, so persist the win as its
+                // own phase BEFORE the modal: a save taken from here on (or the one the
+                // caller writes right after this returns) must resume as "battle won,
+                // shop pending", never as a live round against a 0-HP enemy.
+                setBattlePhase(BATTLE_PHASES.BATTLE_OVER);
                 showModal("Победа в Бою!", rewardText, () => {
                     openShop();
                 });
@@ -4130,6 +4156,82 @@
                 });
             });
 
+            runner.describe('8h. Победа над соперником и продолжение игры (враг с 0 HP)', (it, assert) => {
+                const makeFixtureBattle = (overrides = {}) => Object.assign({
+                    drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
+                    playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
+                    enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
+                    table: [], trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
+                    defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                    enemyHP: 5, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                    cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                    jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                }, overrides);
+                const makeFixtureRun = () => ({ floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() });
+                const closeUi = () => {
+                    const modal = document.getElementById('msg-box');
+                    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+                    const shop = document.getElementById('shop-modal');
+                    if (shop) { shop.classList.add('hidden'); shop.classList.remove('flex'); }
+                };
+
+                it('Смертельный урон переводит бой в BATTLE_OVER и сохраняет уже выданную награду', () => {
+                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => {
+                        try {
+                            clearLocalSave();
+                            damageEnemyHP(999);
+                            assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER);
+                            const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
+                            assert.equal(saved.battle.enemyHP, 0);
+                            assert.equal(saved.battle.phase, BATTLE_PHASES.BATTLE_OVER);
+                            assert.equal(saved.run.gold, 15 + WIN_GOLD_BASE + WIN_GOLD_PER_FLOOR, 'награда должна быть уже в сейве');
+                            assert.isTrue(validateSaveData(saved), 'сейв победы должен быть валиден');
+                        } finally { closeUi(); clearLocalSave(); }
+                    });
+                });
+
+                it('Нелетальный урон фазу не меняет', () => {
+                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => {
+                        try {
+                            damageEnemyHP(2);
+                            assert.equal(battle.enemyHP, 3);
+                            assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
+                        } finally { closeUi(); clearLocalSave(); }
+                    });
+                });
+
+                // Both a fresh BATTLE_OVER save and a legacy save (active phase + 0 HP,
+                // exactly what the reported screenshot showed) must resume at the shop.
+                [BATTLE_PHASES.BATTLE_OVER, BATTLE_PHASES.RESOLVING, BATTLE_PHASES.PLAYER_ATTACK].forEach((phase) => {
+                    it('resumeFromSave(): враг с 0 HP и фазой "' + phase + '" ведёт в магазин без повторной награды', () => {
+                        withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({ enemyHP: 0, phase }), () => {
+                            try {
+                                clearLocalSave();
+                                resumeFromSave();
+                                assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER);
+                                assert.equal(run.gold, 15, 'награда не должна выдаваться повторно');
+                                assert.equal(document.getElementById('msg-title').innerText, 'Победа в Бою!');
+                                document.getElementById('msg-btn').click();
+                                const shop = document.getElementById('shop-modal');
+                                assert.isFalse(shop.classList.contains('hidden'), 'магазин должен открыться');
+                            } finally { closeUi(); clearLocalSave(); }
+                        });
+                    });
+                });
+
+                it('resumeFromSave(): живой враг — поведение прежнее (ход возвращается игроку)', () => {
+                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({ enemyHP: 5, phase: BATTLE_PHASES.RESOLVING }), () => {
+                        try {
+                            clearLocalSave();
+                            resumeFromSave();
+                            assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
+                            const shop = document.getElementById('shop-modal');
+                            assert.isTrue(shop.classList.contains('hidden'), 'магазин открываться не должен');
+                        } finally { closeUi(); clearLocalSave(); }
+                    });
+                });
+            });
+
             runner.describe('9. Магазин и здоровье игрока', (it, assert) => {
                 withFieldSnapshot({ run: ['playerHP', 'maxHP', 'gold'] }, () => {
                     it('openShop корректно обновляет отображение здоровья и золота', () => {
@@ -5029,7 +5131,8 @@
                             // Колода пуста, стол пуст и рука игрока пуста: без гарда checkRoundEnd()
                             // показал бы «Раунд Выигран!» поверх победной модалки и потерял бы её openShop().
                             assert.equal(document.getElementById('msg-title').innerText, 'Победа в Бою!');
-                            assert.equal(battle.phase, BATTLE_PHASES.RESOLVING, 'enterPlayerPhase() не должен вызываться после победы');
+                            // Победа фиксируется фазой BATTLE_OVER; PLAYER_ATTACK означал бы, что enterPlayerPhase() всё же вызвали.
+                            assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER, 'enterPlayerPhase() не должен вызываться после победы');
                             const msgBox = document.getElementById('msg-box');
                             if (msgBox) { msgBox.classList.add('hidden'); msgBox.classList.remove('flex'); }
                         }
