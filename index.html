@@ -1212,30 +1212,33 @@
                 || battle.phase === BATTLE_PHASES.PLAYER_DEFENSE;
         }
 
-        function scheduleEnemyAI(delay = AI_STANDARD_DELAY_MS) {
+        // The ONE place that hands the turn to the AI (guarded by a source-scan test
+        // in suite 8g). It owns the whole transition:
+        //   cancel any pending AI timer -> AI_WAITING (persist + repaint via
+        //   setBattlePhase) -> arm a timer for `action`.
+        // The token is captured AFTER setBattlePhase() bumps it, so the callback's
+        // staleness check compares against the value this very transition produced:
+        // any later phase change (player click, round end, another transition)
+        // makes the pending action stale and it silently does nothing.
+        function enterAIWaitingPhase(action, delay = AI_STANDARD_DELAY_MS) {
             clearAITimer();
-            // Set the phase first (it bumps actionToken), then capture the token, so
-            // the pending callback's staleness check compares against the value this
-            // very transition produced.
             setBattlePhase(BATTLE_PHASES.AI_WAITING);
-            const token = battle.actionToken;
-
-            battle.aiTimer = setTimeout(() => {
-                battle.aiTimer = null;
-                if (battle.actionToken !== token || battle.phase !== BATTLE_PHASES.AI_WAITING) return;
-                executeEnemyAI();
-            }, delay);
-        }
-
-        function scheduleEnemyAction(action, delay = AI_STANDARD_DELAY_MS) {
-            clearAITimer();
-            setBattlePhase(BATTLE_PHASES.AI_WAITING); // bumps the token; capture it afterwards
             const token = battle.actionToken;
             battle.aiTimer = setTimeout(() => {
                 battle.aiTimer = null;
                 if (battle.actionToken !== token || battle.phase !== BATTLE_PHASES.AI_WAITING) return;
                 action();
             }, delay);
+        }
+
+        // Thin, intention-revealing entry points over enterAIWaitingPhase().
+        // executeEnemyAI is looked up when the timer fires (not when scheduled).
+        function scheduleEnemyAI(delay = AI_STANDARD_DELAY_MS) {
+            enterAIWaitingPhase(() => executeEnemyAI(), delay);
+        }
+
+        function scheduleEnemyAction(action, delay = AI_STANDARD_DELAY_MS) {
+            enterAIWaitingPhase(action, delay);
         }
 
         // Clears the once-per-"ход" guards. Called every time the turn passes from
@@ -4045,6 +4048,85 @@
                     assert.isFalse(validateSaveData(badBattle));
                     const badVersion = save(); badVersion.version = SAVE_VERSION + 1;
                     assert.isFalse(validateSaveData(badVersion));
+                });
+            });
+
+            runner.describe('8g. enterAIWaitingPhase (единственная точка перехода хода к ИИ)', (it, assert) => {
+                const makeFixtureBattle = (overrides = {}) => Object.assign({
+                    drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
+                    playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
+                    enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
+                    table: [{ attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: null }],
+                    trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
+                    defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                    cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                    jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                }, overrides);
+                const makeFixtureRun = () => ({ floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() });
+
+                // Runs fn with setTimeout/clearTimeout replaced by recorders, restoring them afterwards.
+                function withFakeTimers(fn) {
+                    const realSet = window.setTimeout, realClear = window.clearTimeout;
+                    const timers = [], cleared = [];
+                    window.setTimeout = (cb, delay) => { timers.push({ cb, delay }); return timers.length; };
+                    window.clearTimeout = (id) => { cleared.push(id); };
+                    try { fn(timers, cleared); } finally { window.setTimeout = realSet; window.clearTimeout = realClear; }
+                }
+
+                it('В боевом коде AI_WAITING выставляется только внутри enterAIWaitingPhase()', () => {
+                    const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
+                    const productionSource = fullSource.slice(0, fullSource.indexOf('class TinyTestRunner'));
+                    const withoutOwner = productionSource.replace(/function enterAIWaitingPhase\([\s\S]*?\n        \}\n/, '');
+                    assert.isTrue(withoutOwner.length < productionSource.length, 'тело enterAIWaitingPhase() не найдено');
+                    const offenders = withoutOwner.match(/setBattlePhase\(\s*BATTLE_PHASES\.AI_WAITING\s*\)/g) || [];
+                    assert.equal(offenders.length, 0, 'AI_WAITING выставляется в обход enterAIWaitingPhase(): ' + offenders.length);
+                });
+
+                it('enterAIWaitingPhase(): фаза AI_WAITING, сохранение, таймер с заданной задержкой', () => {
+                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => {
+                        withFakeTimers((timers) => {
+                            clearLocalSave();
+                            enterAIWaitingPhase(() => {}, 1234);
+                            assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
+                            assert.equal(battle.actionToken, 1);
+                            assert.equal(timers.length, 1);
+                            assert.equal(timers[0].delay, 1234);
+                            assert.isTrue(battle.aiTimer !== null, 'таймер должен быть записан в battle.aiTimer');
+                            const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
+                            assert.equal(saved.battle.phase, BATTLE_PHASES.AI_WAITING, 'переход должен сохраняться');
+                            clearLocalSave();
+                        });
+                    });
+                });
+
+                it('enterAIWaitingPhase(): отменяет ранее запланированный таймер и делает старое действие устаревшим', () => {
+                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => {
+                        withFakeTimers((timers, cleared) => {
+                            let first = 0, second = 0;
+                            enterAIWaitingPhase(() => { first++; });
+                            enterAIWaitingPhase(() => { second++; });
+                            assert.equal(cleared.length, 1, 'предыдущий таймер должен быть отменён');
+                            timers[0].cb();
+                            assert.equal(first, 0, 'действие первого перехода устарело');
+                            battle.aiTimer = null;
+                            timers[1].cb();
+                            assert.equal(second, 1, 'действие последнего перехода выполняется');
+                            clearLocalSave();
+                        });
+                    });
+                });
+
+                it('scheduleEnemyAI() запускает executeEnemyAI() через enterAIWaitingPhase() с нужной задержкой', () => {
+                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => {
+                        withFakeTimers((timers) => {
+                            scheduleEnemyAI(AI_QUICK_DELAY_MS);
+                            assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
+                            assert.equal(timers.length, 1);
+                            assert.equal(timers[0].delay, AI_QUICK_DELAY_MS);
+                            clearLocalSave();
+                        });
+                    });
                 });
             });
 
