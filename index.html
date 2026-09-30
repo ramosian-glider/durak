@@ -1210,6 +1210,57 @@
             }
         }
 
+        // Catch-all for tests that touch the REAL run/battle without snapshotting
+        // every field they change (e.g. a test that writes battle.phase directly, or
+        // one that drives damageEnemyHP() into BATTLE_OVER). Without it such a leak
+        // survives the test run and the player comes back to a broken screen — the
+        // reported case: a mid-round battle left in BATTLE_OVER, so "БИТО" stayed
+        // disabled. The pair below deep-copies the game state at the start of a run
+        // and puts it back at the end, so no test — present or future — can leak.
+        //
+        // aiTimer and actionToken are runtime-only (BATTLE_RUNTIME_FIELDS) and are
+        // deliberately NOT restored: a timer id from before the run is dead (the
+        // helpers cancel it; restoreRealBattleAfterTests() re-arms it when needed),
+        // and actionToken must only ever move forward so stale callbacks stay stale.
+        function cloneGameState(obj) {
+            try {
+                return structuredClone(obj);
+            } catch (err) {
+                return JSON.parse(JSON.stringify(obj));
+            }
+        }
+
+        function captureRealStateForTests() {
+            const pick = (source, skip) => {
+                const copy = {};
+                for (const key of Object.keys(source)) {
+                    if (!skip.includes(key)) copy[key] = source[key];
+                }
+                return cloneGameState(copy);
+            };
+            return {
+                run,
+                battle,
+                runState: pick(run, []),
+                battleState: pick(battle, BATTLE_RUNTIME_FIELDS)
+            };
+        }
+
+        // Restores IN PLACE (same run/battle objects), and only if they are still the
+        // objects that were captured — a fixture pair swapped in by a test helper is
+        // not ours to touch.
+        function restoreRealStateAfterTests(snapshot) {
+            const restoreInto = (target, saved, skip) => {
+                for (const key of Object.keys(target)) {
+                    if (!skip.includes(key) && !(key in saved)) delete target[key];
+                }
+                const fresh = cloneGameState(saved);
+                for (const key of Object.keys(fresh)) target[key] = fresh[key];
+            };
+            if (run === snapshot.run) restoreInto(run, snapshot.runState, []);
+            if (battle === snapshot.battle) restoreInto(battle, snapshot.battleState, BATTLE_RUNTIME_FIELDS);
+        }
+
         // The ONLY place allowed to write battle.phase (guarded by a source-scan
         // test in suite 8e). This is a pure state transition: it flips the phase
         // and bumps actionToken (so any pending AI callback becomes stale) and
@@ -3085,6 +3136,7 @@
 
         function runGameUnitTests() {
             const realBattleSnapshot = captureRealBattleForTests();
+            const realStateSnapshot = captureRealStateForTests();
 
             const runner = new TinyTestRunner();
 
@@ -6187,6 +6239,81 @@
                     });
                 });
 
+                // РЕГРЕССИЯ (репорт): после прогона тестов посреди боя кнопка "БИТО" оставалась
+                // неактивной. Тесты (набор 7 и победа над боссом) меняли battle.phase реального
+                // боя и не возвращали его, а damageEnemyHP() переводил бой в BATTLE_OVER.
+                it('РЕГРЕССИЯ: restoreRealStateAfterTests возвращает фазу, защитника, стол, руки и золото реального боя', () => {
+                    const card = (id, value) => ({ id, suit: 'Hearts', value });
+                    withIsolatedGameState(
+                        { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [card('k1', 6)] },
+                        Object.assign(aiWaitingFixture(), {
+                            phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy',
+                            table: [{ attack: card('a1', 6), defend: card('d1', 9) }],
+                            playerHand: [card('p1', 7)], enemyHP: 12
+                        }),
+                        () => {
+                            const snapshot = captureRealStateForTests();
+                            const tokenBefore = battle.actionToken;
+
+                            // Everything the leaking tests used to do, and more.
+                            battle.phase = BATTLE_PHASES.BATTLE_OVER;
+                            battle.defender = 'player';
+                            battle.table.push({ attack: card('a2', 8), defend: null });
+                            battle.playerHand.length = 0;
+                            battle.enemyHP = 0;
+                            battle.leakedField = true;
+                            battle.actionToken += 5;
+                            run.gold = 999;
+                            run.deck.push(card('k2', 10));
+
+                            restoreRealStateAfterTests(snapshot);
+
+                            assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK, 'фаза');
+                            assert.equal(battle.defender, 'enemy', 'защитник');
+                            assert.equal(battle.table.length, 1, 'стол (вложенный массив должен быть восстановлен глубоко)');
+                            assert.equal(battle.table[0].defend.id, 'd1', 'побитая карта на столе');
+                            assert.equal(battle.playerHand.length, 1, 'рука игрока');
+                            assert.equal(battle.enemyHP, 12, 'HP врага');
+                            assert.isFalse('leakedField' in battle, 'лишние поля должны удаляться');
+                            assert.equal(run.gold, 15, 'золото');
+                            assert.equal(run.deck.length, 1, 'колода забега');
+                            assert.equal(battle.actionToken, tokenBefore + 5, 'actionToken не откатывается — только растёт');
+                        }
+                    );
+                });
+
+                // The helpers above are only useful if the runner actually calls them. A
+                // test can't re-run the whole suite from inside itself, so guard the wiring
+                // the same way suites 8e/8g guard theirs: by scanning the source.
+                it('runGameUnitTests() снимает состояние реального боя в начале и восстанавливает его в finally', () => {
+                    // Literals are built by concatenation so this test's own source can't
+                    // satisfy the search; the body of runGameUnitTests() contains every suite.
+                    const body = runGameUnitTests.toString();
+                    const captureAt = body.indexOf('const realStateSnapshot = ' + 'captureRealStateForTests()');
+                    const outerTryAt = body.indexOf('preserveLocalSaveAround(() => ' + 'runner.run())');
+                    const outerFinallyAt = body.indexOf('finally', outerTryAt);
+                    const restoreAt = body.indexOf('restoreRealStateAfterTests(' + 'realStateSnapshot)');
+                    assert.isTrue(captureAt !== -1, 'нет снимка состояния в начале прогона');
+                    assert.isTrue(outerTryAt !== -1 && outerFinallyAt !== -1, 'не найден внешний try/finally прогона');
+                    assert.isTrue(restoreAt > outerFinallyAt, 'восстановление должно быть в finally, чтобы отработать при любом исходе');
+                    assert.isTrue(body.indexOf('renderAll()', restoreAt) !== -1, 'после восстановления должен идти repaint renderAll(), иначе экран нарисуется по испорченному состоянию');
+                });
+
+                it('restoreRealStateAfterTests не трогает подменённую фикстуру (battle/run уже не те, что снимали)', () => {
+                    withIsolatedGameState(fixtureRun(), aiWaitingFixture(), () => {
+                        const snapshot = captureRealStateForTests();
+                        const otherBattle = Object.assign(aiWaitingFixture(), { phase: BATTLE_PHASES.PLAYER_DEFENSE });
+                        const realBattle = battle;
+                        battle = otherBattle;
+                        try {
+                            restoreRealStateAfterTests(snapshot);
+                            assert.equal(otherBattle.phase, BATTLE_PHASES.PLAYER_DEFENSE, 'чужой объект не должен меняться');
+                        } finally {
+                            battle = realBattle;
+                        }
+                    });
+                });
+
                 it('Если AI не ждал хода, restoreRealBattleAfterTests ничего не планирует', () => {
                     withIsolatedGameState(fixtureRun(), Object.assign(aiWaitingFixture(), { phase: BATTLE_PHASES.PLAYER_DEFENSE }), () => {
                         const snapshot = captureRealBattleForTests();
@@ -6239,6 +6366,9 @@
                 if (cancelBtn) cancelBtn.onclick = null;
 
                 clearAITimer();
+                // Put the real run/battle back exactly as they were before the run,
+                // whatever individual tests did to them (see captureRealStateForTests).
+                restoreRealStateAfterTests(realStateSnapshot);
                 // Tests drive real game functions (startFloorBattle, executeEnemyAI,
                 // etc.) against throwaway fixtures, which paint the DOM with fixture
                 // data. Restoring run/battle in memory does not undo that, so repaint
