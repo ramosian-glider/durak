@@ -610,14 +610,31 @@
         }
 
         /**
-         * Structural checks plus the round-end invariant for the persisted battle.
+         * The round-end invariant, named: true when a battle sits in an ACTIVE phase
+         * while the round-end condition already holds (draw deck AND table both empty,
+         * and at least one hand empty).
          *
-         * The central check is the round-end invariant: checkRoundEnd() ends the round
-         * the instant the draw deck AND the table are both empty and at least one hand
-         * is empty, so a save can never legitimately sit in an active battle phase in
-         * that state — the game would have already resolved win/loss/draw before the
-         * next autosave. Seeing it anyway (as in the reported bug: an empty player hand
-         * during "Ваш ход: Атака") means the save is inconsistent, not just old.
+         * checkRoundEnd() ends the round the instant that condition becomes true, so
+         * the game would have resolved win/loss/draw before the next autosave — a
+         * state like this can never be produced by normal play. Seeing it anyway (as
+         * in the reported bug: an empty player hand during "Ваш ход: Атака") means the
+         * save is inconsistent, not just old. In non-active phases (ROUND_OVER,
+         * BATTLE_OVER, IDLE) the very same card layout is legitimate.
+         *
+         * Expects a structurally valid battle (the array fields and `phase` present);
+         * validateBattleState() runs its structural checks first. Pure and read-only.
+         */
+        function isImpossibleActiveBattleState(savedBattle) {
+            if (!ACTIVE_BATTLE_PHASES.includes(savedBattle.phase)) return false;
+
+            const deckAndTableEmpty = savedBattle.drawDeck.length === 0 && savedBattle.table.length === 0;
+            const aHandIsEmpty = savedBattle.playerHand.length === 0 || savedBattle.enemyHand.length === 0;
+            return deckAndTableEmpty && aHandIsEmpty;
+        }
+
+        /**
+         * Structural checks plus the round-end invariant for the persisted battle
+         * (see isImpossibleActiveBattleState()).
          *
          * Pure and read-only; returns true when the battle is safe to resume.
          */
@@ -633,13 +650,8 @@
             if (!Object.values(BATTLE_PHASES).includes(savedBattle.phase)) return false;
             if (!Number.isFinite(savedBattle.enemyHP)) return false;
 
-            // --- the round-end invariant (see doc comment above) ---
-            const ACTIVE_PHASES = [BATTLE_PHASES.PLAYER_ATTACK, BATTLE_PHASES.PLAYER_DEFENSE, BATTLE_PHASES.AI_WAITING, BATTLE_PHASES.RESOLVING];
-            if (ACTIVE_PHASES.includes(savedBattle.phase)) {
-                const deckAndTableEmpty = savedBattle.drawDeck.length === 0 && savedBattle.table.length === 0;
-                const aHandIsEmpty = savedBattle.playerHand.length === 0 || savedBattle.enemyHand.length === 0;
-                if (deckAndTableEmpty && aHandIsEmpty) return false;
-            }
+            // --- the round-end invariant ---
+            if (isImpossibleActiveBattleState(savedBattle)) return false;
 
             return true;
         }
@@ -1111,6 +1123,16 @@
             ROUND_OVER: 'round_over',
             BATTLE_OVER: 'battle_over'
         });
+
+        // Phases in which a round is still being played (as opposed to the round or
+        // battle already being resolved). Used by the save validator's round-end
+        // invariant — see isImpossibleActiveBattleState().
+        const ACTIVE_BATTLE_PHASES = Object.freeze([
+            BATTLE_PHASES.PLAYER_ATTACK,
+            BATTLE_PHASES.PLAYER_DEFENSE,
+            BATTLE_PHASES.AI_WAITING,
+            BATTLE_PHASES.RESOLVING
+        ]);
 
         function clearAITimer() {
             if (battle.aiTimer !== null) {
@@ -4146,6 +4168,40 @@
                     assert.isFalse(validateBattleState(stuck()), 'активная фаза + пустые колода/стол/рука = битый сейв');
                     const over = stuck(); over.phase = BATTLE_PHASES.ROUND_OVER;
                     assert.isTrue(validateBattleState(over), 'в неактивной фазе то же состояние допустимо');
+                });
+
+                // The invariant has its own name now, so it is tested on its own — the
+                // validator test above only proves the two are wired together.
+                it('isImpossibleActiveBattleState(): активная фаза + пустые колода и стол + пустая рука = невозможно', () => {
+                    const layout = (over) => Object.assign(goodBattle(), { drawDeck: [], table: [] }, over);
+                    const activePhases = [BATTLE_PHASES.PLAYER_ATTACK, BATTLE_PHASES.PLAYER_DEFENSE, BATTLE_PHASES.AI_WAITING, BATTLE_PHASES.RESOLVING];
+                    for (const phase of activePhases) {
+                        assert.isTrue(isImpossibleActiveBattleState(layout({ phase, playerHand: [] })), 'пустая рука игрока, фаза ' + phase);
+                        assert.isTrue(isImpossibleActiveBattleState(layout({ phase, enemyHand: [] })), 'пустая рука врага, фаза ' + phase);
+                    }
+                });
+
+                it('isImpossibleActiveBattleState(): любая непустая колода/стол или обе непустые руки делают состояние возможным', () => {
+                    const active = BATTLE_PHASES.PLAYER_ATTACK;
+                    const card = { id: 'x', suit: 'Hearts', value: 6 };
+                    assert.isFalse(isImpossibleActiveBattleState(Object.assign(goodBattle(), { phase: active, drawDeck: [], table: [] })), 'обе руки непусты');
+                    assert.isFalse(isImpossibleActiveBattleState(Object.assign(goodBattle(), { phase: active, drawDeck: [card], table: [], playerHand: [] })), 'колода не пуста');
+                    assert.isFalse(isImpossibleActiveBattleState(Object.assign(goodBattle(), { phase: active, drawDeck: [], table: [{ attack: card, defend: null }], playerHand: [] })), 'на столе есть карты');
+                });
+
+                it('isImpossibleActiveBattleState(): в неактивных фазах тот же расклад допустим', () => {
+                    const layout = (phase) => Object.assign(goodBattle(), { phase, drawDeck: [], table: [], playerHand: [] });
+                    for (const phase of [BATTLE_PHASES.IDLE, BATTLE_PHASES.ROUND_OVER, BATTLE_PHASES.BATTLE_OVER]) {
+                        assert.isFalse(isImpossibleActiveBattleState(layout(phase)), 'фаза ' + phase);
+                    }
+                });
+
+                it('ACTIVE_BATTLE_PHASES: ровно фазы идущего раунда, все — существующие фазы', () => {
+                    assert.equal(ACTIVE_BATTLE_PHASES.length, 4);
+                    for (const p of ACTIVE_BATTLE_PHASES) assert.isTrue(Object.values(BATTLE_PHASES).includes(p), 'неизвестная фаза ' + p);
+                    for (const p of [BATTLE_PHASES.IDLE, BATTLE_PHASES.ROUND_OVER, BATTLE_PHASES.BATTLE_OVER]) {
+                        assert.isFalse(ACTIVE_BATTLE_PHASES.includes(p), 'фаза ' + p + ' не должна быть активной');
+                    }
                 });
 
                 it('validateSaveData() — композиция: отвергает, если любая из частей невалидна', () => {
