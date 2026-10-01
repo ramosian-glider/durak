@@ -1440,6 +1440,25 @@
             fireAllHooks('onTransfer');
         }
 
+        // First step of every handler that resolves a table (bito / take): park the
+        // battle in RESOLVING so nothing else acts while it runs, and drop a
+        // pending transfer offer. Call it only AFTER the handler's precondition
+        // checks have passed (see handleBito()), and call clearAITimer() first
+        // where the AI path can be pending.
+        function beginResolution() {
+            setBattlePhase(BATTLE_PHASES.RESOLVING);
+            battle.isTransferActive = false;
+        }
+
+        // Last state step of every resolution: the turn has passed, so clear the
+        // per-turn relic guards, refill the hands (the attacker draws first, see
+        // replenishHands) and persist the result in one commit.
+        function settleTurn(currentDefender) {
+            resetTurnScopedFlags();
+            replenishHands(currentDefender);
+            commitBattleState();
+        }
+
         function enterPlayerPhase() {
             clearAITimer();
             setBattlePhase(
@@ -1728,61 +1747,96 @@
             });
         }
 
-        function checkRoundEnd() {
-            if (battle.drawDeck.length > 0) return false;
-            if (battle.table.length > 0) return false;
+        // ---- Round end: decide -> apply -> present -----------------------------
+        // A round is over when the draw deck and the table are empty and at least
+        // one side has no cards. The three steps are separate so each can be read
+        // (and tested) on its own: getRoundResult() only looks, applyRoundResult()
+        // only changes state, presentRoundResult() only talks to the UI.
 
-            const playerEmpty = battle.playerHand.length === 0;
-            const enemyEmpty = battle.enemyHand.length === 0;
+        // Pure: describes how the round ended, or null if it has not. No side effects.
+        function getRoundResult() {
+            if (battle.drawDeck.length > 0) return null;
+            if (battle.table.length > 0) return null;
 
-            if (playerEmpty && enemyEmpty) {
-                setBattlePhase(BATTLE_PHASES.ROUND_OVER);
-                commitBattleState();
-                showModal("Ничья в кону", "Колода и карты обоих игроков закончились! Перемешиваем колоду...", () => {
-                    startNewRound();
-                });
-                return true;
+            const playerCardsLeft = battle.playerHand.length;
+            const enemyCardsLeft = battle.enemyHand.length;
+
+            if (playerCardsLeft === 0 && enemyCardsLeft === 0) {
+                return { type: 'draw' };
             }
+            if (playerCardsLeft === 0) {
+                // The player went out first: the enemy is the "fool" and pays per card left.
+                return { type: 'player_win', cardsLeft: enemyCardsLeft,
+                         damage: EMPTY_HAND_BASE_DAMAGE + enemyCardsLeft * EMPTY_HAND_DAMAGE_PER_CARD };
+            }
+            if (enemyCardsLeft === 0) {
+                return { type: 'enemy_win', cardsLeft: playerCardsLeft,
+                         damage: EMPTY_HAND_BASE_DAMAGE + playerCardsLeft * EMPTY_HAND_DAMAGE_PER_CARD };
+            }
+            return null;
+        }
 
-            if (playerEmpty) {
-                setBattlePhase(BATTLE_PHASES.ROUND_OVER);
-                commitBattleState();
-                const enemyCardsLeft = battle.enemyHand.length;
-                const damage = EMPTY_HAND_BASE_DAMAGE + (enemyCardsLeft * EMPTY_HAND_DAMAGE_PER_CARD);
-                showModal("Раунд Выигран!", `Вы первыми скинули все карты! Противник остается в дураках и получает ${damage} ед. урона.`, () => {
-                    damageEnemyHP(damage);
-                    if (battle.enemyHP > 0) {
+        // State only: enter ROUND_OVER, deal any damage the result carries to the
+        // player (through applyPlayerDamage, so safety_rope can still intercept)
+        // and commit once, so a save never holds ROUND_OVER together with the
+        // pre-damage HP. Returns the result extended with { isDefeated,
+        // savedBySafetyRope } for an 'enemy_win'. Enemy damage from a 'player_win'
+        // is deliberately NOT applied here: it lands when the player closes the
+        // round-won modal (see presentRoundResult()).
+        function applyRoundResult(result) {
+            setBattlePhase(BATTLE_PHASES.ROUND_OVER);
+            const outcome = { ...result };
+            if (result.type === 'enemy_win') {
+                Object.assign(outcome, applyPlayerDamage(result.damage));
+            }
+            commitBattleState();
+            return outcome;
+        }
+
+        // UI only: the modal for an applied round result, and what happens when it closes.
+        function presentRoundResult(outcome) {
+            switch (outcome.type) {
+                case 'draw':
+                    showModal("Ничья в кону", "Колода и карты обоих игроков закончились! Перемешиваем колоду...", () => {
                         startNewRound();
+                    });
+                    break;
+                case 'player_win':
+                    showModal("Раунд Выигран!", `Вы первыми скинули все карты! Противник остается в дураках и получает ${outcome.damage} ед. урона.`, () => {
+                        damageEnemyHP(outcome.damage);
+                        if (battle.enemyHP > 0) {
+                            startNewRound();
+                        }
+                    });
+                    break;
+                case 'enemy_win':
+                    if (outcome.isDefeated) {
+                        presentPlayerDefeat(`Соперник первым скинул все карты. Вы получили ${outcome.damage} ед. урона и погибли.`);
+                    } else {
+                        const safetyNote = outcome.savedBySafetyRope ? " Страховочный трос спас вас, оставив 1 HP!" : "";
+                        showModal("Раунд Проигран!", `Соперник первым скинул все карты! Вы остались в дураках с ${outcome.cardsLeft} картами и получили ${outcome.damage} ед. урона.${safetyNote}`, () => {
+                            startNewRound();
+                        });
                     }
-                });
-                return true;
+                    break;
             }
+        }
 
-            if (enemyEmpty) {
-                setBattlePhase(BATTLE_PHASES.ROUND_OVER);
-                const playerCardsLeft = battle.playerHand.length;
-                const damage = EMPTY_HAND_BASE_DAMAGE + (playerCardsLeft * EMPTY_HAND_DAMAGE_PER_CARD);
-                const { isDefeated, savedBySafetyRope } = applyPlayerDamage(damage);
-                // One commit after phase AND damage (and a possibly consumed
-                // safety_rope) are applied, so the save never holds ROUND_OVER
-                // together with the pre-damage HP.
-                commitBattleState();
+        // The run is over: drop the save (no continuing a dead run) and show the
+        // defeat modal, which returns to the splash screen.
+        function presentPlayerDefeat(text) {
+            clearLocalSave();
+            showModal("Поражение!", text, () => {
+                showSplashScreen();
+            });
+        }
 
-                if (isDefeated) {
-                    clearLocalSave();
-                    showModal("Поражение!", `Соперник первым скинул все карты. Вы получили ${damage} ед. урона и погибли.`, () => {
-                        showSplashScreen();
-                    });
-                } else {
-                    const safetyNote = savedBySafetyRope ? " Страховочный трос спас вас, оставив 1 HP!" : "";
-                    showModal("Раунд Проигран!", `Соперник первым скинул все карты! Вы остались в дураках с ${playerCardsLeft} картами и получили ${damage} ед. урона.${safetyNote}`, () => {
-                        startNewRound();
-                    });
-                }
-                return true;
-            }
-
-            return false;
+        // Returns true if the round ended (and its modal is up).
+        function checkRoundEnd() {
+            const result = getRoundResult();
+            if (!result) return false;
+            presentRoundResult(applyRoundResult(result));
+            return true;
         }
 
         function canBeat(attackCard, defendCard) {
@@ -1868,8 +1922,7 @@
             //    paired with the new defender (PLAYER_ATTACK + defender 'player').
             //    enterPlayerPhase() / scheduleEnemyAI() / checkRoundEnd() set the final phase.
             clearAITimer();
-            setBattlePhase(BATTLE_PHASES.RESOLVING);
-            battle.isTransferActive = false;
+            beginResolution();
 
             const currentDefender = battle.defender;
 
@@ -1882,9 +1935,7 @@
                 battle.defender = 'enemy';
             }
 
-            resetTurnScopedFlags();
-            replenishHands(currentDefender);
-            commitBattleState();
+            settleTurn(currentDefender);
 
             if (!checkRoundEnd()) {
                 if (battle.defender === 'player') {
@@ -1895,16 +1946,16 @@
             }
         }
 
-        function handleEnemyTake() {
-            // Check everything before touching state (see handleBito()).
-            if (battle.phase !== BATTLE_PHASES.AI_WAITING && !canAcceptPlayerAction()) return;
-            if (battle.table.length === 0) return;
+        // "Alive before, dead now" — the only meaningful kill test around a block
+        // that may deal damage. Not merely `enemyHP <= 0`: fixtures that never
+        // set HP start at 0 and must not read as a kill.
+        function didEnemyJustDie(enemyHPBefore) {
+            return enemyHPBefore > 0 && battle.enemyHP <= 0;
+        }
 
-            clearAITimer();
-            setBattlePhase(BATTLE_PHASES.RESOLVING);
-            battle.isTransferActive = false;
-
-            const currentDefender = battle.defender;
+        // State only: the enemy collects the table and takes damage for it.
+        // Returns { enemyJustDied }.
+        function applyEnemyTake() {
             const cardsCount = collectTable(battle.enemyHand);
 
             // Table cards are already in the enemy's hand; hooks that add cards
@@ -1915,33 +1966,34 @@
             let damage = cardsCount * TAKE_DAMAGE_PER_CARD;
             damage += fireHookSum('onEnemyTookCards');
             damageEnemyHP(damage);
-            // Only "just died" counts (alive before, dead now), not merely
-            // enemyHP <= 0: fixtures that never set HP start at 0.
-            const enemyJustDied = enemyHPBeforeDamage > 0 && battle.enemyHP <= 0;
 
             battle.cardsToTake = false;
+            return { enemyJustDied: didEnemyJustDie(enemyHPBeforeDamage) };
+        }
+
+        function handleEnemyTake() {
+            // Check everything before touching state (see handleBito()).
+            if (battle.phase !== BATTLE_PHASES.AI_WAITING && !canAcceptPlayerAction()) return;
+            if (battle.table.length === 0) return;
+
+            clearAITimer();
+            beginResolution();
+
+            const currentDefender = battle.defender;
+            const { enemyJustDied } = applyEnemyTake();
             audio.playTakeSound();
 
-            resetTurnScopedFlags();
-            replenishHands(currentDefender);
-            commitBattleState();
+            settleTurn(currentDefender);
             // The win modal is already up (its close handler opens the shop). Don't
             // let checkRoundEnd() replace it with a round-over modal or advance the phase.
             if (enemyJustDied) return;
             if (!checkRoundEnd()) enterPlayerPhase();
         }
 
-        function handlePlayerTake() {
-            // Check everything before touching state (see handleBito()).
-            if (!canAcceptPlayerAction() || battle.defender !== 'player') return;
-            if (battle.table.length === 0) return;
-
-            setBattlePhase(BATTLE_PHASES.RESOLVING);
-            battle.isTransferActive = false;
-
-            const currentDefender = battle.defender;
-            audio.playTakeSound();
-            
+        // State only: the enemy throws in whatever it legally can, then the player
+        // collects the table and takes the self-damage for it. Returns
+        // { enemyJustDied, isDefeated, savedBySafetyRope }.
+        function applyPlayerTake() {
             const maxAllowed = getMaxAllowedAttacks();
             while (battle.table.length < maxAllowed) {
                 const throwCard = battle.enemyHand.find(c => isRankOnTable(c.value));
@@ -1958,9 +2010,7 @@
             // enemy's own take-damage uses), NOT the already-scaled selfDamage above.
             const enemyHPBeforeHooks = battle.enemyHP;
             fireAllHooks('onPlayerTookCards', { cardsTakenCount });
-            // Only "just died" counts (alive before, dead now), not merely
-            // enemyHP <= 0: fixtures that never set HP start at 0.
-            const enemyJustDied = enemyHPBeforeHooks > 0 && battle.enemyHP <= 0;
+            const enemyJustDied = didEnemyJustDie(enemyHPBeforeHooks);
 
             // Victory takes priority: if a hook just killed the enemy, the battle is
             // over before this take's own consequences land. Skip the onPlayerTakePenalty
@@ -1974,29 +2024,42 @@
                 ({ isDefeated, savedBySafetyRope } = applyPlayerDamage(selfDamage));
             }
 
-            battle.defender = 'player';
-            
-            resetTurnScopedFlags();
-            replenishHands(currentDefender);
-            commitBattleState();
+            return { enemyJustDied, isDefeated, savedBySafetyRope };
+        }
 
+        // UI and scheduling only: what happens after the player's take was applied and committed.
+        function presentPlayerTakeOutcome({ enemyJustDied, isDefeated, savedBySafetyRope }) {
             // The win modal is already up (its close handler opens the shop): no
             // round-end modal over it and no AI turn for a dead enemy.
             if (enemyJustDied) return;
 
             if (isDefeated) {
-                clearLocalSave();
-                showModal("Поражение!", "Вы потеряли всё здоровье. Забег окончен.", () => {
-                    showSplashScreen();
-                });
-            } else {
-                if (savedBySafetyRope) {
-                    showModal("Страховочный трос сработал!", "Вы чудом остались в живых с 1 HP. Стол очищен.");
-                }
-                if (!checkRoundEnd()) {
-                    scheduleEnemyAI(AI_TAKE_RESOLVE_DELAY_MS);
-                }
+                presentPlayerDefeat("Вы потеряли всё здоровье. Забег окончен.");
+                return;
             }
+            if (savedBySafetyRope) {
+                showModal("Страховочный трос сработал!", "Вы чудом остались в живых с 1 HP. Стол очищен.");
+            }
+            if (!checkRoundEnd()) {
+                scheduleEnemyAI(AI_TAKE_RESOLVE_DELAY_MS);
+            }
+        }
+
+        function handlePlayerTake() {
+            // Check everything before touching state (see handleBito()).
+            if (!canAcceptPlayerAction() || battle.defender !== 'player') return;
+            if (battle.table.length === 0) return;
+
+            beginResolution();
+
+            const currentDefender = battle.defender;
+            audio.playTakeSound();
+
+            const outcome = applyPlayerTake();
+
+            battle.defender = 'player';
+            settleTurn(currentDefender);
+            presentPlayerTakeOutcome(outcome);
         }
 
         // Discards up to `count` of the lowest-ranked non-trump cards from a hand
@@ -2109,7 +2172,7 @@
                 // fixture that doesn't touch HP at all).
                 const enemyHPBeforeTurnStart = battle.enemyHP;
                 fireAllHooks('onEnemyTurnStart');
-                if (enemyHPBeforeTurnStart > 0 && battle.enemyHP <= 0) return;
+                if (didEnemyJustDie(enemyHPBeforeTurnStart)) return;
 
                 if (battle.enemyHand.length === 0) {
                     if (!hasOpenAttacks()) {
@@ -2249,31 +2312,47 @@
             }
         });
 
+        // State only: pays out the battle-won gold (and the boss max-HP bonus) and
+        // returns the text to show for it.
+        function grantVictoryRewards() {
+            const goldReward = WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR;
+            run.gold += goldReward;
+
+            let rewardText = `Вы одолели соперника! Получено +${goldReward}$`;
+            if (getCurrentEnemy().isBoss) {
+                run.maxHP += BOSS_MAX_HP_BONUS;
+                run.playerHP = Math.min(run.maxHP, run.playerHP + BOSS_MAX_HP_BONUS);
+                rewardText += ` и +${BOSS_MAX_HP_BONUS} к максимальному здоровью за победу над боссом!`;
+            }
+            return rewardText;
+        }
+
+        // The enemy just hit 0 HP: reward, persist the win as its own phase, show the
+        // modal that leads to the shop.
+        function winBattle() {
+            audio.playWinSound();
+            const rewardText = grantVictoryRewards();
+
+            // The reward is already in run.gold / run.maxHP, so persist the win as its
+            // own phase BEFORE the modal: a save taken from here on (or the one the
+            // caller writes right after this returns) must resume as "battle won,
+            // shop pending", never as a live round against a 0-HP enemy.
+            setBattlePhase(BATTLE_PHASES.BATTLE_OVER);
+            commitBattleState({ render: false });
+            showModal("Победа в Бою!", rewardText, () => {
+                openShop();
+            });
+        }
+
+        // The single way enemy HP goes down. Reaching 0 ends the battle (winBattle()).
+        // This commits on its own (inside winBattle) because it is also reached from
+        // relic hooks and modal callbacks that have no commit of their own after it.
         function damageEnemyHP(amount) {
             battle.enemyHP = Math.max(0, battle.enemyHP - amount);
             setElText('enemy-hp', battle.enemyHP);
 
             if (battle.enemyHP <= 0) {
-                audio.playWinSound();
-                const goldReward = WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR;
-                run.gold += goldReward;
-
-                let rewardText = `Вы одолели соперника! Получено +${goldReward}$`;
-                if (getCurrentEnemy().isBoss) {
-                    run.maxHP += BOSS_MAX_HP_BONUS;
-                    run.playerHP = Math.min(run.maxHP, run.playerHP + BOSS_MAX_HP_BONUS);
-                    rewardText += ` и +${BOSS_MAX_HP_BONUS} к максимальному здоровью за победу над боссом!`;
-                }
-
-                // The reward is already in run.gold / run.maxHP, so persist the win as its
-                // own phase BEFORE the modal: a save taken from here on (or the one the
-                // caller writes right after this returns) must resume as "battle won,
-                // shop pending", never as a live round against a 0-HP enemy.
-                setBattlePhase(BATTLE_PHASES.BATTLE_OVER);
-                commitBattleState({ render: false });
-                showModal("Победа в Бою!", rewardText, () => {
-                    openShop();
-                });
+                winBattle();
             }
         }
 
@@ -5101,6 +5180,300 @@
                     const outside = productionSource.slice(0, start) + productionSource.slice(end);
                     const offenders = outside.match(/(?:playerHand|enemyHand|drawDeck|table)\.(?:splice|shift)\(|drawDeck\.pop\(\)|(?:playerHand|enemyHand)\.push\(battle\.drawDeck/g) || [];
                     assert.equal(offenders.length, 0, 'ручные операции с картами: ' + offenders.join(' | '));
+                });
+            });
+
+            runner.describe('8k. Этап 3 рефакторинга: конец раунда (decide/apply/present), взятие, победа в бою', (it, assert) => {
+                const C = (id, suit, value) => ({ id, suit, value });
+                const makeFixtureBattle = (overrides = {}) => Object.assign({
+                    drawDeck: [], discardPile: [],
+                    playerHand: [C('p1', 'Hearts', 6)],
+                    enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 9)],
+                    table: [], trumpCard: C('t1', 'Hearts', 6), trumpSuit: 'Hearts',
+                    defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                    cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                    jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                }, overrides);
+                const makeFixtureRun = (overrides = {}) => Object.assign({ floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() }, overrides);
+                const inGame = (runOv, battleOv, fn) => preserveLocalSaveAround(() =>
+                    withIsolatedGameState(makeFixtureRun(runOv), makeFixtureBattle(battleOv), () => {
+                        const wasEnabled = battleInvariantChecksEnabled;
+                        battleInvariantChecksEnabled = true;
+                        try { fn(); } finally {
+                            battleInvariantChecksEnabled = wasEnabled;
+                            clearAITimer(); clearLocalSave();
+                            const m = document.getElementById('msg-box');
+                            if (m) { m.classList.add('hidden'); m.classList.remove('flex'); m.onclick = null; }
+                        }
+                    }));
+                const snapshot = () => JSON.stringify({ b: serializeGameState().battle, hp: run.playerHP, gold: run.gold, relics: run.relics });
+
+                // ---- getRoundResult: decide ----
+                it('getRoundResult(): раунд не окончен, пока есть колода или карты на столе, или у обоих есть карты', () => {
+                    inGame({}, { drawDeck: [C('d1', 'Hearts', 8)], playerHand: [] }, () => assert.isTrue(getRoundResult() === null, 'колода не пуста'));
+                    inGame({}, { playerHand: [], table: [{ attack: C('a1', 'Pikes', 7), defend: null }] }, () => assert.isTrue(getRoundResult() === null, 'стол не пуст'));
+                    inGame({}, {}, () => assert.isTrue(getRoundResult() === null, 'у обоих есть карты'));
+                });
+
+                it('getRoundResult(): ничья / победа игрока / победа врага и расчёт урона по оставшимся картам', () => {
+                    inGame({}, { playerHand: [], enemyHand: [] }, () => assert.equal(getRoundResult().type, 'draw'));
+                    inGame({}, { playerHand: [] }, () => {
+                        const r = getRoundResult();
+                        assert.equal(r.type, 'player_win');
+                        assert.equal(r.cardsLeft, 2);
+                        assert.equal(r.damage, EMPTY_HAND_BASE_DAMAGE + 2 * EMPTY_HAND_DAMAGE_PER_CARD);
+                    });
+                    inGame({}, { enemyHand: [] }, () => {
+                        const r = getRoundResult();
+                        assert.equal(r.type, 'enemy_win');
+                        assert.equal(r.cardsLeft, 1);
+                        assert.equal(r.damage, EMPTY_HAND_BASE_DAMAGE + 1 * EMPTY_HAND_DAMAGE_PER_CARD);
+                    });
+                });
+
+                it('getRoundResult(): чистая функция — состояние, фаза, HP и сейв не меняются', () => {
+                    inGame({}, { enemyHand: [] }, () => {
+                        clearLocalSave();
+                        const before = snapshot();
+                        getRoundResult(); getRoundResult();
+                        assert.equal(snapshot(), before);
+                        assert.isTrue(localStorage.getItem(SAVE_KEY) === null, 'getRoundResult не должен писать сейв');
+                    });
+                });
+
+                // ---- applyRoundResult: state only ----
+                it('applyRoundResult(): ROUND_OVER + один commit; урон игроку только при победе врага', () => {
+                    inGame({}, { playerHand: [] }, () => {
+                        clearLocalSave();
+                        const out = applyRoundResult(getRoundResult());
+                        assert.equal(battle.phase, BATTLE_PHASES.ROUND_OVER);
+                        assert.equal(run.playerHP, 30, 'при победе игрока HP игрока не меняется');
+                        assert.equal(battle.enemyHP, 40, 'урон врагу ложится при закрытии модалки, не здесь');
+                        assert.equal(out.type, 'player_win');
+                        assert.isTrue(localStorage.getItem(SAVE_KEY) !== null, 'состояние должно быть сохранено');
+                    });
+                    inGame({}, { enemyHand: [] }, () => {
+                        const out = applyRoundResult(getRoundResult());
+                        assert.equal(battle.phase, BATTLE_PHASES.ROUND_OVER);
+                        assert.equal(run.playerHP, 30 - out.damage);
+                        assert.isFalse(out.isDefeated);
+                        assert.isFalse(out.savedBySafetyRope);
+                    });
+                });
+
+                it('applyRoundResult(): смертельный урон — поражение; со страховочным тросом — 1 HP и трос потрачен', () => {
+                    inGame({ playerHP: 5 }, { enemyHand: [] }, () => {
+                        const out = applyRoundResult(getRoundResult());
+                        assert.isTrue(out.isDefeated);
+                        assert.equal(run.playerHP, 0);
+                    });
+                    inGame({ playerHP: 5, relics: [{ id: 'safety_rope' }] }, { enemyHand: [] }, () => {
+                        const out = applyRoundResult(getRoundResult());
+                        assert.isFalse(out.isDefeated);
+                        assert.isTrue(out.savedBySafetyRope);
+                        assert.equal(run.playerHP, 1);
+                        assert.equal(run.relics.length, 0, 'трос потрачен');
+                    });
+                });
+
+                it('checkRoundEnd(): false если раунд идёт; true и модалка + фаза ROUND_OVER, если закончен', () => {
+                    inGame({}, {}, () => {
+                        assert.isFalse(checkRoundEnd());
+                        assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK, 'фаза не должна меняться');
+                    });
+                    inGame({}, { playerHand: [] }, () => {
+                        assert.isTrue(checkRoundEnd());
+                        assert.equal(battle.phase, BATTLE_PHASES.ROUND_OVER);
+                        const box = document.getElementById('msg-box');
+                        assert.isTrue(box && !box.classList.contains('hidden'), 'модалка раунда должна быть показана');
+                    });
+                });
+
+                it('presentRoundResult(): победа игрока — урон врагу при закрытии модалки; поражение удаляет сейв', () => {
+                    inGame({}, { playerHand: [] }, () => {
+                        const realShow = window.showModal;
+                        let closeCb = null, title = null;
+                        window.showModal = (t, text, onClose) => { title = t; closeCb = onClose; };
+                        const realNewRound = window.startNewRound;
+                        let newRounds = 0;
+                        window.startNewRound = () => { newRounds++; };
+                        try {
+                            presentRoundResult(applyRoundResult(getRoundResult()));
+                            assert.equal(title, 'Раунд Выигран!');
+                            assert.equal(battle.enemyHP, 40, 'до закрытия модалки урона нет');
+                            closeCb();
+                            assert.equal(battle.enemyHP, 40 - (EMPTY_HAND_BASE_DAMAGE + 2 * EMPTY_HAND_DAMAGE_PER_CARD));
+                            assert.equal(newRounds, 1);
+                        } finally { window.showModal = realShow; window.startNewRound = realNewRound; }
+                    });
+                    inGame({ playerHP: 5 }, { enemyHand: [] }, () => {
+                        const realShow = window.showModal;
+                        let title = null;
+                        window.showModal = (t) => { title = t; };
+                        try {
+                            saveRunToLocal();
+                            assert.isTrue(localStorage.getItem(SAVE_KEY) !== null);
+                            presentRoundResult(applyRoundResult(getRoundResult()));
+                            assert.equal(title, 'Поражение!');
+                            assert.isTrue(localStorage.getItem(SAVE_KEY) === null, 'мёртвый забег не должен оставаться в сейве');
+                        } finally { window.showModal = realShow; }
+                    });
+                });
+
+                // ---- shared turn helpers ----
+                it('beginResolution(): RESOLVING и сброс предложения перевода; settleTurn(): флаги хода, добор, commit', () => {
+                    inGame({}, { phase: BATTLE_PHASES.PLAYER_ATTACK, isTransferActive: true, cascadeTransferUsedThisTurn: true, heavyBallastAppliedThisTurn: true,
+                        drawDeck: Array.from({ length: HAND_SIZE * 2 + 2 }, (_, i) => C('x' + i, 'Pikes', 6 + (i % 9))), playerHand: [], enemyHand: [] }, () => {
+                        beginResolution();
+                        assert.equal(battle.phase, BATTLE_PHASES.RESOLVING);
+                        assert.isFalse(battle.isTransferActive);
+                        clearLocalSave();
+                        settleTurn('enemy');
+                        assert.isFalse(battle.cascadeTransferUsedThisTurn);
+                        assert.isFalse(battle.heavyBallastAppliedThisTurn);
+                        assert.equal(battle.playerHand.length, HAND_SIZE);
+                        assert.equal(battle.enemyHand.length, HAND_SIZE);
+                        assert.isTrue(localStorage.getItem(SAVE_KEY) !== null, 'settleTurn должен коммитить');
+                    });
+                });
+
+                // ---- take: state vs presentation ----
+                it('applyEnemyTake(): враг забирает стол, получает урон, cardsToTake сбрасывается; фаза и добор не трогаются', () => {
+                    inGame({}, { phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', cardsToTake: true,
+                        table: [{ attack: C('a1', 'Pikes', 7), defend: C('b1', 'Pikes', 10) }, { attack: C('a2', 'Hearts', 8), defend: null }] }, () => {
+                        const out = applyEnemyTake();
+                        assert.isFalse(out.enemyJustDied);
+                        assert.equal(battle.table.length, 0);
+                        assert.equal(battle.enemyHand.length, 2 + 3);
+                        assert.equal(battle.enemyHP, 40 - 3 * TAKE_DAMAGE_PER_CARD);
+                        assert.isFalse(battle.cardsToTake);
+                        assert.equal(battle.phase, BATTLE_PHASES.RESOLVING);
+                    });
+                });
+
+                it('applyEnemyTake(): смертельное взятие -> enemyJustDied, BATTLE_OVER и награда; при HP=0 в фикстуре «смерти» нет', () => {
+                    inGame({ gold: 0 }, { phase: BATTLE_PHASES.RESOLVING, enemyHP: 2, cardsToTake: true,
+                        table: [{ attack: C('a1', 'Pikes', 7), defend: null }, { attack: C('a2', 'Hearts', 8), defend: null }] }, () => {
+                        const out = applyEnemyTake();
+                        assert.isTrue(out.enemyJustDied);
+                        assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER);
+                        assert.equal(run.gold, WIN_GOLD_BASE + 1 * WIN_GOLD_PER_FLOOR);
+                    });
+                    inGame({}, { phase: BATTLE_PHASES.RESOLVING, enemyHP: 0, cardsToTake: true, table: [{ attack: C('a1', 'Pikes', 7), defend: null }] }, () => {
+                        assert.isFalse(applyEnemyTake().enemyJustDied);
+                    });
+                });
+
+                it('applyPlayerTake(): враг подкидывает, игрок забирает стол и получает урон; возвращает исход, ничего не показывая', () => {
+                    inGame({}, { phase: BATTLE_PHASES.RESOLVING, defender: 'player',
+                        playerHand: [C('p1', 'Hearts', 6), C('p2', 'Hearts', 10), C('p3', 'Hearts', 11)],
+                        enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Hearts', 14)],
+                        table: [{ attack: C('a1', 'Pikes', 9), defend: null }] }, () => {
+                        const realShow = window.showModal;
+                        let modals = 0;
+                        window.showModal = () => { modals++; };
+                        try {
+                            const out = applyPlayerTake();
+                            assert.isFalse(out.enemyJustDied);
+                            assert.isFalse(out.isDefeated);
+                            assert.isFalse(out.savedBySafetyRope);
+                            assert.equal(battle.table.length, 0);
+                            assert.equal(battle.playerHand.length, 3 + 2, 'атака + подкинутая девятка');
+                            assert.equal(battle.enemyHand.map(c => c.id).join(), 'e2');
+                            assert.equal(run.playerHP, 30 - 2 * getCurrentEnemy().level);
+                            assert.equal(modals, 0, 'applyPlayerTake не должен показывать UI');
+                        } finally { window.showModal = realShow; }
+                    });
+                });
+
+                it('applyPlayerTake(): смертельное взятие — isDefeated; со страховочным тросом — savedBySafetyRope', () => {
+                    const common = { phase: BATTLE_PHASES.RESOLVING, defender: 'player', enemyHand: [C('e1', 'Hearts', 14)],
+                        table: [{ attack: C('a1', 'Pikes', 7), defend: null }, { attack: C('a2', 'Pikes', 8), defend: null }] };
+                    inGame({ playerHP: 1 }, common, () => {
+                        const out = applyPlayerTake();
+                        assert.isTrue(out.isDefeated);
+                        assert.isFalse(out.savedBySafetyRope);
+                    });
+                    inGame({ playerHP: 1, relics: [{ id: 'safety_rope' }] }, Object.assign({}, common, { table: [{ attack: C('a1', 'Pikes', 7), defend: null }, { attack: C('a2', 'Pikes', 8), defend: null }] }), () => {
+                        const out = applyPlayerTake();
+                        assert.isFalse(out.isDefeated);
+                        assert.isTrue(out.savedBySafetyRope);
+                        assert.equal(run.playerHP, 1);
+                    });
+                });
+
+                it('presentPlayerTakeOutcome(): враг мёртв — молчит; поражение — модалка и удаление сейва; трос — модалка + ход ИИ', () => {
+                    const realShow = window.showModal, realSchedule = window.scheduleEnemyAI;
+                    inGame({}, { phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player' }, () => {
+                        const titles = []; let scheduled = 0;
+                        window.showModal = (t) => titles.push(t);
+                        window.scheduleEnemyAI = () => { scheduled++; };
+                        try {
+                            presentPlayerTakeOutcome({ enemyJustDied: true, isDefeated: false, savedBySafetyRope: false });
+                            assert.equal(titles.length + scheduled, 0, 'мёртвый враг: ни модалок, ни хода ИИ');
+
+                            saveRunToLocal();
+                            presentPlayerTakeOutcome({ enemyJustDied: false, isDefeated: true, savedBySafetyRope: false });
+                            assert.equal(titles.join(), 'Поражение!');
+                            assert.equal(scheduled, 0);
+                            assert.isTrue(localStorage.getItem(SAVE_KEY) === null);
+
+                            titles.length = 0;
+                            presentPlayerTakeOutcome({ enemyJustDied: false, isDefeated: false, savedBySafetyRope: true });
+                            assert.equal(titles.join(), 'Страховочный трос сработал!');
+                            assert.equal(scheduled, 1, 'после спасения ход переходит к ИИ');
+                        } finally { window.showModal = realShow; window.scheduleEnemyAI = realSchedule; }
+                    });
+                });
+
+                // ---- win ----
+                it('didEnemyJustDie(): только «был жив, стал мёртв»', () => {
+                    inGame({}, { enemyHP: 0 }, () => {
+                        assert.isTrue(didEnemyJustDie(5));
+                        assert.isFalse(didEnemyJustDie(0), 'HP=0 с самого начала — не убийство');
+                    });
+                    inGame({}, { enemyHP: 3 }, () => assert.isFalse(didEnemyJustDie(5)));
+                });
+
+                it('grantVictoryRewards(): золото за этаж; босс — +макс. HP и лечение, текст соответствует', () => {
+                    inGame({ floor: 2, gold: 5 }, {}, () => {
+                        const text = grantVictoryRewards();
+                        assert.equal(run.gold, 5 + WIN_GOLD_BASE + 2 * WIN_GOLD_PER_FLOOR);
+                        assert.isTrue(text.includes('+' + (WIN_GOLD_BASE + 2 * WIN_GOLD_PER_FLOOR) + '$'));
+                    });
+                    const bossFloor = ENEMIES.findIndex(e => e.isBoss) + 1;
+                    inGame({ floor: bossFloor, playerHP: 20, maxHP: 30 }, {}, () => {
+                        const text = grantVictoryRewards();
+                        assert.equal(run.maxHP, 30 + BOSS_MAX_HP_BONUS);
+                        assert.equal(run.playerHP, 20 + BOSS_MAX_HP_BONUS);
+                        assert.isTrue(text.includes('максимальному здоровью'));
+                    });
+                });
+
+                it('damageEnemyHP(): обычный урон не завершает бой; смертельный — winBattle(): награда, BATTLE_OVER, сейв, модалка', () => {
+                    inGame({ gold: 0 }, { enemyHP: 10 }, () => {
+                        damageEnemyHP(4);
+                        assert.equal(battle.enemyHP, 6);
+                        assert.equal(run.gold, 0);
+                        assert.isTrue(battle.phase !== BATTLE_PHASES.BATTLE_OVER);
+                        clearLocalSave();
+                        damageEnemyHP(100);
+                        assert.equal(battle.enemyHP, 0, 'HP не уходит ниже нуля');
+                        assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER);
+                        assert.equal(run.gold, WIN_GOLD_BASE + WIN_GOLD_PER_FLOOR);
+                        const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
+                        assert.equal(saved.battle.phase, BATTLE_PHASES.BATTLE_OVER, 'победа должна быть сохранена до закрытия модалки');
+                        assert.equal(saved.run.gold, run.gold);
+                    });
+                });
+
+                // ---- structure guard ----
+                it('Конец раунда разделён: checkRoundEnd() — тонкая обёртка без прямых вызовов UI/состояния', () => {
+                    const body = checkRoundEnd.toString();
+                    assert.isTrue(/getRoundResult\(\)/.test(body) && /applyRoundResult\(/.test(body) && /presentRoundResult\(/.test(body));
+                    assert.isFalse(/showModal|setBattlePhase|commitBattleState|applyPlayerDamage/.test(body), 'логика должна жить в getRoundResult/applyRoundResult/presentRoundResult');
+                    assert.isFalse(/showModal|setBattlePhase|commitBattleState|clearLocalSave/.test(getRoundResult.toString()), 'getRoundResult должна быть чистой');
                 });
             });
 
