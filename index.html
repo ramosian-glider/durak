@@ -2076,133 +2076,195 @@
             }
         }
 
+        // ---- Enemy AI: choose -> execute --------------------------------------
+        // chooseEnemyAction() only LOOKS at the battle and returns a plain-data
+        // description of what the enemy does next; executeEnemyAction() is the only
+        // place that carries it out (moves cards, plays sounds, schedules timers).
+        // That makes the AI testable by building a battle and asserting on the
+        // returned action, without running the game loop. Actions:
+        //   { type: 'wait' }                        hand the turn back to the player
+        //   { type: 'take', delay }                 enemy collects the table (after `delay`)
+        //   { type: 'bito', delay }                 enemy ends the round of attacks (after `delay`)
+        //   { type: 'transfer', card }              enemy passes the attack back with `card`
+        //   { type: 'defend', plays, complete }     enemy beats pairs: plays = [{ pair, card }];
+        //                                           complete = false if it ran out of answers
+        //   { type: 'attack', card }                enemy leads with its weakest card
+        //   { type: 'throw', card }                 enemy tosses `card` onto the table
+        //   { type: 'check_round' }                 enemy is out of cards: see if the round ended
+
+        // The enemy has just been left holding (or is about to take) the table: if
+        // the player has nothing more to toss in — or may not — it collects now,
+        // otherwise it waits for the player. Also the answer once a defence fell short.
+        function chooseEnemyTakeOrWait() {
+            const maxAllowed = getMaxAllowedAttacks();
+            const playerHasTossCard = battle.playerHand.some(c => isRankOnTable(c.value));
+            if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !playerHasTossCard) {
+                return { type: 'take', delay: AI_STANDARD_DELAY_MS };
+            }
+            return { type: 'wait' };
+        }
+
+        // After the enemy beat every attack on the table: it ends the round only if the
+        // player has no cards or the table is full — otherwise the player may still toss in.
+        // (maxAllowed is unchanged by the defence itself: each defending card leaves the
+        // enemy hand and adds a defended pair, so hand length + defended pairs stays put.)
+        function chooseEnemyActionAfterFullDefense() {
+            if (battle.playerHand.length === 0 || battle.table.length >= getMaxAllowedAttacks()) {
+                return { type: 'bito', delay: AI_STANDARD_DELAY_MS };
+            }
+            return { type: 'wait' };
+        }
+
+        // The cheapest card (by cardPower) that beats each open pair, handing out each
+        // card at most once. Stops at the first pair it cannot answer — the earlier
+        // pairs are still defended (the enemy plays what it can, then takes).
+        function planEnemyDefense(openPairs) {
+            const hand = [...battle.enemyHand];
+            const plays = [];
+            for (const pair of openPairs) {
+                const validCards = hand.filter(c => canBeat(pair.attack, c));
+                validCards.sort((a, b) => cardPower(a) - cardPower(b));
+                if (validCards.length === 0) return { plays, complete: false };
+                plays.push({ pair, card: validCards[0] });
+                hand.splice(hand.indexOf(validCards[0]), 1);
+            }
+            return { plays, complete: true };
+        }
+
+        // The enemy is the defender.
+        function chooseEnemyDefenderAction() {
+            const enemyData = getCurrentEnemy();
+
+            if (battle.cardsToTake) return chooseEnemyTakeOrWait();
+
+            const openPairs = getOpenAttacks();
+            if (openPairs.length === 0) {
+                const maxAllowed = getMaxAllowedAttacks();
+                const playerHasTossCard = battle.playerHand.some(c => isRankOnTable(c.value));
+                if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !playerHasTossCard) {
+                    return { type: 'bito', delay: AI_QUICK_DELAY_MS };
+                }
+                return { type: 'wait' };
+            }
+
+            const attackVal = battle.table[0].attack.value;
+            const allSameRank = battle.table.every(p => p.attack.value === attackVal);
+            if (enemyData.activeAbilities.has('ai_transfer') &&
+                openPairs.length === battle.table.length &&
+                allSameRank &&
+                battle.playerHand.length >= battle.table.length + 1) {
+                const transferCard = battle.enemyHand.find(c => c.value === attackVal);
+                if (transferCard) return { type: 'transfer', card: transferCard };
+            }
+
+            return { type: 'defend', ...planEnemyDefense(openPairs) };
+        }
+
+        // The enemy is the attacker (battle.defender === 'player').
+        function chooseEnemyAttackerAction() {
+            if (battle.enemyHand.length === 0) {
+                return hasOpenAttacks()
+                    ? { type: 'check_round' }
+                    : { type: 'bito', delay: AI_POST_THROW_DELAY_MS };
+            }
+
+            if (battle.table.length === 0) {
+                // Lead with the weakest card (ties: first in hand order).
+                const weakest = battle.enemyHand.reduce((min, c) => cardPower(c) < cardPower(min) ? c : min, battle.enemyHand[0]);
+                return { type: 'attack', card: weakest };
+            }
+
+            if (!hasOpenAttacks()) {
+                const playable = battle.enemyHand.filter(c => isRankOnTable(c.value));
+                if (playable.length > 0 && battle.table.length < getMaxAllowedAttacks()) {
+                    return { type: 'throw', card: playable[0] };
+                }
+                return { type: 'bito', delay: AI_POST_THROW_DELAY_MS };
+            }
+
+            return { type: 'wait' };
+        }
+
+        // Pure: reads the battle, changes nothing.
+        function chooseEnemyAction() {
+            return battle.defender === 'enemy'
+                ? chooseEnemyDefenderAction()
+                : chooseEnemyAttackerAction();
+        }
+
+        function executeEnemyAction(action) {
+            switch (action.type) {
+                case 'wait':
+                    finishAIPhase();
+                    break;
+
+                case 'take':
+                    scheduleEnemyAction(() => handleEnemyTake(), action.delay);
+                    break;
+
+                case 'bito':
+                    scheduleEnemyAction(() => handleBito(true), action.delay);
+                    break;
+
+                case 'transfer':
+                    playAttackCard(battle.enemyHand, action.card);
+                    battle.defender = 'player';
+                    triggerCascadeTransfer();
+                    audio.playCardSound();
+                    showModal("Враг Переводит!", `${getCurrentEnemy().name} переводит атаку обратно на вас!`);
+                    finishAIPhase();
+                    break;
+
+                case 'defend':
+                    for (const { pair, card } of action.plays) {
+                        playDefenseCard(battle.enemyHand, pair, card);
+                        audio.playCardSound();
+                    }
+                    battle.cardsToTake = !action.complete;
+                    renderAll();
+                    // What happens next depends on the table AFTER the defence.
+                    executeEnemyAction(action.complete ? chooseEnemyActionAfterFullDefense() : chooseEnemyTakeOrWait());
+                    break;
+
+                case 'attack':
+                    // The enemy hand is kept ordered weakest-first as a side effect of leading.
+                    battle.enemyHand.sort((a, b) => cardPower(a) - cardPower(b));
+                    if (playAttackCard(battle.enemyHand, action.card)) {
+                        audio.playCardSound();
+                    }
+                    finishAIPhase();
+                    break;
+
+                case 'throw':
+                    playAttackCard(battle.enemyHand, action.card);
+                    audio.playCardSound();
+                    finishAIPhase();
+                    break;
+
+                case 'check_round':
+                    checkRoundEnd();
+                    finishAIPhase();
+                    break;
+            }
+        }
+
         function executeEnemyAI() {
             if (battle.phase !== BATTLE_PHASES.AI_WAITING && battle.phase !== BATTLE_PHASES.RESOLVING && battle.phase !== BATTLE_PHASES.IDLE) return;
             if (checkRoundEnd()) return;
             setBattlePhase(BATTLE_PHASES.RESOLVING);
 
-            const enemyData = getCurrentEnemy();
-
-            if (battle.defender === 'enemy') {
-                const maxAllowed = getMaxAllowedAttacks();
-                const playerHasTossCard = battle.playerHand.some(c => isRankOnTable(c.value));
-
-                if (battle.cardsToTake) {
-                    if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !playerHasTossCard) {
-                        scheduleEnemyAction(() => handleEnemyTake(), AI_STANDARD_DELAY_MS);
-                        return;
-                    }
-                    finishAIPhase();
-                    return;
-                }
-
-                const openPairs = getOpenAttacks();
-                if (openPairs.length === 0) {
-                    if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !playerHasTossCard) {
-                        scheduleEnemyAction(() => handleBito(true), AI_QUICK_DELAY_MS);
-                    }
-                    finishAIPhase();
-                    return;
-                }
-
-                const attackVal = battle.table[0].attack.value;
-                const allSameRank = battle.table.every(p => p.attack.value === attackVal);
-
-                if (enemyData.activeAbilities.has('ai_transfer') && 
-                    openPairs.length === battle.table.length && 
-                    allSameRank && 
-                    battle.playerHand.length >= battle.table.length + 1) {
-                    
-                    const transferCard = battle.enemyHand.find(c => c.value === attackVal);
-                    if (transferCard && playAttackCard(battle.enemyHand, transferCard)) {
-                        battle.defender = 'player';
-                        triggerCascadeTransfer();
-                        audio.playCardSound();
-                        showModal("Враг Переводит!", `${enemyData.name} переводит атаку обратно на вас!`);
-                        finishAIPhase();
-                        return;
-                    }
-                }
-
-                let allDefended = true;
-
-                for (let pair of openPairs) {
-                    let validCards = battle.enemyHand.filter(c => canBeat(pair.attack, c));
-                    validCards.sort((a, b) => cardPower(a) - cardPower(b));
-
-                    if (validCards.length > 0) {
-                        playDefenseCard(battle.enemyHand, pair, validCards[0]);
-                        audio.playCardSound();
-                    } else {
-                        allDefended = false;
-                        break;
-                    }
-                }
-
-                if (!allDefended) {
-                    battle.cardsToTake = true;
-                    renderAll();
-                    const updatedMaxAllowed = getMaxAllowedAttacks();
-                    const updatedHasToss = battle.playerHand.some(c => isRankOnTable(c.value));
-                    if (battle.playerHand.length === 0 || battle.table.length >= updatedMaxAllowed || !updatedHasToss) {
-                        scheduleEnemyAction(() => handleEnemyTake(), AI_STANDARD_DELAY_MS);
-                        return;
-                    }
-                    finishAIPhase();
-                    return;
-                }
-
-                battle.cardsToTake = false;
-                renderAll();
-
-                // All cards have been beaten off. Now only the player decides whether to throw in more.
-                if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed) {
-                    scheduleEnemyAction(() => handleBito(true), AI_STANDARD_DELAY_MS);
-                    return;
-                }
-
-                finishAIPhase();
-
-            } else {
-                // Enemy is attacking this turn (battle.defender === 'player').
-                // heavy_ballast ticks once at the start of that turn, not on every
-                // recursive executeEnemyAI() call within it. Only bail out if a
-                // hook just brought a previously-alive enemy to 0 — not merely
-                // because battle.enemyHP happens to be unset/0 (e.g. in a test
+            if (battle.defender === 'player') {
+                // Enemy is attacking this turn. heavy_ballast ticks once at the start of
+                // that turn, not on every recursive executeEnemyAI() call within it. Only
+                // bail out if a hook just brought a previously-alive enemy to 0 — not
+                // merely because battle.enemyHP happens to be unset/0 (e.g. in a test
                 // fixture that doesn't touch HP at all).
                 const enemyHPBeforeTurnStart = battle.enemyHP;
                 fireAllHooks('onEnemyTurnStart');
                 if (didEnemyJustDie(enemyHPBeforeTurnStart)) return;
-
-                if (battle.enemyHand.length === 0) {
-                    if (!hasOpenAttacks()) {
-                        scheduleEnemyAction(() => handleBito(true), AI_POST_THROW_DELAY_MS);
-                    } else {
-                        checkRoundEnd();
-                        finishAIPhase();
-                    }
-                    return;
-                }
-
-                const openPairs = getOpenAttacks();
-                const maxAllowed = getMaxAllowedAttacks();
-                
-                if (battle.table.length === 0) {
-                    battle.enemyHand.sort((a, b) => cardPower(a) - cardPower(b));
-                    if (playAttackCard(battle.enemyHand, battle.enemyHand[0])) {
-                        audio.playCardSound();
-                    }
-                } else if (openPairs.length === 0) {
-                    const playable = battle.enemyHand.filter(c => isRankOnTable(c.value));
-                    if (playable.length > 0 && battle.table.length < maxAllowed) {
-                        playAttackCard(battle.enemyHand, playable[0]);
-                        audio.playCardSound();
-                    } else {
-                        scheduleEnemyAction(() => handleBito(true), AI_POST_THROW_DELAY_MS);
-                    }
-                }
-                finishAIPhase();
             }
+
+            executeEnemyAction(chooseEnemyAction());
         }
 
         // Fired whenever the player successfully plays a card (attack, toss, or
@@ -2366,7 +2428,7 @@
         // for migrating relics toward named hooks instead: each relic can define a
         // handler per hook name, and game code calls fireHook()/fireAllHooks() at
         // one canonical point rather than every call site re-checking hasRelic()
-        // individually. Migrated so far: safety_rope, coin_magnet, sharp_suit,
+        // individually. All relics are registered here. Migrated so far: cheat_eye (passive), safety_rope, coin_magnet, sharp_suit,
         // cascade_transfer, heavy_ballast, salted_wound, ace_sleeve, mirror_ring, midas_touch, ballast_drop, spam_mail, pocket_discard, jester_discard, sleight_of_hand.
         //
         // pocket_discard, jester_discard, and sleight_of_hand are *active*
@@ -2377,6 +2439,17 @@
         // the migration: the availability condition used to be duplicated
         // between those two call sites and is now defined once.
         const RELIC_EFFECTS = {
+            cheat_eye: {
+                // Passive: consulted by renderAll() via queryRelicHook() (no flash), never
+                // fired from game logic. Returns the enemy card to show face-up — their
+                // weakest (by cardPower), the card the AI will lead with — or null.
+                getRevealedEnemyCard() {
+                    if (battle.enemyHand.length === 0) return null;
+                    return battle.enemyHand.reduce((minCard, currentCard) => {
+                        return cardPower(currentCard) < cardPower(minCard) ? currentCard : minCard;
+                    }, battle.enemyHand[0]);
+                }
+            },
             safety_rope: {
                 // Called from applyPlayerDamage() only when the hit would be lethal.
                 // Consumes the relic (removes it from run.relics) so it visibly
@@ -2621,6 +2694,20 @@
             }, RELIC_HIGHLIGHT_DURATION_MS + 20);
         }
 
+        // The one place that walks the owned relics: calls `visit(relic, handler)` for
+        // every owned relic, in slot order, whose registry entry defines `hookName`.
+        // `visit` returns true to stop the walk. fireHook / fireAllHooks /
+        // fireHookSum / queryRelicHook below differ only in what they do with each
+        // handler's result.
+        function forEachRelicHandler(hookName, visit) {
+            for (const relic of run.relics) {
+                const effect = RELIC_EFFECTS[relic.id];
+                if (effect && typeof effect[hookName] === 'function') {
+                    if (visit(relic, effect[hookName]) === true) return;
+                }
+            }
+        }
+
         // Fires `hookName` on every owned relic that defines it, in slot order,
         // stopping at (and returning) the first truthy result. Use this for
         // *intercepting* hooks — where at most one relic should act, and later
@@ -2628,17 +2715,15 @@
         // a one-shot life-save: once playerHP is restored, a second handler
         // shouldn't also fire against the same lethal hit).
         function fireHook(hookName, ctx) {
-            for (const relic of run.relics) {
-                const effect = RELIC_EFFECTS[relic.id];
-                if (effect && typeof effect[hookName] === 'function') {
-                    const result = effect[hookName](ctx);
-                    if (result) {
-                        highlightRelic(relic.id);
-                        return result;
-                    }
-                }
-            }
-            return null;
+            let found = null;
+            forEachRelicHandler(hookName, (relic, handler) => {
+                const result = handler(ctx);
+                if (!result) return false;
+                highlightRelic(relic.id);
+                found = result;
+                return true;
+            });
+            return found;
         }
 
         // Fires `hookName` on every owned relic that defines it, in slot order,
@@ -2650,13 +2735,9 @@
         // RELIC_EFFECTS entry) — fireAllHooks itself doesn't use that value for
         // anything but deciding whether to flash the relic.
         function fireAllHooks(hookName, ctx) {
-            for (const relic of run.relics) {
-                const effect = RELIC_EFFECTS[relic.id];
-                if (effect && typeof effect[hookName] === 'function') {
-                    const result = effect[hookName](ctx);
-                    if (result) highlightRelic(relic.id);
-                }
-            }
+            forEachRelicHandler(hookName, (relic, handler) => {
+                if (handler(ctx)) highlightRelic(relic.id);
+            });
         }
 
         // Fires `hookName` on every owned relic that defines it and sums the
@@ -2671,17 +2752,29 @@
         // cards contributed nothing this time, so it shouldn't flash).
         function fireHookSum(hookName, ctx) {
             let total = 0;
-            for (const relic of run.relics) {
-                const effect = RELIC_EFFECTS[relic.id];
-                if (effect && typeof effect[hookName] === 'function') {
-                    const result = effect[hookName](ctx);
-                    if (typeof result === 'number' && result !== 0) {
-                        total += result;
-                        highlightRelic(relic.id);
-                    }
+            forEachRelicHandler(hookName, (relic, handler) => {
+                const result = handler(ctx);
+                if (typeof result === 'number' && result !== 0) {
+                    total += result;
+                    highlightRelic(relic.id);
                 }
-            }
+            });
             return total;
+        }
+
+        // Read-only counterpart of fireHook(): the first truthy result of `hookName`,
+        // WITHOUT flashing the relic. For passive relics that are consulted while
+        // rendering (cheat_eye) — a flash would schedule another render and loop —
+        // and so for handlers that must not change state.
+        function queryRelicHook(hookName, ctx) {
+            let found = null;
+            forEachRelicHandler(hookName, (relic, handler) => {
+                const result = handler(ctx);
+                if (!result) return false;
+                found = result;
+                return true;
+            });
+            return found;
         }
 
         // How many cards "count" as excess in an oversized enemy hand, for relics
@@ -2905,12 +2998,7 @@
             if (enemyHandVis) {
                 enemyHandVis.innerHTML = '';
 
-                let lowestEnemyCard = null;
-                if (hasRelic('cheat_eye') && battle.enemyHand.length > 0) {
-                    lowestEnemyCard = battle.enemyHand.reduce((minCard, currentCard) => {
-                        return cardPower(currentCard) < cardPower(minCard) ? currentCard : minCard;
-                    }, battle.enemyHand[0]);
-                }
+                const lowestEnemyCard = queryRelicHook('getRevealedEnemyCard');
 
                 for (let i = 0; i < battle.enemyHand.length; i++) {
                     const card = battle.enemyHand[i];
@@ -5477,6 +5565,297 @@
                 });
             });
 
+            runner.describe('8l. Этап 4 рефакторинга: ИИ (chooseEnemyAction / executeEnemyAction) и единый обход хуков relics', (it, assert) => {
+                const C = (id, suit, value) => ({ id, suit, value });
+                const makeFixtureBattle = (overrides = {}) => Object.assign({
+                    drawDeck: [], discardPile: [],
+                    playerHand: [C('p1', 'Hearts', 6), C('p2', 'Hearts', 7)],
+                    enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Pikes', 12), C('e3', 'Hearts', 8)],
+                    table: [], trumpCard: C('t1', 'Hearts', 6), trumpSuit: 'Hearts',
+                    defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                    enemyHP: 40, phase: BATTLE_PHASES.RESOLVING, aiTimer: null, actionToken: 0,
+                    cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                    jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                }, overrides);
+                const makeFixtureRun = (overrides = {}) => Object.assign({ floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() }, overrides);
+                const inGame = (runOv, battleOv, fn) => preserveLocalSaveAround(() =>
+                    withIsolatedGameState(makeFixtureRun(runOv), makeFixtureBattle(battleOv), () => {
+                        const wasEnabled = battleInvariantChecksEnabled;
+                        battleInvariantChecksEnabled = true;
+                        try { fn(); } finally {
+                            battleInvariantChecksEnabled = wasEnabled;
+                            clearAITimer(); clearLocalSave();
+                            const m = document.getElementById('msg-box');
+                            if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+                        }
+                    }));
+                const pair = (atk, def = null) => ({ attack: atk, defend: def });
+                const snapshot = () => JSON.stringify({ b: serializeGameState().battle, hp: run.playerHP, gold: run.gold });
+
+                // ---- chooseEnemyAction: attacker ----
+                it('ИИ-атакующий: пустой стол — ходит самой слабой картой (некозырь раньше козыря)', () => {
+                    inGame({}, { defender: 'player', table: [] }, () => {
+                        const a = chooseEnemyAction();
+                        assert.equal(a.type, 'attack');
+                        assert.equal(a.card.id, 'e1', 'Pikes 9 слабее Pikes 12 и козыря Hearts 8');
+                    });
+                });
+
+                it('ИИ-атакующий: все атаки отбиты — подкидывает карту нужного номинала, иначе бито; при открытых парах ждёт', () => {
+                    inGame({}, { defender: 'player', table: [pair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10))], enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 12)] }, () => {
+                        const a = chooseEnemyAction();
+                        assert.equal(a.type, 'throw');
+                        assert.equal(a.card.id, 'e1');
+                    });
+                    inGame({}, { defender: 'player', table: [pair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10))], enemyHand: [C('e2', 'Pikes', 12)] }, () => {
+                        const a = chooseEnemyAction();
+                        assert.equal(a.type, 'bito');
+                        assert.equal(a.delay, AI_POST_THROW_DELAY_MS);
+                    });
+                    inGame({}, { defender: 'player', table: [pair(C('a1', 'Pikes', 7), null)] }, () => {
+                        assert.equal(chooseEnemyAction().type, 'wait');
+                    });
+                });
+
+                it('ИИ-атакующий: рука пуста — бито, если стол закрыт, иначе проверка конца раунда', () => {
+                    inGame({}, { defender: 'player', enemyHand: [], table: [pair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10))] }, () => {
+                        assert.equal(chooseEnemyAction().type, 'bito');
+                    });
+                    inGame({}, { defender: 'player', enemyHand: [], table: [pair(C('a1', 'Pikes', 7), null)] }, () => {
+                        assert.equal(chooseEnemyAction().type, 'check_round');
+                    });
+                });
+
+                it('ИИ-атакующий: подкидывание ограничено BASE_THROW_LIMIT — на пределе вместо подкидывания бито', () => {
+                    const defendedPairs = (n) => Array.from({ length: n }, (_, i) => pair(C('a' + i, 'Pikes', 7), C('b' + i, 'Pikes', 10)));
+                    const bigPlayerHand = Array.from({ length: BASE_THROW_LIMIT + 2 }, (_, i) => C('p' + i, 'Clubs', 6));
+                    inGame({}, { defender: 'player', playerHand: bigPlayerHand, table: defendedPairs(BASE_THROW_LIMIT - 1), enemyHand: [C('e1', 'Hearts', 7)] }, () => {
+                        assert.equal(chooseEnemyAction().type, 'throw', 'ещё одна карта помещается');
+                    });
+                    inGame({}, { defender: 'player', playerHand: bigPlayerHand, table: defendedPairs(BASE_THROW_LIMIT), enemyHand: [C('e1', 'Hearts', 7)] }, () => {
+                        assert.equal(chooseEnemyAction().type, 'bito', 'лимит достигнут');
+                    });
+                });
+
+                // ---- chooseEnemyAction: defender ----
+                it('ИИ-защитник: бьёт каждую атаку самой дешёвой картой, одну карту — один раз', () => {
+                    inGame({}, { defender: 'enemy', phase: BATTLE_PHASES.RESOLVING,
+                        table: [pair(C('a1', 'Pikes', 7)), pair(C('a2', 'Pikes', 8))],
+                        enemyHand: [C('e1', 'Pikes', 12), C('e2', 'Pikes', 9), C('e3', 'Hearts', 14)] }, () => {
+                        const a = chooseEnemyAction();
+                        assert.equal(a.type, 'defend');
+                        assert.isTrue(a.complete);
+                        assert.equal(a.plays.map(p => p.card.id).join(), 'e2,e1', 'сначала 9 (дешёвая), потом 12; козырь не тратится');
+                        assert.equal(a.plays[0].pair, battle.table[0]);
+                        assert.equal(a.plays[1].pair, battle.table[1]);
+                    });
+                });
+
+                it('ИИ-защитник: не может отбить все — план содержит уже отбитые пары и complete=false', () => {
+                    inGame({}, { defender: 'enemy',
+                        table: [pair(C('a1', 'Pikes', 7)), pair(C('a2', 'Clubs', 13))],
+                        enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Pikes', 10)] }, () => {
+                        const a = chooseEnemyAction();
+                        assert.equal(a.type, 'defend');
+                        assert.isFalse(a.complete);
+                        assert.equal(a.plays.length, 1);
+                        assert.equal(a.plays[0].card.id, 'e1');
+                    });
+                });
+
+                it('ИИ-защитник: уже решил брать (cardsToTake) — берёт, если игроку нечего подкинуть, иначе ждёт', () => {
+                    const table = () => [pair(C('a1', 'Pikes', 7))];
+                    inGame({}, { defender: 'enemy', cardsToTake: true, table: table(), playerHand: [C('p1', 'Hearts', 10)] }, () => {
+                        const a = chooseEnemyAction();
+                        assert.equal(a.type, 'take');
+                        assert.equal(a.delay, AI_STANDARD_DELAY_MS);
+                    });
+                    inGame({}, { defender: 'enemy', cardsToTake: true, table: table(), playerHand: [C('p1', 'Hearts', 7)] }, () => {
+                        assert.equal(chooseEnemyAction().type, 'wait', 'у игрока есть семёрка для подкидывания');
+                    });
+                    inGame({}, { defender: 'enemy', cardsToTake: true, table: table(), playerHand: [] }, () => {
+                        assert.equal(chooseEnemyAction().type, 'take');
+                    });
+                });
+
+                it('ИИ-защитник: все пары закрыты — бито быстро, если игроку нечего подкинуть, иначе ждёт', () => {
+                    inGame({}, { defender: 'enemy', table: [pair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10))], playerHand: [C('p1', 'Hearts', 11)] }, () => {
+                        const a = chooseEnemyAction();
+                        assert.equal(a.type, 'bito');
+                        assert.equal(a.delay, AI_QUICK_DELAY_MS);
+                    });
+                    inGame({}, { defender: 'enemy', table: [pair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10))], playerHand: [C('p1', 'Hearts', 10)] }, () => {
+                        assert.equal(chooseEnemyAction().type, 'wait');
+                    });
+                });
+
+                it('ИИ-босс с ai_transfer: переводит, если все атаки одного номинала и у игрока хватит карт; без нужной карты — защищается', () => {
+                    const transferEnemyFloor = ENEMIES.findIndex(e => e.activeAbilities && e.activeAbilities.has('ai_transfer')) + 1;
+                    assert.isTrue(transferEnemyFloor > 0, 'в лестнице врагов есть ai_transfer');
+                    inGame({ floor: transferEnemyFloor }, { defender: 'enemy',
+                        table: [pair(C('a1', 'Pikes', 7))], enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 12)],
+                        playerHand: [C('p1', 'Hearts', 10), C('p2', 'Hearts', 11)] }, () => {
+                        const a = chooseEnemyAction();
+                        assert.equal(a.type, 'transfer');
+                        assert.equal(a.card.id, 'e1');
+                    });
+                    inGame({ floor: transferEnemyFloor }, { defender: 'enemy',
+                        table: [pair(C('a1', 'Pikes', 7))], enemyHand: [C('e2', 'Pikes', 12)],
+                        playerHand: [C('p1', 'Hearts', 10), C('p2', 'Hearts', 11)] }, () => {
+                        assert.equal(chooseEnemyAction().type, 'defend', 'нет карты того же номинала — обычная защита');
+                    });
+                    inGame({ floor: transferEnemyFloor }, { defender: 'enemy',
+                        table: [pair(C('a1', 'Pikes', 7))], enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 12)],
+                        playerHand: [C('p1', 'Hearts', 10)] }, () => {
+                        assert.equal(chooseEnemyAction().type, 'defend', 'игроку нечем принять перевод');
+                    });
+                });
+
+                it('chooseEnemyAction(): чистая функция — ни карты, ни фаза, ни HP, ни сейв не меняются, порядок руки врага тот же', () => {
+                    const shapes = [
+                        { defender: 'player', table: [] },
+                        { defender: 'enemy', table: [pair(C('a1', 'Pikes', 7)), pair(C('a2', 'Clubs', 13))] },
+                        { defender: 'enemy', cardsToTake: true, table: [pair(C('a1', 'Pikes', 7))] },
+                        { defender: 'player', table: [pair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10))] }
+                    ];
+                    for (const shape of shapes) {
+                        inGame({}, shape, () => {
+                            clearLocalSave();
+                            const before = snapshot();
+                            const handOrder = battle.enemyHand.map(c => c.id).join();
+                            chooseEnemyAction(); chooseEnemyAction();
+                            assert.equal(snapshot(), before);
+                            assert.equal(battle.enemyHand.map(c => c.id).join(), handOrder, 'chooseEnemyAction не должна сортировать руку');
+                            assert.isTrue(localStorage.getItem(SAVE_KEY) === null);
+                        });
+                    }
+                    const body = [chooseEnemyAction, chooseEnemyAttackerAction, chooseEnemyDefenderAction, planEnemyDefense, chooseEnemyTakeOrWait, chooseEnemyActionAfterFullDefense]
+                        .map(f => f.toString()).join('\n');
+                    assert.isFalse(/setBattlePhase|commitBattleState|renderAll|audio\.|showModal|scheduleEnemy|playAttackCard|playDefenseCard|\.sort\(\s*\(a, b\)[^)]*\)\s*;\s*\n/.test(body.replace(/validCards\.sort[^\n]*\n/, '')), 'выбор действия не должен менять состояние или UI');
+                });
+
+                // ---- executeEnemyAction ----
+                it('executeEnemyAction(defend, complete): карты ложатся на пары, cardsToTake=false, дальше — по состоянию стола', () => {
+                    inGame({}, { defender: 'enemy', phase: BATTLE_PHASES.RESOLVING,
+                        table: [pair(C('a1', 'Pikes', 7))], enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Hearts', 8)], playerHand: [C('p1', 'Hearts', 11)], cardsToTake: false }, () => {
+                        const realRender = window.renderAll; window.renderAll = () => {};
+                        try {
+                            executeEnemyAction(chooseEnemyAction());
+                            assert.equal(battle.table[0].defend.id, 'e1');
+                            assert.equal(battle.enemyHand.length, 1);
+                            assert.isFalse(battle.cardsToTake);
+                            // всё отбито: решать, подкидывать ли ещё, теперь только игроку -> ход возвращается ему
+                            assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
+                        } finally { window.renderAll = realRender; clearAITimer(); }
+                    });
+                    inGame({}, { defender: 'enemy', phase: BATTLE_PHASES.RESOLVING,
+                        table: [pair(C('a1', 'Pikes', 7))], enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Hearts', 8)], playerHand: [] }, () => {
+                        const realRender = window.renderAll; window.renderAll = () => {};
+                        try {
+                            executeEnemyAction(chooseEnemyAction());
+                            assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING, 'у игрока нет карт — враг сам объявляет бито (таймер)');
+                        } finally { window.renderAll = realRender; clearAITimer(); }
+                    });
+                });
+
+                it('executeEnemyAction(defend, incomplete): частичная защита сохраняется, cardsToTake=true, враг идёт брать стол', () => {
+                    inGame({}, { defender: 'enemy', phase: BATTLE_PHASES.RESOLVING,
+                        table: [pair(C('a1', 'Pikes', 7)), pair(C('a2', 'Clubs', 13))], enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Pikes', 10)], playerHand: [] }, () => {
+                        const realRender = window.renderAll; window.renderAll = () => {};
+                        try {
+                            executeEnemyAction(chooseEnemyAction());
+                            assert.equal(battle.table[0].defend.id, 'e1');
+                            assert.isTrue(battle.table[1].defend === null);
+                            assert.isTrue(battle.cardsToTake);
+                            assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING, 'у игрока нет карт — враг планирует взятие');
+                        } finally { window.renderAll = realRender; clearAITimer(); }
+                    });
+                });
+
+                it('executeEnemyAction(attack/throw/wait): карта уходит на стол, ход возвращается игроку (PLAYER_DEFENSE)', () => {
+                    inGame({}, { defender: 'player', table: [], enemyHand: [C('e1', 'Hearts', 9), C('e2', 'Pikes', 6), C('e3', 'Pikes', 12)] }, () => {
+                        executeEnemyAction(chooseEnemyAction());
+                        assert.equal(battle.table.length, 1);
+                        assert.equal(battle.table[0].attack.id, 'e2', 'самая слабая');
+                        assert.equal(battle.enemyHand.map(c => c.id).join(), 'e3,e1', 'рука врага осталась упорядоченной от слабой к сильной');
+                        assert.equal(battle.phase, BATTLE_PHASES.PLAYER_DEFENSE);
+                    });
+                });
+
+                it('executeEnemyAction(transfer): атака уходит игроку, защитник — player, показывается модалка', () => {
+                    inGame({}, { defender: 'enemy', phase: BATTLE_PHASES.RESOLVING, table: [pair(C('a1', 'Pikes', 7))], enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 12)] }, () => {
+                        executeEnemyAction({ type: 'transfer', card: battle.enemyHand[0] });
+                        assert.equal(battle.defender, 'player');
+                        assert.equal(battle.table.length, 2);
+                        assert.equal(battle.enemyHand.length, 1);
+                        assert.equal(battle.phase, BATTLE_PHASES.PLAYER_DEFENSE);
+                        const box = document.getElementById('msg-box');
+                        assert.isTrue(box && !box.classList.contains('hidden'));
+                    });
+                });
+
+                it('executeEnemyAI(): целиком — полный ход ИИ-защитника под инвариантами не теряет и не дублирует карты', () => {
+                    inGame({}, { defender: 'enemy', phase: BATTLE_PHASES.AI_WAITING,
+                        table: [pair(C('a1', 'Pikes', 7))], enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Pikes', 12)], playerHand: [C('p1', 'Hearts', 10)] }, () => {
+                        const ids = () => [...battle.playerHand, ...battle.enemyHand, ...battle.discardPile, ...battle.drawDeck, ...getTableCards()].map(c => c.id).sort().join();
+                        const before = ids();
+                        executeEnemyAI();
+                        assert.equal(ids(), before);
+                        assert.equal(getBattleInvariantViolations(battle).length, 0);
+                        clearAITimer();
+                    });
+                });
+
+                // ---- relics: one dispatch mechanism ----
+                it('Реестр релик: у каждого артефакта из ALL_RELICS есть запись в RELIC_EFFECTS (включая пассивный cheat_eye)', () => {
+                    for (const relic of ALL_RELICS) {
+                        assert.isTrue(relic.id in RELIC_EFFECTS, 'нет записи в RELIC_EFFECTS: ' + relic.id);
+                    }
+                    assert.equal(typeof RELIC_EFFECTS.cheat_eye.getRevealedEnemyCard, 'function');
+                });
+
+                it('queryRelicHook(): первый truthy-результат без подсветки; без relic — null; cheat_eye показывает слабейшую карту врага', () => {
+                    inGame({ relics: [] }, { enemyHand: [C('e1', 'Hearts', 8), C('e2', 'Pikes', 9)] }, () => {
+                        assert.isTrue(queryRelicHook('getRevealedEnemyCard') === null, 'без cheat_eye ничего не раскрывается');
+                    });
+                    inGame({ relics: [{ id: 'cheat_eye' }] }, { enemyHand: [C('e1', 'Hearts', 8), C('e2', 'Pikes', 9)] }, () => {
+                        const before = Object.keys(relicHighlightUntil).length;
+                        const card = queryRelicHook('getRevealedEnemyCard');
+                        assert.equal(card.id, 'e2', 'Pikes 9 слабее козыря Hearts 8');
+                        assert.equal(Object.keys(relicHighlightUntil).length, before, 'запрос не должен подсвечивать релику');
+                    });
+                    inGame({ relics: [{ id: 'cheat_eye' }] }, { enemyHand: [] }, () => {
+                        assert.isTrue(queryRelicHook('getRevealedEnemyCard') === null);
+                    });
+                });
+
+                it('forEachRelicHandler(): обходит только владеемые релики с таким хуком, в порядке слотов, и останавливается по true', () => {
+                    inGame({ relics: [{ id: 'coin_magnet' }, { id: 'safety_rope' }, { id: 'midas_touch' }, { id: 'sharp_suit' }] }, {}, () => {
+                        const seen = [];
+                        forEachRelicHandler('onCardPlayed', (relic) => { seen.push(relic.id); });
+                        assert.isTrue(seen.length >= 1 && seen.every(id => typeof RELIC_EFFECTS[id].onCardPlayed === 'function'));
+                        const order = run.relics.map(r => r.id).filter(id => seen.includes(id));
+                        assert.equal(seen.join(), order.join(), 'порядок слотов сохраняется');
+                        let visits = 0;
+                        forEachRelicHandler('onCardPlayed', () => { visits++; return true; });
+                        assert.equal(visits, 1, 'true останавливает обход');
+                    });
+                });
+
+                it('fireHook/fireAllHooks/fireHookSum: прежнее поведение — первый truthy / все / сумма; потраченный трос исчезает', () => {
+                    inGame({ relics: [{ id: 'safety_rope' }], playerHP: 5 }, { table: [pair(C('a1', 'Pikes', 7))] }, () => {
+                        assert.isTrue(fireHook('onLethalDamage') === true, 'fireHook возвращает первый truthy');
+                        assert.equal(run.relics.length, 0);
+                        assert.isTrue(fireHook('onLethalDamage') === null, 'второго троса нет');
+                    });
+                    inGame({ relics: [{ id: 'coin_magnet' }], gold: 0 }, {}, () => {
+                        fireAllHooks('onCardPlayed', C('x', 'Hearts', 6));
+                        assert.equal(run.gold, COIN_MAGNET_GOLD_PER_SIX, 'coin_magnet платит за шестёрку');
+                    });
+                    inGame({ relics: [] }, {}, () => assert.equal(fireHookSum('onEnemyTookCards'), 0));
+                });
+            });
+
             runner.describe('9. Магазин и здоровье игрока', (it, assert) => {
                 withFieldSnapshot({ run: ['playerHP', 'maxHP', 'gold'] }, () => {
                     it('openShop корректно обновляет отображение здоровья и золота', () => {
@@ -6202,6 +6581,8 @@
                         'onTransfer', 'onEnemyTookCards', 'onPlayerTookCards', 'onEnemyTurnStart',
                         'onCardPlayed', 'onPlayerDefend', 'onLethalDamage', 'onDefenseSucceeded',
                         'onPlayerTakePenalty', 'onEnemyCollectedTable',
+                        // Passive relic query (cheat_eye) - read via queryRelicHook(), never fired.
+                        'getRevealedEnemyCard',
                         // Active (button-triggered) relic ability hooks — see pocket_discard.
                         'isReady', 'onUse'
                     ];
