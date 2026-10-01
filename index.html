@@ -1576,21 +1576,142 @@
             commitBattleState();
         }
 
+        // ============================================================
+        // CARD / TABLE PRIMITIVES
+        // ------------------------------------------------------------
+        // Every card move in the battle goes through these helpers, so the
+        // "a card lives in exactly one place" rule is enforced in one spot
+        // instead of at each findIndex/splice/push site. Plain functions over
+        // the `battle` object — no classes. A move either happens completely
+        // or not at all: a primitive that cannot do its job returns false/null
+        // and leaves every zone untouched.
+        // ============================================================
+
+        // Index of `card` inside `cards`: by identity first, then by id (a card
+        // that was cloned, e.g. by a save round-trip, is still the same card).
+        function findCardIndex(cards, card) {
+            if (!card) return -1;
+            const byRef = cards.indexOf(card);
+            if (byRef !== -1) return byRef;
+            return card.id === undefined ? -1 : cards.findIndex(c => c.id === card.id);
+        }
+
+        // Takes `card` out of `cards`; returns the removed card, or null if absent.
+        function removeCard(cards, card) {
+            const idx = findCardIndex(cards, card);
+            return idx === -1 ? null : cards.splice(idx, 1)[0];
+        }
+
+        // Moves one card between two zones (arrays). Returns false — changing
+        // nothing — when the card is not in `from` or is already in `to`.
+        function moveCard(card, from, to) {
+            if (findCardIndex(to, card) !== -1) return false;
+            const removed = removeCard(from, card);
+            if (removed === null) return false;
+            to.push(removed);
+            return true;
+        }
+
+        // Draws the top card of the draw deck into `hand`; returns the card, or
+        // null when the deck is empty.
+        function dealCard(hand) {
+            if (battle.drawDeck.length === 0) return null;
+            const card = battle.drawDeck.pop();
+            hand.push(card);
+            return card;
+        }
+
+        // Removes and returns a uniformly random card from the draw deck (null if empty).
+        function takeRandomDeckCard() {
+            if (battle.drawDeck.length === 0) return null;
+            const idx = Math.floor(Math.random() * battle.drawDeck.length);
+            return battle.drawDeck.splice(idx, 1)[0];
+        }
+
+        // -- table -----------------------------------------------------------
+
+        function getOpenAttacks() {
+            return battle.table.filter(p => p.defend === null);
+        }
+
+        function hasOpenAttacks() {
+            return battle.table.some(p => p.defend === null);
+        }
+
+        function getDefendedPairCount() {
+            return battle.table.filter(p => p.defend).length;
+        }
+
+        // Every card on the table, attacks and defences, in table order.
+        function getTableCards() {
+            const cards = [];
+            for (const pair of battle.table) {
+                if (pair.attack) cards.push(pair.attack);
+                if (pair.defend) cards.push(pair.defend);
+            }
+            return cards;
+        }
+
+        function countTableCards() {
+            return getTableCards().length;
+        }
+
+        function getTableRanks() {
+            return new Set(getTableCards().map(c => c.value));
+        }
+
+        // Plays `card` from `hand` as a new attack. False (nothing changed) if the
+        // card is not in that hand.
+        function playAttackCard(hand, card) {
+            if (removeCard(hand, card) === null) return false;
+            battle.table.push({ attack: card, defend: null });
+            return true;
+        }
+
+        // Plays `card` from `hand` as the defence of `pair`. False (nothing
+        // changed) if the card is not in that hand or the pair is already defended.
+        function playDefenseCard(hand, pair, card) {
+            if (pair.defend !== null) return false;
+            if (removeCard(hand, card) === null) return false;
+            pair.defend = card;
+            return true;
+        }
+
+        // The table's cards go to the discard pile (bito / a prevented kill).
+        // Cards, not pair objects, land in the pile.
+        function discardTable() {
+            battle.discardPile.push(...getTableCards());
+            battle.table = [];
+        }
+
+        // The table's cards go into `hand` (a take); returns how many were moved.
+        function collectTable(hand) {
+            const cards = getTableCards();
+            hand.push(...cards);
+            battle.table = [];
+            return cards.length;
+        }
+
+        // Sends every card of `hand` to the discard pile (jester_discard); the hand
+        // array itself is emptied in place.
+        function discardHand(hand) {
+            battle.discardPile.push(...hand);
+            hand.length = 0;
+        }
+
+        // Tops `hand` up from the draw deck to HAND_SIZE.
+        function fillHand(hand) {
+            while (hand.length < HAND_SIZE && dealCard(hand) !== null) { /* keep drawing */ }
+        }
+
+        // The defender's opponent (the attacker) refills first — the usual Durak order.
         function replenishHands(currentDefender = battle.defender) {
             if (currentDefender === 'enemy') {
-                while (battle.playerHand.length < HAND_SIZE && battle.drawDeck.length > 0) {
-                    battle.playerHand.push(battle.drawDeck.pop());
-                }
-                while (battle.enemyHand.length < HAND_SIZE && battle.drawDeck.length > 0) {
-                    battle.enemyHand.push(battle.drawDeck.pop());
-                }
+                fillHand(battle.playerHand);
+                fillHand(battle.enemyHand);
             } else {
-                while (battle.enemyHand.length < HAND_SIZE && battle.drawDeck.length > 0) {
-                    battle.enemyHand.push(battle.drawDeck.pop());
-                }
-                while (battle.playerHand.length < HAND_SIZE && battle.drawDeck.length > 0) {
-                    battle.playerHand.push(battle.drawDeck.pop());
-                }
+                fillHand(battle.enemyHand);
+                fillHand(battle.playerHand);
             }
             sortPlayerHand();
         }
@@ -1675,11 +1796,7 @@
         }
 
         function isRankOnTable(value) {
-            for (let pair of battle.table) {
-                if (pair.attack && pair.attack.value === value) return true;
-                if (pair.defend && pair.defend.value === value) return true;
-            }
-            return false;
+            return getTableRanks().has(value);
         }
 
         function getTransferBlockReason() {
@@ -1723,9 +1840,9 @@
             }
 
             if (battle.defender === 'enemy') {
-                return Math.min(baseLimit, battle.enemyHand.length + battle.table.filter(p => p.defend).length);
+                return Math.min(baseLimit, battle.enemyHand.length + getDefendedPairCount());
             } else {
-                return Math.min(baseLimit, battle.playerHand.length + battle.table.filter(p => p.defend).length);
+                return Math.min(baseLimit, battle.playerHand.length + getDefendedPairCount());
             }
         }
 
@@ -1757,13 +1874,11 @@
             const currentDefender = battle.defender;
 
             if (battle.defender === 'enemy') {
-                battle.discardPile.push(...battle.table);
-                battle.table = [];
+                discardTable();
                 battle.defender = 'player';
             } else {
                 fireAllHooks('onDefenseSucceeded');
-                battle.discardPile.push(...battle.table);
-                battle.table = [];
+                discardTable();
                 battle.defender = 'enemy';
             }
 
@@ -1790,11 +1905,7 @@
             battle.isTransferActive = false;
 
             const currentDefender = battle.defender;
-            const cardsCount = battle.table.reduce((acc, p) => acc + (p.attack ? 1 : 0) + (p.defend ? 1 : 0), 0);
-            for (let pair of battle.table) {
-                if (pair.attack) battle.enemyHand.push(pair.attack);
-                if (pair.defend) battle.enemyHand.push(pair.defend);
-            }
+            const cardsCount = collectTable(battle.enemyHand);
 
             // Table cards are already in the enemy's hand; hooks that add cards
             // must run before the damage below reads enemyHand.length (salted_wound).
@@ -1808,7 +1919,6 @@
             // enemyHP <= 0: fixtures that never set HP start at 0.
             const enemyJustDied = enemyHPBeforeDamage > 0 && battle.enemyHP <= 0;
 
-            battle.table = [];
             battle.cardsToTake = false;
             audio.playTakeSound();
 
@@ -1833,22 +1943,12 @@
             audio.playTakeSound();
             
             const maxAllowed = getMaxAllowedAttacks();
-            while (battle.enemyHand.some(c => isRankOnTable(c.value)) && battle.table.length < maxAllowed) {
-                const playableIdx = battle.enemyHand.findIndex(c => isRankOnTable(c.value));
-                if (playableIdx !== -1) {
-                    const throwCard = battle.enemyHand.splice(playableIdx, 1)[0];
-                    battle.table.push({ attack: throwCard, defend: null });
-                } else {
-                    break;
-                }
+            while (battle.table.length < maxAllowed) {
+                const throwCard = battle.enemyHand.find(c => isRankOnTable(c.value));
+                if (!throwCard || !playAttackCard(battle.enemyHand, throwCard)) break;
             }
 
-            const cardsTakenCount = battle.table.reduce((acc, p) => acc + (p.attack ? 1 : 0) + (p.defend ? 1 : 0), 0);
-
-            for (let pair of battle.table) {
-                if (pair.attack) battle.playerHand.push(pair.attack);
-                if (pair.defend) battle.playerHand.push(pair.defend);
-            }
+            const cardsTakenCount = collectTable(battle.playerHand);
 
             const enemyData = getCurrentEnemy();
             const levelMultiplier = enemyData.abilityId === 'double_penalty' ? 2 : 1;
@@ -1874,7 +1974,6 @@
                 ({ isDefeated, savedBySafetyRope } = applyPlayerDamage(selfDamage));
             }
 
-            battle.table = [];
             battle.defender = 'player';
             
             resetTurnScopedFlags();
@@ -1905,15 +2004,12 @@
         // never touched, since they're the hand's most valuable resource.
         function discardLowestNonTrumpCards(hand, count) {
             const eligible = hand
-                .map((card, idx) => ({ card, idx }))
-                .filter(({ card }) => card.suit !== battle.trumpSuit)
-                .sort((a, b) => a.card.value - b.card.value)
+                .filter(card => card.suit !== battle.trumpSuit)
+                .sort((a, b) => a.value - b.value)
                 .slice(0, count);
 
-            const indicesToRemove = eligible.map(e => e.idx).sort((a, b) => b - a);
-            for (const idx of indicesToRemove) {
-                battle.discardPile.push(hand[idx]);
-                hand.splice(idx, 1);
+            for (const card of eligible) {
+                moveCard(card, hand, battle.discardPile);
             }
         }
 
@@ -1937,7 +2033,7 @@
                     return;
                 }
 
-                const openPairs = battle.table.filter(p => p.defend === null);
+                const openPairs = getOpenAttacks();
                 if (openPairs.length === 0) {
                     if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !playerHasTossCard) {
                         scheduleEnemyAction(() => handleBito(true), AI_QUICK_DELAY_MS);
@@ -1954,10 +2050,8 @@
                     allSameRank && 
                     battle.playerHand.length >= battle.table.length + 1) {
                     
-                    const transferCardIdx = battle.enemyHand.findIndex(c => c.value === attackVal);
-                    if (transferCardIdx !== -1) {
-                        const transferCard = battle.enemyHand.splice(transferCardIdx, 1)[0];
-                        battle.table.push({ attack: transferCard, defend: null });
+                    const transferCard = battle.enemyHand.find(c => c.value === attackVal);
+                    if (transferCard && playAttackCard(battle.enemyHand, transferCard)) {
                         battle.defender = 'player';
                         triggerCascadeTransfer();
                         audio.playCardSound();
@@ -1974,9 +2068,7 @@
                     validCards.sort((a, b) => cardPower(a) - cardPower(b));
 
                     if (validCards.length > 0) {
-                        const cardToDefend = validCards[0];
-                        pair.defend = cardToDefend;
-                        battle.enemyHand = battle.enemyHand.filter(c => c.id !== cardToDefend.id);
+                        playDefenseCard(battle.enemyHand, pair, validCards[0]);
                         audio.playCardSound();
                     } else {
                         allDefended = false;
@@ -2020,7 +2112,7 @@
                 if (enemyHPBeforeTurnStart > 0 && battle.enemyHP <= 0) return;
 
                 if (battle.enemyHand.length === 0) {
-                    if (battle.table.filter(p => p.defend === null).length === 0) {
+                    if (!hasOpenAttacks()) {
                         scheduleEnemyAction(() => handleBito(true), AI_POST_THROW_DELAY_MS);
                     } else {
                         checkRoundEnd();
@@ -2029,22 +2121,18 @@
                     return;
                 }
 
-                const openPairs = battle.table.filter(p => p.defend === null);
+                const openPairs = getOpenAttacks();
                 const maxAllowed = getMaxAllowedAttacks();
                 
                 if (battle.table.length === 0) {
                     battle.enemyHand.sort((a, b) => cardPower(a) - cardPower(b));
-                    const attackCard = battle.enemyHand.shift();
-                    if (attackCard) {
-                        battle.table.push({ attack: attackCard, defend: null });
+                    if (playAttackCard(battle.enemyHand, battle.enemyHand[0])) {
                         audio.playCardSound();
                     }
                 } else if (openPairs.length === 0) {
                     const playable = battle.enemyHand.filter(c => isRankOnTable(c.value));
                     if (playable.length > 0 && battle.table.length < maxAllowed) {
-                        const throwCard = playable[0];
-                        battle.enemyHand = battle.enemyHand.filter(c => c.id !== throwCard.id);
-                        battle.table.push({ attack: throwCard, defend: null });
+                        playAttackCard(battle.enemyHand, playable[0]);
                         audio.playCardSound();
                     } else {
                         scheduleEnemyAction(() => handleBito(true), AI_POST_THROW_DELAY_MS);
@@ -2070,8 +2158,7 @@
                 const maxAllowed = getMaxAllowedAttacks();
 
                 if (battle.table.length === 0) {
-                    battle.table.push({ attack: card, defend: null });
-                    battle.playerHand.splice(index, 1);
+                    playAttackCard(battle.playerHand, card);
                     onPlayerCardPlayed(card);
                     audio.playCardSound();
                     scheduleEnemyAI(AI_STANDARD_DELAY_MS);
@@ -2081,8 +2168,7 @@
                         return;
                     }
                     if (isRankOnTable(card.value)) {
-                        battle.table.push({ attack: card, defend: null });
-                        battle.playerHand.splice(index, 1);
+                        playAttackCard(battle.playerHand, card);
                         onPlayerCardPlayed(card);
                         audio.playCardSound();
                         scheduleEnemyAI(AI_STANDARD_DELAY_MS);
@@ -2100,8 +2186,7 @@
                             renderAll();
                             return;
                         }
-                        battle.table.push({ attack: card, defend: null });
-                        battle.playerHand.splice(index, 1);
+                        playAttackCard(battle.playerHand, card);
                         battle.defender = 'enemy';
                         battle.isTransferActive = false;
                         onPlayerCardPlayed(card);
@@ -2116,11 +2201,10 @@
                     }
                 }
 
-                const undefendedPair = battle.table.find(p => p.defend === null);
+                const undefendedPair = getOpenAttacks()[0];
                 if (undefendedPair) {
                     if (canBeat(undefendedPair.attack, card)) {
-                        undefendedPair.defend = card;
-                        battle.playerHand.splice(index, 1);
+                        playDefenseCard(battle.playerHand, undefendedPair, card);
                         onPlayerCardPlayed(card);
                         fireAllHooks('onPlayerDefend', card);
                         audio.playCardSound();
@@ -2224,8 +2308,7 @@
                     if (idx === -1) return false;
                     run.relics.splice(idx, 1);
                     run.playerHP = 1;
-                    battle.discardPile.push(...battle.table);
-                    battle.table = [];
+                    discardTable();
                     return true;
                 }
             },
@@ -2349,8 +2432,7 @@
                 // the draw deck is empty. Dispatched via fireAllHooks: a pure
                 // side effect on the hand, nothing to intercept or sum.
                 onEnemyCollectedTable() {
-                    if (battle.drawDeck.length > 0) {
-                        battle.enemyHand.push(battle.drawDeck.pop());
+                    if (dealCard(battle.enemyHand) !== null) {
                         return true;
                     }
                 }
@@ -2424,7 +2506,7 @@
                 isReady() {
                     return !battle.sleightOfHandUsedThisBattle && canAcceptPlayerAction()
                         && battle.defender === 'player'
-                        && battle.table.some(p => p.defend === null)
+                        && hasOpenAttacks()
                         && battle.drawDeck.length > 0;
                 },
                 label: '🪄 Подменить карту (Ловкость рук)',
@@ -2871,7 +2953,7 @@
                     btnTransfer.className = "btn-action-base btn-action-indigo";
                 } else {
                     btnAction.innerText = "БИТО";
-                    btnAction.disabled = battle.phase !== BATTLE_PHASES.PLAYER_DEFENSE || battle.table.length === 0 || battle.table.some(p => p.defend === null);
+                    btnAction.disabled = battle.phase !== BATTLE_PHASES.PLAYER_DEFENSE || battle.table.length === 0 || hasOpenAttacks();
                     btnTake.disabled = battle.phase !== BATTLE_PHASES.PLAYER_DEFENSE || battle.table.length === 0;
                     
                     const canTransfer = battle.phase === BATTLE_PHASES.PLAYER_DEFENSE && isTransferAllowedForPlayer();
@@ -3018,11 +3100,9 @@
         // prompting, to keep the interaction one tap.
         function usePocketDiscard() {
             useActiveRelic('pocket_discard', () => {
-                const idx = battle.playerHand.findIndex(c => c.value === 6 || c.value === 7);
-                if (idx === -1) return false;
+                const card = battle.playerHand.find(c => c.value === 6 || c.value === 7);
+                if (!card || !moveCard(card, battle.playerHand, battle.discardPile)) return false;
 
-                const [card] = battle.playerHand.splice(idx, 1);
-                battle.discardPile.push(card);
                 battle.pocketDiscardUsedThisRound = true;
                 // This can be the card that empties the player's hand: if the draw
                 // deck and table are also already empty, that's a round win the
@@ -3041,10 +3121,9 @@
         function useJesterDiscard() {
             useActiveRelic('jester_discard', () => {
                 const handSize = battle.playerHand.length;
-                battle.discardPile.push(...battle.playerHand);
-                battle.playerHand = [];
+                discardHand(battle.playerHand);
                 for (let i = 0; i < handSize; i++) {
-                    battle.playerHand.push(battle.drawDeck.pop());
+                    dealCard(battle.playerHand);
                 }
                 sortPlayerHand();
 
@@ -3062,12 +3141,12 @@
         // draw deck. The original attack card goes to the discard pile.
         function useSleightOfHand() {
             useActiveRelic('sleight_of_hand', () => {
-                const pair = battle.table.find(p => p.defend === null);
+                const pair = getOpenAttacks()[0];
                 if (!pair) return false;
 
                 const oldCard = pair.attack;
-                const randomIdx = Math.floor(Math.random() * battle.drawDeck.length);
-                const [newCard] = battle.drawDeck.splice(randomIdx, 1);
+                const newCard = takeRandomDeckCard();
+                if (newCard === null) return false;
                 pair.attack = newCard;
                 battle.discardPile.push(oldCard);
 
@@ -4767,6 +4846,261 @@
                             } finally { clearAITimer(); clearLocalSave(); }
                         });
                     });
+                });
+            });
+
+            runner.describe('8j. Этап 2 рефакторинга: примитивы карт и стола (moveCard, removeCard, dealCard, API стола)', (it, assert) => {
+                const C = (id, suit, value) => ({ id, suit, value });
+                const makeFixtureBattle = (overrides = {}) => Object.assign({
+                    drawDeck: [C('d1', 'Hearts', 6), C('d2', 'Hearts', 8), C('d3', 'Pikes', 9)], discardPile: [],
+                    playerHand: [C('p1', 'Hearts', 6), C('p2', 'Pikes', 9)],
+                    enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 9)],
+                    table: [], trumpCard: C('d1', 'Hearts', 6), trumpSuit: 'Hearts',
+                    defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                    cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                    jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                }, overrides);
+                const makeFixtureRun = () => ({ floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() });
+                const inGame = (overrides, fn) => withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(overrides), fn);
+                const allIds = () => [...battle.drawDeck, ...battle.discardPile, ...battle.playerHand, ...battle.enemyHand, ...getTableCards()].map(c => c.id).sort();
+
+                // ---- generic card primitives ----
+                it('removeCard(): по ссылке и по id; отсутствующая карта -> null, массив не меняется', () => {
+                    const a = C('a', 'Hearts', 6), b = C('b', 'Pikes', 7);
+                    const cards = [a, b];
+                    assert.isTrue(removeCard(cards, C('b', 'Pikes', 7)) !== null, 'по id (клон)');
+                    assert.equal(cards.length, 1);
+                    assert.isTrue(removeCard(cards, a) === a, 'по ссылке');
+                    assert.equal(cards.length, 0);
+                    const rest = [a];
+                    assert.isTrue(removeCard(rest, C('zzz', 'Hearts', 6)) === null);
+                    assert.isTrue(removeCard(rest, undefined) === null);
+                    assert.equal(rest.length, 1);
+                });
+
+                it('moveCard(): переносит карту между зонами ровно один раз', () => {
+                    inGame({}, () => {
+                        const before = allIds();
+                        assert.isTrue(moveCard(battle.playerHand[0], battle.playerHand, battle.discardPile));
+                        assert.equal(battle.playerHand.length, 1);
+                        assert.equal(battle.discardPile.length, 1);
+                        assert.equal(allIds().join(), before.join(), 'набор карт не должен меняться');
+                    });
+                });
+
+                it('moveCard(): карты нет в источнике или уже есть в приёмнике -> false, ничего не меняется', () => {
+                    inGame({}, () => {
+                        const before = allIds();
+                        assert.isFalse(moveCard(C('nope', 'Hearts', 6), battle.playerHand, battle.discardPile), 'нет в источнике');
+                        assert.isFalse(moveCard(battle.enemyHand[0], battle.playerHand, battle.discardPile), 'лежит в другой зоне');
+                        battle.discardPile.push(battle.playerHand[0]); // дубликат: уже в приёмнике
+                        assert.isFalse(moveCard(battle.playerHand[0], battle.playerHand, battle.discardPile), 'уже в приёмнике');
+                        assert.equal(battle.playerHand.length, 2);
+                        assert.equal(battle.discardPile.length, 1);
+                        assert.equal(before.length, allIds().length - 1);
+                    });
+                });
+
+                it('discardHand(): вся рука уходит в сброс, массив руки опустошается на месте', () => {
+                    inGame({}, () => {
+                        const hand = battle.playerHand;
+                        const before = allIds();
+                        discardHand(hand);
+                        assert.isTrue(battle.playerHand === hand && hand.length === 0);
+                        assert.equal(battle.discardPile.length, 2);
+                        assert.equal(allIds().join(), before.join());
+                    });
+                });
+
+                it('dealCard(): берёт верхнюю карту колоды в руку; пустая колода -> null', () => {
+                    inGame({}, () => {
+                        const top = battle.drawDeck[battle.drawDeck.length - 1];
+                        assert.isTrue(dealCard(battle.playerHand) === top);
+                        assert.equal(battle.drawDeck.length, 2);
+                        assert.isTrue(battle.playerHand.includes(top));
+                        battle.drawDeck = [];
+                        assert.isTrue(dealCard(battle.playerHand) === null);
+                        assert.equal(battle.playerHand.length, 3);
+                    });
+                });
+
+                it('takeRandomDeckCard(): вынимает карту из колоды; пустая колода -> null', () => {
+                    inGame({}, () => {
+                        const card = takeRandomDeckCard();
+                        assert.isTrue(card !== null);
+                        assert.equal(battle.drawDeck.length, 2);
+                        assert.isFalse(battle.drawDeck.includes(card));
+                        battle.drawDeck = [];
+                        assert.isTrue(takeRandomDeckCard() === null);
+                    });
+                });
+
+                // ---- table API ----
+                it('playAttackCard(): рука -> стол как открытая атака; чужой карты не принимает', () => {
+                    inGame({}, () => {
+                        const card = battle.playerHand[0];
+                        assert.isTrue(playAttackCard(battle.playerHand, card));
+                        assert.equal(battle.table.length, 1);
+                        assert.isTrue(battle.table[0].attack === card && battle.table[0].defend === null);
+                        assert.equal(battle.playerHand.length, 1);
+                        assert.isFalse(playAttackCard(battle.playerHand, battle.enemyHand[0]), 'карта не из этой руки');
+                        assert.equal(battle.table.length, 1);
+                    });
+                });
+
+                it('playDefenseCard(): закрывает пару картой из руки; повторное закрытие и чужая карта -> false', () => {
+                    inGame({ defender: 'player', phase: BATTLE_PHASES.PLAYER_DEFENSE, table: [{ attack: C('a1', 'Pikes', 7), defend: null }] }, () => {
+                        const pair = battle.table[0];
+                        const card = battle.playerHand[1]; // Pikes 9
+                        assert.isFalse(playDefenseCard(battle.playerHand, pair, battle.enemyHand[0]), 'карта не из этой руки');
+                        assert.isTrue(pair.defend === null);
+                        assert.isTrue(playDefenseCard(battle.playerHand, pair, card));
+                        assert.isTrue(pair.defend === card);
+                        assert.equal(battle.playerHand.length, 1);
+                        assert.isFalse(playDefenseCard(battle.playerHand, pair, battle.playerHand[0]), 'пара уже закрыта');
+                        assert.equal(battle.playerHand.length, 1);
+                    });
+                });
+
+                it('getOpenAttacks / hasOpenAttacks / getDefendedPairCount / getTableCards / countTableCards / getTableRanks', () => {
+                    inGame({
+                        table: [
+                            { attack: C('a1', 'Pikes', 7), defend: C('b1', 'Pikes', 10) },
+                            { attack: C('a2', 'Hearts', 7), defend: null }
+                        ]
+                    }, () => {
+                        assert.equal(getOpenAttacks().length, 1);
+                        assert.equal(getOpenAttacks()[0].attack.id, 'a2');
+                        assert.isTrue(hasOpenAttacks());
+                        assert.equal(getDefendedPairCount(), 1);
+                        assert.equal(countTableCards(), 3);
+                        assert.equal(getTableCards().map(c => c.id).join(), 'a1,b1,a2');
+                        const ranks = getTableRanks();
+                        assert.isTrue(ranks.has(7) && ranks.has(10) && ranks.size === 2);
+                        assert.isTrue(isRankOnTable(10) && !isRankOnTable(11));
+                        battle.table[1].defend = C('b2', 'Hearts', 12);
+                        assert.isFalse(hasOpenAttacks());
+                        battle.table = [];
+                        assert.isFalse(hasOpenAttacks());
+                        assert.equal(countTableCards(), 0);
+                    });
+                });
+
+                it('discardTable(): в сброс уходят КАРТЫ (а не пары), стол пуст, набор карт цел', () => {
+                    inGame({ table: [{ attack: C('a1', 'Pikes', 7), defend: C('b1', 'Pikes', 10) }, { attack: C('a2', 'Hearts', 7), defend: null }] }, () => {
+                        const before = allIds();
+                        discardTable();
+                        assert.equal(battle.table.length, 0);
+                        assert.equal(battle.discardPile.length, 3);
+                        assert.isTrue(battle.discardPile.every(c => typeof c.id === 'string' && typeof c.value === 'number'), 'в сбросе только карты');
+                        assert.equal(allIds().join(), before.join());
+                        assert.equal(getBattleInvariantViolations(battle).length, 0);
+                    });
+                });
+
+                it('collectTable(hand): все карты стола в руку (атака, затем защита), стол пуст, возвращает число карт', () => {
+                    inGame({ table: [{ attack: C('a1', 'Pikes', 7), defend: C('b1', 'Pikes', 10) }, { attack: C('a2', 'Hearts', 7), defend: null }] }, () => {
+                        const handBefore = battle.enemyHand.length;
+                        assert.equal(collectTable(battle.enemyHand), 3);
+                        assert.equal(battle.table.length, 0);
+                        assert.equal(battle.enemyHand.length, handBefore + 3);
+                        assert.equal(battle.enemyHand.slice(-3).map(c => c.id).join(), 'a1,b1,a2');
+                    });
+                });
+
+                it('fillHand()/replenishHands(): добор до HAND_SIZE, остановка на пустой колоде, порядок зависит от защитника', () => {
+                    inGame({ drawDeck: Array.from({ length: 3 }, (_, i) => C('x' + i, 'Hearts', 6 + i)), playerHand: [], enemyHand: [] }, () => {
+                        replenishHands('enemy'); // атакует игрок: добирает первым
+                        assert.equal(battle.playerHand.length, 3);
+                        assert.equal(battle.enemyHand.length, 0);
+                        assert.equal(battle.drawDeck.length, 0);
+                    });
+                    inGame({ drawDeck: Array.from({ length: 3 }, (_, i) => C('x' + i, 'Hearts', 6 + i)), playerHand: [], enemyHand: [] }, () => {
+                        replenishHands('player'); // атакует враг: добирает первым
+                        assert.equal(battle.enemyHand.length, 3);
+                        assert.equal(battle.playerHand.length, 0);
+                    });
+                    inGame({ drawDeck: Array.from({ length: 20 }, (_, i) => C('y' + i, 'Hearts', 6 + (i % 9))) }, () => {
+                        replenishHands('enemy');
+                        assert.equal(battle.playerHand.length, HAND_SIZE);
+                        assert.equal(battle.enemyHand.length, HAND_SIZE);
+                        assert.equal(getBattleInvariantViolations(battle).length, 0);
+                    });
+                });
+
+                // ---- behaviour preserved through the refactored call sites ----
+                it('Полный цикл под инвариантами: атака игрока -> защита врага -> бито — карты не теряются и не дублируются', () => {
+                    preserveLocalSaveAround(() => {
+                        const wasEnabled = battleInvariantChecksEnabled;
+                        battleInvariantChecksEnabled = true;
+                        try {
+                            inGame({ drawDeck: [], playerHand: [C('p1', 'Pikes', 7)], enemyHand: [C('e1', 'Pikes', 10), C('e2', 'Hearts', 9)] }, () => {
+                                const before = allIds();
+                                window.onPlayerCardClick(0);
+                                assert.equal(battle.table.length, 1);
+                                assert.equal(battle.playerHand.length, 0);
+                                clearAITimer();
+                                executeEnemyAI(); // враг бьётся минимальной подходящей картой
+                                assert.equal(battle.table[0].defend.id, 'e1');
+                                assert.equal(battle.enemyHand.length, 1);
+                                assert.equal(allIds().join(), before.join());
+                                clearAITimer();
+                            });
+                        } finally { battleInvariantChecksEnabled = wasEnabled; clearAITimer(); clearLocalSave(); }
+                    });
+                });
+
+                it('handleBito(): после отбоя в сбросе лежат карты, не пары; инвариант уникальности работает на сбросе', () => {
+                    preserveLocalSaveAround(() => {
+                        inGame({
+                            drawDeck: [], phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy',
+                            table: [{ attack: C('a1', 'Pikes', 7), defend: C('b1', 'Pikes', 10) }]
+                        }, () => {
+                            try {
+                                handleBito();
+                                assert.equal(battle.discardPile.map(c => c.id).sort().join(), 'a1,b1');
+                                battle.playerHand.push(C('a1', 'Pikes', 7)); // тот же id уже в сбросе
+                                assert.isTrue(getBattleInvariantViolations(battle).length > 0, 'дубликат в сбросе должен ловиться');
+                            } finally { clearAITimer(); clearLocalSave(); const m = document.getElementById('msg-box'); if (m) { m.classList.add('hidden'); m.classList.remove('flex'); } }
+                        });
+                    });
+                });
+
+                it('handlePlayerTake(): враг подкидывает по номиналам стола до лимита, все карты стола уходят в руку игрока', () => {
+                    preserveLocalSaveAround(() => {
+                        inGame({
+                            drawDeck: [], phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player',
+                            // лимит подкидывания = число карт в руке защитника (здесь 4)
+                            playerHand: [C('p1', 'Hearts', 6), C('p2', 'Hearts', 10), C('p3', 'Hearts', 11), C('p4', 'Hearts', 12)],
+                            enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Hearts', 9), C('e3', 'Hearts', 14)],
+                            table: [{ attack: C('a1', 'Pikes', 7), defend: null }, { attack: C('a2', 'Hearts', 9), defend: null }]
+                        }, () => {
+                            try {
+                                const before = allIds();
+                                handlePlayerTake();
+                                // номинал 9 есть на столе: e1 и e2 подкинуты, e3 (туз) нет
+                                assert.equal(battle.enemyHand.map(c => c.id).join(), 'e3');
+                                assert.equal(battle.table.length, 0);
+                                assert.equal(battle.playerHand.length, 4 + 4);
+                                assert.equal(allIds().join(), before.join());
+                            } finally { clearAITimer(); clearLocalSave(); const m = document.getElementById('msg-box'); if (m) { m.classList.add('hidden'); m.classList.remove('flex'); } }
+                        });
+                    });
+                });
+
+                // ---- static guard: no hand-rolled card moves outside the primitives ----
+                it('В боевом коде нет ручных splice/pop/push карт вне секции примитивов', () => {
+                    const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
+                    const productionSource = fullSource.slice(0, fullSource.indexOf('class TinyTestRunner'));
+                    const start = productionSource.indexOf('// CARD / TABLE PRIMITIVES');
+                    const end = productionSource.indexOf('function sortPlayerHand') > start
+                        ? productionSource.indexOf('// The defender\'s opponent (the attacker) refills first')
+                        : -1;
+                    assert.isTrue(start > 0 && end > start, 'не найдена секция примитивов');
+                    const outside = productionSource.slice(0, start) + productionSource.slice(end);
+                    const offenders = outside.match(/(?:playerHand|enemyHand|drawDeck|table)\.(?:splice|shift)\(|drawDeck\.pop\(\)|(?:playerHand|enemyHand)\.push\(battle\.drawDeck/g) || [];
+                    assert.equal(offenders.length, 0, 'ручные операции с картами: ' + offenders.join(' | '));
                 });
             });
 
