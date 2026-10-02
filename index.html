@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="ru" class="h-full bg-slate-950 text-slate-100 select-none">
 <head>
     <meta charset="UTF-8">
@@ -3901,16 +3901,15 @@
                 it('checkRoundEnd(): враг первым остался без карт — раунд проигран, игрок выживает', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }, { id: 'p2', suit: 'Pikes', value: 7 }],
-                            enemyHand: [],
                             trumpCard: { id: 't1', suit: 'Pikes', value: 6 }, trumpSuit: 'Pikes',
                             table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             const result = checkRoundEnd();
                             assert.isTrue(result, 'checkRoundEnd() должен сообщить, что раунд завершился');
@@ -3927,16 +3926,15 @@
                 it('checkRoundEnd(): враг первым остался без карт, урон смертелен и нет страховочного троса — поражение', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 5, maxHP: 30, gold: 0, relics: [], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
-                            enemyHand: [],
                             trumpCard: { id: 't1', suit: 'Pikes', value: 6 }, trumpSuit: 'Pikes',
                             table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             const result = checkRoundEnd();
                             assert.isTrue(result);
@@ -3953,7 +3951,7 @@
                 it('checkRoundEnd(): колода и обе руки пусты — ничья в кону', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 20, maxHP: 30, gold: 0, relics: [], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [],
                             playerHand: [], enemyHand: [],
                             trumpCard: { id: 't1', suit: 'Pikes', value: 6 }, trumpSuit: 'Pikes',
@@ -3961,7 +3959,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             const result = checkRoundEnd();
                             assert.isTrue(result);
@@ -3977,7 +3975,7 @@
                 it('checkRoundEnd(): колода или стол не пусты — раунд не завершается', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 20, maxHP: 30, gold: 0, relics: [], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
                             playerHand: [], enemyHand: [],
                             trumpCard: { id: 't1', suit: 'Pikes', value: 6 }, trumpSuit: 'Pikes',
@@ -3985,7 +3983,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             // Пустые руки сами по себе не значат конец раунда, пока
                             // в колоде есть карты — обычный додор ещё может случиться.
@@ -4018,7 +4016,7 @@
                 it('Сохраняет run и battle целиком (формат с version)', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
-                        { enemyHP: 0, playerHand: [], aiTimer: null },
+                        makeTestBattle({ enemyHP: 0, playerHand: [], aiTimer: null }),
                         () => {
                             run.floor = 4;
                             run.gold = 77;
@@ -4042,7 +4040,7 @@
                 it('aiTimer и actionToken НЕ попадают в сохранение', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
-                        { enemyHP: 10, playerHand: [], aiTimer: null, actionToken: 7 },
+                        makeTestBattle({ enemyHP: 10, playerHand: [], aiTimer: null, actionToken: 7 }),
                         () => {
                             saveGameState();
                             const raw = localStorage.getItem(SAVE_KEY);
@@ -4058,7 +4056,7 @@
                 it('loadGameState восстанавливает run и battle', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
-                        { drawDeck: [], discardPile: [], playerHand: [], enemyHand: [], table: [], defender: 'enemy', phase: BATTLE_PHASES.IDLE, trumpSuit: null, enemyHP: 0, aiTimer: null },
+                        makeTestBattle({ drawDeck: [], discardPile: [], playerHand: [], enemyHand: [], table: [], defender: 'enemy', phase: BATTLE_PHASES.IDLE, trumpSuit: null, enemyHP: 0, aiTimer: null }),
                         () => {
                             run.floor = 3;
                             battle.enemyHP = 55;
@@ -4083,7 +4081,7 @@
                 it('После загрузки aiTimer === null', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
-                        { drawDeck: [], discardPile: [], playerHand: [], enemyHand: [], table: [], defender: 'enemy', phase: BATTLE_PHASES.IDLE, trumpSuit: null, enemyHP: 10, aiTimer: null },
+                        makeTestBattle({ drawDeck: [], discardPile: [], playerHand: [], enemyHand: [], table: [], defender: 'enemy', phase: BATTLE_PHASES.IDLE, trumpSuit: null, enemyHP: 10, aiTimer: null }),
                         () => {
                             saveGameState();
                             loadGameState();
@@ -4097,7 +4095,7 @@
                 it('Несовпадение версии сбрасывает сохранение', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
-                        { enemyHP: 10, playerHand: [], aiTimer: null },
+                        makeTestBattle({ enemyHP: 10, playerHand: [], aiTimer: null }),
                         () => {
                             localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 1, run: { floor: 5 }, battle: {} }));
                             const loaded = loadGameState();
@@ -4110,7 +4108,7 @@
                 it('clearLocalSave удаляет сохранение', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
-                        { enemyHP: 10, playerHand: [], aiTimer: null },
+                        makeTestBattle({ enemyHP: 10, playerHand: [], aiTimer: null }),
                         () => {
                             saveGameState();
                             clearLocalSave();
@@ -4139,7 +4137,7 @@
                     // battle was the live object throughout, not a swapped-in fixture.
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
-                        { aiTimer: null },
+                        makeTestBattle({ aiTimer: null }),
                         () => {
                             clearLocalSave();
                             initNewRun();
@@ -4168,7 +4166,7 @@
                     // element for the rest of the play session.
                     withIsolatedGameState(
                         { floor: 2, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
-                        { aiTimer: null },
+                        makeTestBattle({ aiTimer: null }),
                         () => {
                             clearLocalSave();
                             startFloorBattle();
@@ -4357,7 +4355,7 @@
                 it('hasSavedGame() и loadGameState() согласованы: неконсистентный сейв — false у обоих, без побочных мутаций реального run/battle', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
-                        { drawDeck: [], discardPile: [], playerHand: [], enemyHand: [], table: [], defender: 'enemy', phase: BATTLE_PHASES.IDLE, trumpSuit: null, enemyHP: 0, aiTimer: null },
+                        makeTestBattle({ drawDeck: [], discardPile: [], playerHand: [], enemyHand: [], table: [], defender: 'enemy', phase: BATTLE_PHASES.IDLE, trumpSuit: null, enemyHP: 0, aiTimer: null }),
                         () => {
                             const corrupted = buildGoodSave();
                             corrupted.battle.drawDeck = [];
@@ -4392,7 +4390,7 @@
                 it('commitBattleState() сохраняет текущее состояние боя после смены фазы', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
                             enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
@@ -4402,7 +4400,7 @@
                             enemyHP: 40, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             clearLocalSave();
                             setBattlePhase(BATTLE_PHASES.PLAYER_ATTACK);
@@ -4420,7 +4418,7 @@
                 it('scheduleEnemyAI() сохраняет игру, входя в ai_waiting — именно тот момент "соперник подкинул карту"', () => {
                     withIsolatedGameState(
                         { floor: 2, playerHP: 25, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
                             enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
@@ -4433,7 +4431,7 @@
                             enemyHP: 20, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 5,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             clearLocalSave();
                             scheduleEnemyAI();
@@ -4452,17 +4450,16 @@
                 it('РЕГРЕССИЯ: одиночный ход игрока (onPlayerCardClick) переживает полную перезагрузку страницы (эмуляция выгрузки вкладки)', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Spades', value: 6 }], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }, { id: 'p2', suit: 'Hearts', value: 7 }],
                             enemyHand: [{ id: 'e1', suit: 'Hearts', value: 9 }],
-                            table: [],
                             trumpCard: { id: 't1', suit: 'Spades', value: 6 }, trumpSuit: 'Spades',
                             defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
                             enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             clearLocalSave();
                             window.onPlayerCardClick(0); // player throws the 6 of Hearts onto the empty table
@@ -6515,27 +6512,18 @@
                 it('handlePlayerTake: урон игроку = количество карт × уровень соперника', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            discardPile: [],
-                            playerHand: [],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: null,
-                            trumpSuit: 'Hearts',
                             table: [
                                 { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
                                 { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
                                 { attack: { id: 'x3', suit: 'Hearts', value: 8 }, defend: null },
                             ],
                             defender: 'player',
-                            selectedCardIndex: null,
-                            cardsToTake: false,
-                            isTransferActive: false,
                             enemyHP: 10,
                             phase: BATTLE_PHASES.PLAYER_DEFENSE,
-                            aiTimer: null,
-                            actionToken: 0
-                        },
+                        }),
                         () => {
                             handlePlayerTake();
                             assert.equal(run.playerHP, 97); // 3 карты × уровень 1
@@ -6546,27 +6534,18 @@
                 it('handlePlayerTake: способность double_penalty финального босса удваивает урон', () => {
                     withIsolatedGameState(
                         { floor: 12, playerHP: 100, maxHP: 100, gold: 0, relics: [], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            discardPile: [],
-                            playerHand: [],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: null,
-                            trumpSuit: 'Hearts',
                             table: [
                                 { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
                                 { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
                                 { attack: { id: 'x3', suit: 'Hearts', value: 8 }, defend: null },
                             ],
                             defender: 'player',
-                            selectedCardIndex: null,
-                            cardsToTake: false,
-                            isTransferActive: false,
                             enemyHP: 10,
                             phase: BATTLE_PHASES.PLAYER_DEFENSE,
-                            aiTimer: null,
-                            actionToken: 0
-                        },
+                        }),
                         () => {
                             handlePlayerTake();
                             assert.equal(run.playerHP, 76); // 3 карты × уровень 4 × 2 (double_penalty) = 24
@@ -6623,7 +6602,7 @@
                 it('mirror_ring (нерф): урон = взятые карты × TAKE_DAMAGE_PER_CARD × MIRROR_RING_MULTIPLIER, БЕЗ учёта уровня/double_penalty', () => {
                     withIsolatedGameState(
                         { floor: 12, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                             discardPile: [], playerHand: [],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
@@ -6637,7 +6616,7 @@
                             enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handlePlayerTake();
                             // 3 карты × TAKE_DAMAGE_PER_CARD(2) × MIRROR_RING_MULTIPLIER(1) = 6. На этаже 12
@@ -6652,7 +6631,7 @@
                 it('safety_rope: спасает от смертельного урона один раз за забег, очищает стол и исчезает из инвентаря', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 5, maxHP: 30, gold: 0, relics: [{ id: 'safety_rope' }], deck: [] },
-                        { table: [{ attack: { id: 'a', suit: 'Hearts', value: 6 }, defend: null }], discardPile: [], aiTimer: null },
+                        makeTestBattle({ table: [{ attack: { id: 'a', suit: 'Hearts', value: 6 }, defend: null }], discardPile: [], aiTimer: null }),
                         () => {
                             const first = applyPlayerDamage(100);
                             assert.isTrue(first.savedBySafetyRope);
@@ -6673,14 +6652,14 @@
                 it('safety_rope: после срабатывания снова доступен на продажу в магазине', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 5, maxHP: 30, gold: 100, relics: [{ id: 'safety_rope' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [], playerHand: [], enemyHand: [],
                             trumpCard: null, trumpSuit: 'Hearts', table: [],
                             defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
                             enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             applyPlayerDamage(100); // срабатывает и потребляет safety_rope
                             assert.isFalse(hasRelic('safety_rope'));
@@ -6704,14 +6683,14 @@
                 it('safety_rope: после срабатывания слот в боевой панели артефактов освобождается', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 5, maxHP: 30, gold: 0, relics: [{ id: 'safety_rope', name: 'Страховочный трос', icon: '🪢', desc: 'x', price: 18 }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [], playerHand: [], enemyHand: [],
                             trumpCard: null, trumpSuit: 'Hearts', table: [],
                             defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
                             enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             renderAll();
                             const relicsBar = document.getElementById('relics-bar');
@@ -6727,7 +6706,7 @@
                 it('cascade_transfer: наносит урон один раз за ход, повторный вызов в тот же ход не бьёт снова', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'cascade_transfer' }], deck: [] },
-                        { enemyHP: 20, cascadeTransferUsedThisTurn: false, aiTimer: null },
+                        makeTestBattle({ enemyHP: 20, cascadeTransferUsedThisTurn: false, aiTimer: null }),
                         () => {
                             triggerCascadeTransfer();
                             assert.equal(battle.enemyHP, 16); // 20 - CASCADE_TRANSFER_DAMAGE(4)
@@ -6754,7 +6733,7 @@
                     try {
                         withIsolatedGameState(
                             { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'cascade_transfer' }, { id: '__test_transfer' }], deck: [] },
-                            { enemyHP: 20, cascadeTransferUsedThisTurn: false, aiTimer: null },
+                            makeTestBattle({ enemyHP: 20, cascadeTransferUsedThisTurn: false, aiTimer: null }),
                             () => {
                                 triggerCascadeTransfer();
                                 assert.equal(battle.enemyHP, 16, 'cascade_transfer всё ещё должен нанести урон');
@@ -6776,7 +6755,7 @@
                     const transferFloorIndex = ENEMIES.findIndex(e => e.activeAbilities.has('ai_transfer'));
                     withIsolatedGameState(
                         { floor: transferFloorIndex + 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'cascade_transfer' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [],
                             playerHand: [
                                 { id: 'p1', suit: 'Pikes', value: 10 },
@@ -6789,7 +6768,7 @@
                             enemyHP: 40, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             executeEnemyAI();
                             assert.equal(battle.defender, 'player', 'После перевода противником защитником снова становится игрок');
@@ -6803,17 +6782,16 @@
                     for (let i = 0; i < 9; i++) bigEnemyHand.push({ id: `e${i}`, suit: 'Pikes', value: 6 });
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'heavy_ballast' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                             discardPile: [], playerHand: [],
                             enemyHand: bigEnemyHand,
                             trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                            table: [],
                             defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
                             enemyHP: 50, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             executeEnemyAI();
                             // 9 карт в руке врага - 6 = 3 избыточных (не капается, т.к. < 4)
@@ -6834,17 +6812,16 @@
                     for (let i = 0; i < 10; i++) bigEnemyHand.push({ id: `e${i}`, suit: 'Pikes', value: 6 });
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'heavy_ballast' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                             discardPile: [], playerHand: [],
                             enemyHand: bigEnemyHand,
                             trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                            table: [],
                             defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
                             enemyHP: 2, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             executeEnemyAI();
                             assert.isTrue(battle.enemyHP <= 0, 'heavy_ballast должен добить врага (2 HP - 4 капированного урона)');
@@ -6862,16 +6839,15 @@
                     // reasons — exactly what broke the "AI закончил подкидывать" test.
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [], playerHand: [{ id: 'p1', suit: 'Hearts', value: 9 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 6 }],
                             trumpCard: null, trumpSuit: 'Hearts',
-                            table: [],
                             defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
                             enemyHP: 0, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             executeEnemyAI();
                             assert.equal(battle.table.length, 1, 'ИИ должен продолжить ход и выложить карту атаки, даже если enemyHP было 0 ещё до срабатывания хуков');
@@ -6884,9 +6860,8 @@
                     for (let i = 0; i < 6; i++) enemyHand.push({ id: `e${i}`, suit: 'Pikes', value: 6 });
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'spam_mail' }, { id: 'salted_wound' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
                             enemyHand,
                             trumpCard: null, trumpSuit: 'Hearts',
@@ -6895,7 +6870,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handleEnemyTake();
                             // enemyHand: 6 (исходно) + 1 (со стола) + 1 (spam_mail) = 8 → избыток 2
@@ -6912,9 +6887,8 @@
                     const fullHand = (prefix, suit) => Array.from({ length: HAND_SIZE }, (_, i) => ({ id: `${prefix}${i}`, suit, value: 6 + (i % 5) }));
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'spam_mail' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd_bottom', suit: 'Hearts', value: 6 }, { id: 'd_mid', suit: 'Hearts', value: 8 }, { id: 'd_top', suit: 'Hearts', value: 7 }],
-                            discardPile: [],
                             playerHand: fullHand('p', 'Pikes'),
                             enemyHand: fullHand('e', 'Pikes'),
                             trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
@@ -6923,7 +6897,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handleEnemyTake();
                             assert.isTrue(battle.enemyHand.some(c => c.id === 'd_top'), 'Враг должен получить верхнюю карту колоды');
@@ -6946,9 +6920,8 @@
                     try {
                         withIsolatedGameState(
                             { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'spam_mail' }, { id: '__test_order' }], deck: [] },
-                            {
+                            makeTestBattle({
                                 drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                                discardPile: [],
                                 playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
                                 enemyHand: [{ id: 'e1', suit: 'Pikes', value: 6 }],
                                 trumpCard: null, trumpSuit: 'Hearts',
@@ -6957,7 +6930,7 @@
                                 enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                                 cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                                 jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                            },
+                            }),
                             () => {
                                 handleEnemyTake();
                                 // 1 (исходно) + 1 (со стола) + 1 (spam_mail) = 3
@@ -6976,9 +6949,8 @@
                     const fullHand = (prefix, suit) => Array.from({ length: HAND_SIZE }, (_, i) => ({ id: `${prefix}${i}`, suit, value: 6 + (i % 5) }));
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'spam_mail' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [trump],
-                            discardPile: [],
                             playerHand: fullHand('p', 'Pikes'),
                             enemyHand: fullHand('e', 'Pikes'),
                             trumpCard: trump, trumpSuit: 'Hearts',
@@ -6987,7 +6959,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handleEnemyTake();
                             assert.equal(battle.drawDeck.length, 0, 'Колода должна опустеть');
@@ -7001,9 +6973,7 @@
                 it('spam_mail: при пустой колоде враг ничего не добирает и не падает', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'spam_mail' }], deck: [] },
-                        {
-                            drawDeck: [],
-                            discardPile: [],
+                        makeTestBattle({
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 6 }],
                             trumpCard: null, trumpSuit: 'Hearts',
@@ -7012,7 +6982,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handleEnemyTake();
                             // 1 (исходно) + 1 (со стола); добирать нечего
@@ -7034,7 +7004,7 @@
                     try {
                         withIsolatedGameState(
                             { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'salted_wound' }, { id: '__test_take' }], deck: [] },
-                            {
+                            makeTestBattle({
                                 drawDeck: [], discardPile: [], playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
                                 enemyHand: Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, suit: 'Pikes', value: 6 })),
                                 trumpCard: null, trumpSuit: 'Hearts',
@@ -7043,7 +7013,7 @@
                                 enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                                 cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                                 jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                            },
+                            }),
                             () => {
                                 handleEnemyTake();
                                 // enemyHand: 6 (исходно) + 1 (со стола) = 7 → избыток 1
@@ -7069,7 +7039,7 @@
                     try {
                         withIsolatedGameState(
                             { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: '__test_player_take' }, { id: 'mirror_ring' }], deck: [] },
-                            {
+                            makeTestBattle({
                                 drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                                 discardPile: [], playerHand: [],
                                 enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
@@ -7082,7 +7052,7 @@
                                 enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                                 cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                                 jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                            },
+                            }),
                             () => {
                                 handlePlayerTake();
                                 assert.equal(seenCount, 2, 'Хук должен получить число взятых карт в ctx.cardsTakenCount');
@@ -7131,7 +7101,7 @@
                 it('mirror_ring добивает врага при взятии карт: награда выдаётся один раз, победная модалка, урон от взятия не применяется', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                             discardPile: [], playerHand: [],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
@@ -7144,7 +7114,7 @@
                             enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handlePlayerTake();
                             // 2 карты × 2 × 2 = 8 ≥ 4 HP врага
@@ -7163,7 +7133,7 @@
                 it('handlePlayerTake: если хук добил врага — ИИ не планируется, фаза остаётся RESOLVING', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                             discardPile: [], playerHand: [],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
@@ -7176,7 +7146,7 @@
                             enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handlePlayerTake();
                             assert.equal(battle.enemyHP, 0);
@@ -7191,7 +7161,7 @@
                 it('победа приоритетнее: хук добил врага, а взятие было бы смертельным для игрока — поражения нет, HP не тронуто', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 1, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                             discardPile: [], playerHand: [],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
@@ -7204,7 +7174,7 @@
                             enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handlePlayerTake();
                             assert.equal(battle.enemyHP, 0);
@@ -7220,7 +7190,7 @@
                 it('победа приоритетнее: safety_rope не тратится и не перекрывает модалку победы, если враг добит тем же взятием', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 1, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }, { id: 'safety_rope' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                             discardPile: [], playerHand: [],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
@@ -7233,7 +7203,7 @@
                             enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handlePlayerTake();
                             assert.equal(document.getElementById('msg-title').innerText, 'Победа в Бою!');
@@ -7247,7 +7217,7 @@
                 it('handlePlayerTake: если враг жив — ИИ по-прежнему планируется (защита от чрезмерного гарда)', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                             discardPile: [], playerHand: [],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
@@ -7260,7 +7230,7 @@
                             enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handlePlayerTake();
                             assert.isTrue(battle.enemyHP > 0);
@@ -7273,7 +7243,7 @@
                 it('handleEnemyTake: если враг умер от взятия карт — модалку победы не перекрывает round-end модалка, фаза не меняется', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [], playerHand: [],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
                             trumpCard: null, trumpSuit: 'Hearts',
@@ -7282,7 +7252,7 @@
                             enemyHP: TAKE_DAMAGE_PER_CARD, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handleEnemyTake();
                             assert.equal(battle.enemyHP, 0);
@@ -7300,7 +7270,7 @@
                 it('ace_sleeve: при взятии карт врагом добавляет +ACE_SLEEVE_BONUS_DAMAGE к урону (через хук onEnemyTookCards)', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'ace_sleeve' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [], playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
                             trumpCard: null, trumpSuit: 'Hearts',
@@ -7309,7 +7279,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handleEnemyTake();
                             // урон: 1 карта × TAKE_DAMAGE_PER_CARD + ACE_SLEEVE_BONUS_DAMAGE
@@ -7321,7 +7291,7 @@
                 it('ace_sleeve + salted_wound: оба бонуса onEnemyTookCards складываются в один урон', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'ace_sleeve' }, { id: 'salted_wound' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [], playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
                             enemyHand: Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, suit: 'Pikes', value: 6 })),
                             trumpCard: null, trumpSuit: 'Hearts',
@@ -7330,7 +7300,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handleEnemyTake();
                             // enemyHand: 6 + 1 (со стола) = 7 → избыток 1 → salted_wound: +1 × SALTED_WOUND_DAMAGE_PER_CARD
@@ -7343,7 +7313,7 @@
                 it('ace_sleeve: без артефакта бонус не применяется', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [], playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
                             trumpCard: null, trumpSuit: 'Hearts',
@@ -7352,7 +7322,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handleEnemyTake();
                             assert.equal(battle.enemyHP, 50 - TAKE_DAMAGE_PER_CARD);
@@ -7363,9 +7333,8 @@
                 it('ballast_drop: при взятии карт сбрасывает 2 некозырные карты наименьшего ранга', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'ballast_drop' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            discardPile: [],
                             playerHand: [
                                 { id: 'p1', suit: 'Pikes', value: 7 },
                                 { id: 'p2', suit: 'Pikes', value: 6 },
@@ -7377,7 +7346,7 @@
                             enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handlePlayerTake();
                             // p1, p2 (некозырные) сброшены; остаётся только x1 (козырь, взятый со стола)
@@ -7391,9 +7360,8 @@
                 it('ballast_drop: не срабатывает, если взятие добило врага через mirror_ring (победа приоритетнее)', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }, { id: 'ballast_drop' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            discardPile: [],
                             playerHand: [
                                 { id: 'p1', suit: 'Pikes', value: 7 },
                                 { id: 'p2', suit: 'Pikes', value: 6 },
@@ -7405,7 +7373,7 @@
                             enemyHP: 1, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handlePlayerTake();
                             assert.equal(battle.enemyHP, 0);
@@ -7425,7 +7393,7 @@
                 it('coin_magnet: +1$ за каждую сыгранную шестёрку', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'coin_magnet' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
@@ -7434,7 +7402,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             onPlayerCardClick(0);
                             assert.equal(run.gold, 1);
@@ -7454,7 +7422,7 @@
                     try {
                         withIsolatedGameState(
                             { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: '__test_a' }, { id: '__test_b' }], deck: [] },
-                            { aiTimer: null },
+                            makeTestBattle({ aiTimer: null }),
                             () => {
                                 fireAllHooks('onTestHook');
                                 assert.equal(calls.join(','), 'a,b', 'fireAllHooks должен вызвать оба обработчика в порядке слотов, не останавливаясь на первом');
@@ -7474,17 +7442,16 @@
                 it('sharp_suit: наносит 1 ед. урона врагу при защите козырной картой', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'sharp_suit' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Hearts', value: 9 }],
-                            enemyHand: [],
                             trumpCard: null, trumpSuit: 'Hearts',
                             table: [{ attack: { id: 'a1', suit: 'Pikes', value: 8 }, defend: null }],
                             defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             onPlayerCardClick(0);
                             assert.equal(battle.enemyHP, 49);
@@ -7495,7 +7462,7 @@
                 it('sharp_suit: НЕ наносит урон при розыгрыше козыря в атаке/подкидке (хук onPlayerDefend стреляет только из ветки защиты)', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'sharp_suit' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Hearts', value: 9 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 6 }],
@@ -7504,7 +7471,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             onPlayerCardClick(0); // играет козырь в атаку, не в защиту
                             assert.equal(battle.enemyHP, 50, 'sharp_suit не должен наносить урон вне защиты');
@@ -7519,9 +7486,8 @@
                     // Этот тест кликает по настоящей кнопке внутри попапа.
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }, { id: 'jester_discard' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }, { id: 'd2', suit: 'Hearts', value: 7 }],
-                            discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }, { id: 'p2', suit: 'Hearts', value: 10 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
                             trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
@@ -7529,7 +7495,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             showRelicPopover('pocket_discard');
                             const modal = document.getElementById('msg-box');
@@ -7575,9 +7541,8 @@
                 it('showRelicPopover(): тап по затемнённому фону закрывает попап без активации способности', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }, { id: 'p2', suit: 'Hearts', value: 10 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
                             trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
@@ -7585,7 +7550,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             showRelicPopover('pocket_discard');
                             const modal = document.getElementById('msg-box');
@@ -7604,7 +7569,7 @@
                 it('showRelicPopover(): пассивный артефакт показывает только описание, без кнопки активации', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'ace_sleeve', name: 'Туз в рукаве', icon: '🃏', desc: 'Тестовое описание', price: 12 }], deck: [] },
-                        { aiTimer: null },
+                        makeTestBattle({ aiTimer: null }),
                         () => {
                             showRelicPopover('ace_sleeve');
                             const modal = document.getElementById('msg-box');
@@ -7623,7 +7588,7 @@
                 it('relics-bar: готовый к активации артефакт подсвечен кольцом (relic-ready-glow), а недоступный — нет', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }],
                             enemyHand: [], trumpCard: null, trumpSuit: 'Hearts',
@@ -7631,7 +7596,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             renderAll();
                             const relicsBar = document.getElementById('relics-bar');
@@ -7653,7 +7618,7 @@
                     // "ПОНЯТНО"/"ПРОДАТЬ" не реагировала на клик.
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }], deck: [] },
-                        { aiTimer: null },
+                        makeTestBattle({ aiTimer: null }),
                         () => {
                             // pocket_discard недоступен (нет 6/7 в руке нет вовсе, т.к.
                             // battle тут не настроен под бой) — isReady() === false,
@@ -7686,9 +7651,8 @@
                 it('pocket_discard: разово за раунд сбрасывает 6/7 из руки в отбой', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }, { id: 'p2', suit: 'Hearts', value: 10 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
                             trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
@@ -7696,7 +7660,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             usePocketDiscard();
                             assert.equal(battle.playerHand.length, 1);
@@ -7714,7 +7678,7 @@
                 it('pocket_discard: isReady() — единый источник условия для рендера кнопки и хендлера', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }, { id: 'p2', suit: 'Hearts', value: 10 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
@@ -7723,7 +7687,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             // No 6/7 in hand: not ready.
                             assert.isFalse(RELIC_EFFECTS.pocket_discard.isReady(), 'без 6/7 в руке способность недоступна');
@@ -7751,7 +7715,7 @@
                 it('pocket_discard: сброс последней карты руки завершает раунд (когда колода и стол уже пусты)', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 23, maxHP: 30, gold: 16, relics: [{ id: 'pocket_discard' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Hearts', value: 10 }],
@@ -7760,7 +7724,7 @@
                             enemyHP: 6, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             usePocketDiscard();
                             assert.equal(battle.playerHand.length, 0, 'последняя карта должна уйти в отбой');
@@ -7781,7 +7745,7 @@
                     for (let i = 0; i < 5; i++) drawDeck.push({ id: `d${i}`, suit: 'Hearts', value: 6 + i });
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'jester_discard' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck, discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }, { id: 'p2', suit: 'Pikes', value: 7 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
@@ -7790,7 +7754,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             useJesterDiscard();
                             assert.equal(battle.playerHand.length, 2);
@@ -7804,7 +7768,7 @@
                 it('jester_discard: isReady() — единый источник условия для рендера кнопки и хендлера', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'jester_discard' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
@@ -7813,7 +7777,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             assert.isTrue(RELIC_EFFECTS.jester_discard.isReady(), 'свой ход атаки, пустой стол, ещё не использовано — доступна');
 
@@ -7838,7 +7802,7 @@
                 it('jester_discard: недостаточно карт в колоде — способность недоступна и не портит руку', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 23, maxHP: 30, gold: 16, relics: [{ id: 'jester_discard' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Pikes', value: 6 }], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }, { id: 'p2', suit: 'Pikes', value: 7 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Hearts', value: 10 }],
@@ -7847,7 +7811,7 @@
                             enemyHP: 6, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             // Колода (1 карта) меньше руки (2 карты): раньше это
                             // разрешалось и оставляло игрока с урезанной рукой
@@ -7866,9 +7830,8 @@
                 it('sleight_of_hand: раз за бой подменяет карту атаки на столе случайной из колоды', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'sleight_of_hand' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 12 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
                             trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
@@ -7877,7 +7840,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             useSleightOfHand();
                             assert.equal(battle.table[0].attack.id, 'd1');
@@ -7891,7 +7854,7 @@
                 it('sleight_of_hand: isReady() — единый источник условия для рендера кнопки и хендлера', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'sleight_of_hand' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
@@ -7901,7 +7864,7 @@
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             assert.isTrue(RELIC_EFFECTS.sleight_of_hand.isReady(), 'защита от неотбитой атаки, карты в колоде есть — доступна');
 
@@ -7926,17 +7889,16 @@
                 it('midas_touch: +MIDAS_TOUCH_GOLD_ON_DEFEND один раз за раунд, когда игрок отбил все карты и раунд закончился бито', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
-                            enemyHand: [],
                             trumpCard: null, trumpSuit: 'Hearts',
                             table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: { id: 'd1', suit: 'Pikes', value: 7 } }, { attack: { id: 'a2', suit: 'Pikes', value: 10 }, defend: { id: 'd2', suit: 'Pikes', value: 11 } }],
                             defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handleBito();
                             assert.equal(run.gold, MIDAS_TOUCH_GOLD_ON_DEFEND, 'Золото должно начислиться один раз за раунд, а не за каждую отбитую карту');
@@ -7947,17 +7909,16 @@
                 it('midas_touch: то же самое, когда бито вызывает ИИ (handleBito(true)), а игрок уже отбил всё', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
-                            enemyHand: [],
                             trumpCard: null, trumpSuit: 'Hearts',
                             table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: { id: 'd1', suit: 'Pikes', value: 7 } }],
                             defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
                             enemyHP: 50, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handleBito(true);
                             assert.equal(run.gold, MIDAS_TOUCH_GOLD_ON_DEFEND);
@@ -7968,17 +7929,16 @@
                 it('midas_touch: без артефакта золото не начисляется', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
-                            enemyHand: [],
                             trumpCard: null, trumpSuit: 'Hearts',
                             table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: { id: 'd1', suit: 'Pikes', value: 7 } }, { attack: { id: 'a2', suit: 'Pikes', value: 10 }, defend: { id: 'd2', suit: 'Pikes', value: 11 } }],
                             defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handleBito();
                             assert.equal(run.gold, 0);
@@ -7989,17 +7949,16 @@
                 it('midas_touch: НЕ срабатывает, когда игрок взял карты (handlePlayerTake) или когда успешно отбился враг', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
-                            enemyHand: [],
                             trumpCard: null, trumpSuit: 'Hearts',
                             table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: null }],
                             defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handlePlayerTake();
                             assert.equal(run.gold, 0, 'Игрок взял карты — это не успешная защита');
@@ -8007,17 +7966,16 @@
                     );
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
-                            enemyHand: [],
                             trumpCard: null, trumpSuit: 'Hearts',
                             table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: { id: 'd1', suit: 'Pikes', value: 7 } }],
                             defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             handleBito();
                             assert.equal(run.gold, 0, 'Когда отбивается враг, золото не даётся (поведение до этой правки)');
@@ -8028,17 +7986,16 @@
                 it('midas_touch: НЕ срабатывает посреди раунда — отбитие одной карты (onPlayerDefend) золота не даёт', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
-                        {
+                        makeTestBattle({
                             drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p9', suit: 'Pikes', value: 9 }],
-                            enemyHand: [],
                             trumpCard: null, trumpSuit: 'Hearts',
                             table: [{ attack: { id: 'a1', suit: 'Pikes', value: 8 }, defend: null }],
                             defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                             cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
                             jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                        },
+                        }),
                         () => {
                             onPlayerCardClick(0);
                             assert.equal(run.gold, 0, 'Золото начисляется только при завершении раунда, а не за каждую карту');
@@ -8066,7 +8023,7 @@
                     const realName = getCurrentEnemy().name;
                     withIsolatedGameState(
                         { floor: ENEMIES.length, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() },
-                        { aiTimer: null },
+                        makeTestBattle({ aiTimer: null }),
                         () => {
                             startFloorBattle(); // paints the fixture floor's enemy into the DOM
                             assert.equal(document.getElementById('enemy-name').innerText, ENEMIES[ENEMIES.length - 1].name);
