@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="ru" class="h-full bg-slate-950 text-slate-100 select-none">
 <head>
     <meta charset="UTF-8">
@@ -187,6 +187,13 @@
             50% { box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.35); }
         }
 
+        /* Semantic wrappers for repeated Tailwind utility groups. */
+        .section-label { display: flex; align-items: center; justify-content: space-between; padding-inline: 0.25rem; margin-bottom: 0.25rem; font-size: 11px; font-weight: 600; color: rgb(52 211 153 / 0.8); }
+        .relic-bar { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.375rem; background: rgb(0 0 0 / 0.5); padding: 0.375rem; border-radius: 0.75rem; border: 1px solid rgb(6 78 59 / 0.5); }
+        .section-title { margin-bottom: 0.5rem; font-size: 0.75rem; font-weight: 700; color: #34d399; text-transform: uppercase; letter-spacing: 0.05em; }
+        .muted-text { font-size: 0.75rem; color: #94a3b8; }
+        .item-row { display: flex; align-items: center; gap: 0.625rem; min-width: 0; flex: 1 1 0%; }
+
         @media (min-width: 640px) {
             .btn-icon-header { width: 2rem; height: 2rem; font-size: 0.875rem; }
             .btn-action-base { font-size: 0.875rem; }
@@ -299,11 +306,11 @@
         </section>
 
         <section class="mb-1 flex-shrink-0">
-            <div class="flex items-center justify-between px-1 mb-1 text-[11px] font-semibold text-emerald-400/80">
+            <div class="section-label">
                 <span>ШУЛЕРСКИЕ АРТЕФАКТЫ (JOKERS)</span>
                 <span id="relic-count">0/5</span>
             </div>
-            <div id="relics-bar" class="grid grid-cols-5 gap-1.5 bg-black/50 p-1.5 rounded-xl border border-emerald-900/50">
+            <div id="relics-bar" class="relic-bar">
             </div>
         </section>
 
@@ -328,7 +335,7 @@
     <div id="shop-modal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 hidden flex-col justify-between p-4 max-w-md mx-auto">
         <div class="text-center py-2 border-b border-amber-500/30">
             <h2 class="text-xl font-extrabold text-amber-400 tracking-wide">ВОРОВСКОЙ ПРИТОН</h2>
-            <p class="text-xs text-slate-400">Покупайте артефакты перед следующим боссом</p>
+            <p class="muted-text">Покупайте артефакты перед следующим боссом</p>
             <div class="mt-2 flex items-center justify-center gap-2">
                 <div class="inline-flex items-center gap-1.5 bg-rose-950/80 border border-rose-700/50 px-3 py-1 rounded-full text-xs">
                     <span class="text-rose-400 font-bold">❤️ Здоровье:</span>
@@ -342,23 +349,23 @@
         </div>
 
         <div class="px-1 pt-2 pb-1 border-b border-amber-500/30">
-            <div class="flex items-center justify-between px-1 mb-1 text-[11px] font-semibold text-emerald-400/80">
+            <div class="section-label">
                 <span>ВАШИ АРТЕФАКТЫ</span>
                 <span id="shop-relic-count">0/5</span>
             </div>
-            <div id="shop-relic-slots" class="grid grid-cols-5 gap-1.5 bg-black/50 p-1.5 rounded-xl border border-emerald-900/50">
+            <div id="shop-relic-slots" class="relic-bar">
             </div>
             <p class="text-[10px] text-slate-500 mt-1 px-1">Нажмите на артефакт, чтобы продать его за полцены</p>
         </div>
 
         <div class="flex-1 overflow-y-auto py-3 flex flex-col gap-4">
             <div>
-                <h3 class="text-xs font-bold text-emerald-400 mb-2 uppercase tracking-wider">Услуги лекаря</h3>
+                <h3 class="section-title">Услуги лекаря</h3>
                 <div id="shop-heal-list" class="grid grid-cols-1 gap-2 mb-4">
                 </div>
             </div>
             <div>
-                <h3 class="text-xs font-bold text-emerald-400 mb-2 uppercase tracking-wider">Шулерские Артефакты</h3>
+                <h3 class="section-title">Шулерские Артефакты</h3>
                 <div id="shop-relics-list" class="grid grid-cols-1 gap-2">
                 </div>
             </div>
@@ -391,7 +398,7 @@
                     <span class="text-3xl">🧪</span>
                     <div>
                         <h2 class="text-xl font-black text-indigo-300 tracking-wide">Панель Юнит-Тестирования</h2>
-                        <p class="text-xs text-slate-400">Автоматическая проверка логики и игровых механик</p>
+                        <p class="muted-text">Автоматическая проверка логики и игровых механик</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
@@ -2737,7 +2744,7 @@
             if (healList) {
                 healList.innerHTML = `
                     <div class="flex items-center justify-between gap-3 p-2.5 bg-slate-900 border border-emerald-800/60 rounded-xl">
-                        <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                        <div class="item-row">
                             <span class="text-2xl">❤️</span>
                             <div class="min-w-0">
                                 <div class="text-xs font-bold text-rose-300">Принять лекарство (+${HEAL_AMOUNT} HP)</div>
@@ -2759,7 +2766,7 @@
                     const item = document.createElement('div');
                     item.className = "flex items-center justify-between gap-3 p-2.5 bg-slate-900 border border-emerald-800/60 rounded-xl";
                     item.innerHTML = `
-                        <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                        <div class="item-row">
                             <span class="text-2xl">${relic.icon}</span>
                             <div class="min-w-0">
                                 <div class="text-xs font-bold text-amber-300">${relic.name}</div>
