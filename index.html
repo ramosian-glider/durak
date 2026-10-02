@@ -860,60 +860,55 @@
                     this.ctx.resume();
                 }
             }
-            playCardSound() {
-                if (this.isMuted) return;
+            // True when a sound may play right now: not muted and an audio context exists.
+            canPlay() {
+                if (this.isMuted) return false;
                 this.init();
-                if (!this.ctx) return;
+                return !!this.ctx;
+            }
+            // One oscillator through one gain envelope: the shared shape of every sound
+            // here. `freq`/`gain` are the start values; `freqEnd`/`gainEnd` (optional /
+            // required) are reached after `duration` seconds by `freqRamp`/`gainRamp`
+            // ('linear' | 'exponential'). `delay` shifts the whole tone later (used to
+            // lay notes out in time); `immediate` starts it with a bare start() instead of
+            // scheduling at a time. Never throws: a failed tone is just silent.
+            playTone({ type = 'triangle', freq, freqEnd = null, freqRamp = 'linear',
+                       gain, gainEnd, gainRamp = 'linear', duration, delay = 0, immediate = false }) {
                 try {
-                    const osc = this.ctx.createOscillator();
-                    const gain = this.ctx.createGain();
-                    osc.type = 'triangle';
-                    osc.frequency.setValueAtTime(220, this.ctx.currentTime);
-                    osc.frequency.exponentialRampToValueAtTime(70, this.ctx.currentTime + 0.09);
-                    gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
-                    gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.09);
-                    osc.connect(gain);
-                    gain.connect(this.ctx.destination);
-                    osc.start();
-                    osc.stop(this.ctx.currentTime + 0.09);
-                } catch(e) {}
+                    const ctx = this.ctx;
+                    const t0 = ctx.currentTime + delay;
+                    const osc = ctx.createOscillator();
+                    const g = ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, t0);
+                    if (freqEnd !== null) {
+                        if (freqRamp === 'exponential') osc.frequency.exponentialRampToValueAtTime(freqEnd, t0 + duration);
+                        else osc.frequency.linearRampToValueAtTime(freqEnd, t0 + duration);
+                    }
+                    g.gain.setValueAtTime(gain, t0);
+                    if (gainRamp === 'exponential') g.gain.exponentialRampToValueAtTime(gainEnd, t0 + duration);
+                    else g.gain.linearRampToValueAtTime(gainEnd, t0 + duration);
+                    osc.connect(g);
+                    g.connect(ctx.destination);
+                    if (immediate) osc.start(); else osc.start(t0);
+                    osc.stop(t0 + duration);
+                } catch (e) {}
+            }
+            playCardSound() {
+                if (!this.canPlay()) return;
+                this.playTone({ type: 'triangle', freq: 220, freqEnd: 70, freqRamp: 'exponential',
+                                gain: 0.4, gainEnd: 0.01, duration: 0.09, immediate: true });
             }
             playWinSound() {
-                if (this.isMuted) return;
-                this.init();
-                if (!this.ctx) return;
+                if (!this.canPlay()) return;
                 [261.63, 329.63, 392.00, 523.25].forEach((freq, idx) => {
-                    try {
-                        const osc = this.ctx.createOscillator();
-                        const gain = this.ctx.createGain();
-                        osc.type = 'triangle';
-                        osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.1);
-                        gain.gain.setValueAtTime(0.3, this.ctx.currentTime + idx * 0.1);
-                        gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + idx * 0.1 + 0.25);
-                        osc.connect(gain);
-                        gain.connect(this.ctx.destination);
-                        osc.start(this.ctx.currentTime + idx * 0.1);
-                        osc.stop(this.ctx.currentTime + idx * 0.1 + 0.25);
-                    } catch(e) {}
+                    this.playTone({ type: 'triangle', freq, gain: 0.3, gainEnd: 0.01, duration: 0.25, delay: idx * 0.1 });
                 });
             }
             playTakeSound() {
-                if (this.isMuted) return;
-                this.init();
-                if (!this.ctx) return;
-                try {
-                    const osc = this.ctx.createOscillator();
-                    const gain = this.ctx.createGain();
-                    osc.type = 'sawtooth';
-                    osc.frequency.setValueAtTime(160, this.ctx.currentTime);
-                    osc.frequency.linearRampToValueAtTime(75, this.ctx.currentTime + 0.18);
-                    gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
-                    gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.18);
-                    osc.connect(gain);
-                    gain.connect(this.ctx.destination);
-                    osc.start();
-                    osc.stop(this.ctx.currentTime + 0.18);
-                } catch(e) {}
+                if (!this.canPlay()) return;
+                this.playTone({ type: 'sawtooth', freq: 160, freqEnd: 75,
+                                gain: 0.3, gainEnd: 0.01, duration: 0.18, immediate: true });
             }
             startMusic(loop = false) {
                 this.init();
@@ -955,33 +950,10 @@
                     this.noteIndex++;
 
                     if (freq > 0) {
-                        try {
-                            const osc = this.ctx.createOscillator();
-                            const gain = this.ctx.createGain();
-                            osc.type = 'triangle';
-                            osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
-                            gain.gain.setValueAtTime(0.14, this.ctx.currentTime);
-                            gain.gain.exponentialRampToValueAtTime(0.005, this.ctx.currentTime + 0.28);
-                            osc.connect(gain);
-                            gain.connect(this.ctx.destination);
-                            osc.start();
-                            osc.stop(this.ctx.currentTime + 0.28);
-                        } catch (e) {}
+                        this.playTone({ type: 'triangle', freq, gain: 0.14, gainEnd: 0.005, gainRamp: 'exponential', duration: 0.28, immediate: true });
                     }
-
                     if (bassFreq > 0) {
-                        try {
-                            const bassOsc = this.ctx.createOscillator();
-                            const bassGain = this.ctx.createGain();
-                            bassOsc.type = 'sine';
-                            bassOsc.frequency.setValueAtTime(bassFreq / 2, this.ctx.currentTime);
-                            bassGain.gain.setValueAtTime(0.12, this.ctx.currentTime);
-                            bassGain.gain.exponentialRampToValueAtTime(0.005, this.ctx.currentTime + 0.32);
-                            bassOsc.connect(bassGain);
-                            bassGain.connect(this.ctx.destination);
-                            bassOsc.start();
-                            bassOsc.stop(this.ctx.currentTime + 0.32);
-                        } catch (e) {}
+                        this.playTone({ type: 'sine', freq: bassFreq / 2, gain: 0.12, gainEnd: 0.005, gainRamp: 'exponential', duration: 0.32, immediate: true });
                     }
                 }, 280);
             }
@@ -2966,7 +2938,14 @@
             `;
         }
 
-        function renderAll() {
+        // ---- Rendering: renderAll() is only the order of the parts --------------
+        // Each renderX() repaints one region of the screen as a pure projection of
+        // `run` / `battle` (no game logic, no state changes), so any of them can be
+        // called alone. Order matters only at the end: the relic popover refreshes
+        // last, after the relics bar and the game state it shows are up to date.
+
+        // Stats line: enemy header, HP, gold, floor counters (battle screen and shop).
+        function renderHeader() {
             // Enemy header (name, level, avatar, ability) is a pure projection of
             // run.floor, so it is repainted here together with everything else.
             syncEnemyDisplay();
@@ -2977,7 +2956,10 @@
             setElText('floor-display', run.floor);
             setElText('floor-total', ENEMIES.length);
             setElText('enemy-hp', battle.enemyHP);
+        }
 
+        // Whose turn it is, as a coloured banner above the table.
+        function renderTurnBanner() {
             const banner = document.getElementById('turn-banner');
             if (banner) {
                 if (battle.defender === 'enemy') {
@@ -2993,7 +2975,10 @@
                     }
                 }
             }
+        }
 
+        // The enemy's hand: card backs, plus the one face-up card cheat_eye reveals; and the card count.
+        function renderEnemyHand() {
             const enemyHandVis = document.getElementById('enemy-hand-visual');
             if (enemyHandVis) {
                 enemyHandVis.innerHTML = '';
@@ -3022,7 +3007,10 @@
                 }
             }
             setElText('enemy-card-count', battle.enemyHand.length);
+        }
 
+        // Draw deck with the trump card showing, or just the trump suit once the deck is empty.
+        function renderDeck() {
             const deckContainer = document.getElementById('deck-container');
             if (deckContainer) {
                 if (battle.drawDeck.length > 0) {
@@ -3046,7 +3034,10 @@
                     `;
                 }
             }
+        }
 
+        // The relic slots: filled/empty, highlight flash, 'ready to tap' glow for active relics.
+        function renderRelicsBar() {
             const relicsBar = document.getElementById('relics-bar');
             if (relicsBar) {
                 relicsBar.innerHTML = '';
@@ -3069,7 +3060,10 @@
                 }
             }
             setElText('relic-count', `${run.relics.length}/${MAX_RELICS}`);
+        }
 
+        // The attack/defence pairs lying on the table.
+        function renderTable() {
             const tablePairsEl = document.getElementById('table-pairs');
             if (tablePairsEl) {
                 tablePairsEl.innerHTML = '';
@@ -3086,7 +3080,10 @@
                     tablePairsEl.appendChild(pairWrap);
                 });
             }
+        }
 
+        // The player's hand, with the cards a transfer would accept lifted and ringed.
+        function renderPlayerHand() {
             const handEl = document.getElementById('player-hand');
             if (handEl) {
                 handEl.innerHTML = '';
@@ -3106,7 +3103,10 @@
                     handEl.appendChild(cardWrap);
                 });
             }
+        }
 
+        // БИТО / ВЗЯТЬ / ПЕРЕВОД: label and enabled state for the current phase.
+        function renderActionButtons() {
             const btnAction = document.getElementById('btn-action');
             const btnTake = document.getElementById('btn-take');
             const btnTransfer = document.getElementById('btn-transfer');
@@ -3135,7 +3135,17 @@
                     }
                 }
             }
+        }
 
+        function renderAll() {
+            renderHeader();
+            renderTurnBanner();
+            renderEnemyHand();
+            renderDeck();
+            renderRelicsBar();
+            renderTable();
+            renderPlayerHand();
+            renderActionButtons();
             refreshRelicPopoverIfOpen();
         }
 
@@ -3154,13 +3164,7 @@
         let openRelicPopoverId = null;
 
         function closeRelicPopover() {
-            const modal = document.getElementById('msg-box');
-            if (modal) {
-                modal.classList.add('hidden');
-                modal.classList.remove('flex');
-                modal.onclick = null;
-            }
-            openRelicPopoverId = null;
+            closeModal();
         }
 
         // Opens the shared #msg-box modal as a relic info popover: icon, name
@@ -3173,60 +3177,43 @@
         function showRelicPopover(relicId) {
             const relic = run.relics.find(r => r.id === relicId);
             if (!relic) return;
-            openRelicPopoverId = relicId;
             renderRelicPopoverContent(relic);
         }
 
         function renderRelicPopoverContent(relic) {
-            const modal = document.getElementById('msg-box');
-            if (!modal) return;
-            setElText('msg-title', `${relic.icon} ${relic.name}`);
-            setElText('msg-body', relic.desc);
-
-            // Tapping the dimmed backdrop (not the card itself) dismisses the
-            // popover without activating anything — same as the explicit close
-            // button, just for people who tap outside instead of hunting for it.
-            modal.onclick = (e) => {
-                if (e.target === modal) closeRelicPopover();
+            const base = {
+                title: `${relic.icon} ${relic.name}`,
+                text: relic.desc,
+                relicId: relic.id,
+                // Tapping the dimmed backdrop (not the card itself) dismisses the
+                // popover without activating anything — same as the explicit close
+                // button, just for people who tap outside instead of hunting for it.
+                onBackdrop: () => closeRelicPopover()
             };
-
-            const cancelBtn = document.getElementById('msg-btn-cancel');
-            const confirmBtn = document.getElementById('msg-btn');
-            if (!confirmBtn) return;
 
             if (ACTIVE_RELIC_IDS.includes(relic.id)) {
                 // An activatable relic gets two buttons: activate, and an explicit
-                // close so choosing not to activate is never a dead end — closing
-                // via the "Х" of a modal isn't a pattern used elsewhere in this
-                // game, so this reuses the existing cancel-button slot instead.
-                if (cancelBtn) {
-                    cancelBtn.classList.remove('hidden');
-                    cancelBtn.innerText = "ЗАКРЫТЬ";
-                    cancelBtn.onclick = () => closeRelicPopover();
-                }
+                // close so choosing not to activate is never a dead end.
                 const effect = RELIC_EFFECTS[relic.id];
-                const ready = effect.isReady();
-                confirmBtn.innerText = effect.label;
-                confirmBtn.disabled = !ready;
-                confirmBtn.classList.toggle('opacity-40', !ready);
-                confirmBtn.onclick = () => {
-                    if (!RELIC_EFFECTS[relic.id].isReady()) return;
-                    closeRelicPopover();
-                    effect.onUse();
-                };
+                openModal({
+                    ...base,
+                    cancel: { label: "ЗАКРЫТЬ", onClick: () => closeRelicPopover() },
+                    confirm: {
+                        label: effect.label,
+                        disabled: !effect.isReady(),
+                        onClick: () => {
+                            if (!RELIC_EFFECTS[relic.id].isReady()) return;
+                            closeRelicPopover();
+                            effect.onUse();
+                        }
+                    }
+                });
             } else {
-                if (cancelBtn) {
-                    cancelBtn.classList.add('hidden');
-                    cancelBtn.onclick = null;
-                }
-                confirmBtn.innerText = "ПОНЯТНО";
-                confirmBtn.disabled = false;
-                confirmBtn.classList.remove('opacity-40');
-                confirmBtn.onclick = () => closeRelicPopover();
+                openModal({
+                    ...base,
+                    confirm: { label: "ПОНЯТНО", disabled: false, onClick: () => closeRelicPopover() }
+                });
             }
-
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
         }
 
         // Called at the end of every renderAll() so an open relic popover's
@@ -3321,76 +3308,84 @@
             });
         }
 
-        function showModal(title, text, onClose) {
+        // ---- Modal: one dialog (#msg-box), one way to open and close it ---------
+        // openModal() fully (re)configures the shared dialog every time, so state from
+        // whatever was shown before (a relic popover's backdrop handler, a disabled
+        // confirm button, a visible cancel button) can never leak into the next one.
+        //   title, text      the heading and the body
+        //   confirmLabel     label of the main button
+        //   onConfirm        called after the dialog closes itself on confirm
+        //   confirm          { label, disabled, onClick } to take over the main button
+        //                    entirely (no auto-close) — used by the relic popover
+        //   cancel           null (no cancel button) or { label, onClick } — the handler
+        //                    owns closing (use closeModal())
+        //   onBackdrop       called when the dimmed backdrop (not the card) is tapped
+        //   relicId          marks the dialog as that relic's popover (see
+        //                    refreshRelicPopoverIfOpen); anything else clears the mark
+        function openModal({ title, text, confirmLabel = "ПОНЯТНО", onConfirm = null,
+                             confirm = null, cancel = null, onBackdrop = null, relicId = null }) {
             const modal = document.getElementById('msg-box');
             if (!modal) return;
-            // This modal is shared with the relic popover — clear its state so a
-            // leftover backdrop-close handler or stale openRelicPopoverId from a
-            // previous relic view can't interfere with this dialog's own onClose.
-            openRelicPopoverId = null;
-            modal.onclick = null;
+            openRelicPopoverId = relicId;
+            modal.onclick = onBackdrop
+                ? (e) => { if (e.target === modal) onBackdrop(); }
+                : null;
             setElText('msg-title', title);
             setElText('msg-body', text);
-            
+
             const cancelBtn = document.getElementById('msg-btn-cancel');
             if (cancelBtn) {
-                cancelBtn.classList.add('hidden');
-                cancelBtn.onclick = null;
+                if (cancel) {
+                    cancelBtn.classList.remove('hidden');
+                    cancelBtn.innerText = cancel.label;
+                    cancelBtn.onclick = cancel.onClick;
+                } else {
+                    cancelBtn.classList.add('hidden');
+                    cancelBtn.onclick = null;
+                }
             }
 
             const confirmBtn = document.getElementById('msg-btn');
             if (confirmBtn) {
-                confirmBtn.innerText = "ПОНЯТНО";
-                confirmBtn.disabled = false;
-                confirmBtn.classList.remove('opacity-40');
-                confirmBtn.onclick = () => {
-                    modal.classList.add('hidden');
-                    modal.classList.remove('flex');
-                    if (onClose) onClose();
-                };
+                const disabled = !!(confirm && confirm.disabled);
+                confirmBtn.innerText = confirm ? confirm.label : confirmLabel;
+                confirmBtn.disabled = disabled;
+                confirmBtn.classList.toggle('opacity-40', disabled);
+                confirmBtn.onclick = confirm
+                    ? confirm.onClick
+                    : () => {
+                        closeModal();
+                        if (onConfirm) onConfirm();
+                    };
             }
 
             modal.classList.remove('hidden');
             modal.classList.add('flex');
         }
 
+        // Hides the dialog and drops its backdrop handler and relic-popover mark.
+        function closeModal() {
+            const modal = document.getElementById('msg-box');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                modal.onclick = null;
+            }
+            openRelicPopoverId = null;
+        }
+
+        function showModal(title, text, onClose) {
+            openModal({ title, text, confirmLabel: "ПОНЯТНО", onConfirm: onClose });
+        }
+
         // Same message box as showModal, but with a Cancel button shown
         // alongside the confirm action. Used for destructive/irreversible
         // choices like selling an artifact.
         function showConfirm(title, text, onConfirm) {
-            const modal = document.getElementById('msg-box');
-            if (!modal) return;
-            // Same reasoning as showModal(): reset relic-popover state so it
-            // can't leak into this dialog.
-            openRelicPopoverId = null;
-            modal.onclick = null;
-            setElText('msg-title', title);
-            setElText('msg-body', text);
-
-            const cancelBtn = document.getElementById('msg-btn-cancel');
-            if (cancelBtn) {
-                cancelBtn.classList.remove('hidden');
-                cancelBtn.innerText = "ОТМЕНА";
-                cancelBtn.onclick = () => {
-                    modal.classList.add('hidden');
-                    modal.classList.remove('flex');
-                };
-            }
-
-            const confirmBtn = document.getElementById('msg-btn');
-            if (confirmBtn) {
-                confirmBtn.innerText = "ПРОДАТЬ";
-                confirmBtn.disabled = false;
-                confirmBtn.classList.remove('opacity-40');
-                confirmBtn.onclick = () => {
-                    modal.classList.add('hidden');
-                    modal.classList.remove('flex');
-                    if (onConfirm) onConfirm();
-                };
-            }
-
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
+            openModal({
+                title, text, confirmLabel: "ПРОДАТЬ", onConfirm,
+                cancel: { label: "ОТМЕНА", onClick: () => closeModal() }
+            });
         }
 
         bindClick('btn-open-menu', () => {
@@ -5853,6 +5848,313 @@
                         assert.equal(run.gold, COIN_MAGNET_GOLD_PER_SIX, 'coin_magnet платит за шестёрку');
                     });
                     inGame({ relics: [] }, {}, () => assert.equal(fireHookSum('onEnemyTookCards'), 0));
+                });
+            });
+
+            runner.describe('8m. Этап 5 рефакторинга: рендер по частям, единый API модалок, playTone', (it, assert) => {
+                const C = (id, suit, value) => ({ id, suit, value });
+                const makeFixtureBattle = (overrides = {}) => Object.assign({
+                    drawDeck: [C('d1', 'Hearts', 6), C('d2', 'Pikes', 8)], discardPile: [],
+                    playerHand: [C('p1', 'Hearts', 7), C('p2', 'Pikes', 9)],
+                    enemyHand: [C('e1', 'Pikes', 10), C('e2', 'Hearts', 8), C('e3', 'Clubs', 6)],
+                    table: [], trumpCard: C('d1', 'Hearts', 6), trumpSuit: 'Hearts',
+                    defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                    cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                    jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                }, overrides);
+                const makeFixtureRun = (overrides = {}) => Object.assign({ floor: 1, playerHP: 30, maxHP: 30, gold: 7, relics: [], deck: generateStandardDeck() }, overrides);
+                const relicOf = (id) => Object.assign({}, ALL_RELICS.find(r => r.id === id));
+                const inGame = (runOv, battleOv, fn) => withIsolatedGameState(makeFixtureRun(runOv), makeFixtureBattle(battleOv), () => {
+                    try { fn(); } finally { closeModal(); }
+                });
+                const text = (id) => document.getElementById(id).innerText;
+
+                // ---- rendering ----
+                it('renderAll() — только порядок частей: вызывает каждый renderX() и обновление попапа релики, ничего больше', () => {
+                    const body = renderAll.toString();
+                    const calls = (body.match(/render[A-Z]\w*\(\)|refreshRelicPopoverIfOpen\(\)/g) || []).filter(c => c !== 'renderAll()');
+                    assert.equal(calls.join(), ['renderHeader()', 'renderTurnBanner()', 'renderEnemyHand()', 'renderDeck()', 'renderRelicsBar()',
+                        'renderTable()', 'renderPlayerHand()', 'renderActionButtons()', 'refreshRelicPopoverIfOpen()'].join());
+                    assert.isFalse(/getElementById|innerHTML|innerText|battle\.|run\./.test(body), 'renderAll не должен сам трогать DOM или состояние');
+                });
+
+                it('renderHeader(): HP, золото, этаж, HP врага', () => {
+                    inGame({ playerHP: 21, maxHP: 30, gold: 42, floor: 2 }, { enemyHP: 17 }, () => {
+                        renderHeader();
+                        assert.equal(text('player-hp-display'), '21/30');
+                        assert.equal(text('player-gold-display'), '42$');
+                        assert.equal(text('shop-hp-display'), '21/30');
+                        assert.equal(text('floor-display'), '2');
+                        assert.equal(text('enemy-hp'), '17');
+                    });
+                });
+
+                it('renderTurnBanner(): три состояния — атака, враг берёт, защита, выбор перевода', () => {
+                    inGame({}, { defender: 'enemy' }, () => {
+                        renderTurnBanner();
+                        assert.equal(text('turn-banner'), 'Ваш ход: Атака');
+                        assert.isTrue(document.getElementById('turn-banner').className.includes('turn-banner-amber'));
+                        battle.cardsToTake = true; renderTurnBanner();
+                        assert.isTrue(text('turn-banner').includes('забирает'));
+                        battle.defender = 'player'; battle.cardsToTake = false; renderTurnBanner();
+                        assert.isTrue(document.getElementById('turn-banner').className.includes('turn-banner-rose'));
+                        battle.isTransferActive = true; renderTurnBanner();
+                        assert.isTrue(document.getElementById('turn-banner').className.includes('turn-banner-indigo'));
+                    });
+                });
+
+                it('renderEnemyHand(): рубашки по числу карт; cheat_eye открывает ровно одну — слабейшую', () => {
+                    inGame({ relics: [] }, {}, () => {
+                        renderEnemyHand();
+                        assert.equal(document.getElementById('enemy-hand-visual').children.length, 3);
+                        assert.equal(text('enemy-card-count'), '3');
+                        assert.equal(document.querySelectorAll('#enemy-hand-visual .bg-amber-50').length, 0, 'без cheat_eye открытых карт нет');
+                    });
+                    inGame({ relics: [relicOf('cheat_eye')] }, {}, () => {
+                        renderEnemyHand();
+                        assert.equal(document.getElementById('enemy-hand-visual').children.length, 3);
+                        assert.equal(document.querySelectorAll('#enemy-hand-visual .bg-amber-50').length, 1);
+                    });
+                });
+
+                it('renderDeck(): колода с козырем; пустая колода — подпись «Козырь»', () => {
+                    inGame({}, {}, () => {
+                        renderDeck();
+                        assert.isTrue(document.getElementById('deck-container').innerHTML.includes('2 шт'));
+                        battle.drawDeck = [];
+                        renderDeck();
+                        assert.isTrue(document.getElementById('deck-container').innerHTML.includes('Козырь:'));
+                    });
+                });
+
+                it('renderRelicsBar(): MAX_RELICS слотов, занятые и пустые; счётчик; готовая активная реликвия светится', () => {
+                    inGame({ relics: [relicOf('pocket_discard')] }, { playerHand: [C('p1', 'Hearts', 6)], defender: 'enemy' }, () => {
+                        renderRelicsBar();
+                        const slots = document.getElementById('relics-bar').children;
+                        assert.equal(slots.length, MAX_RELICS);
+                        assert.isTrue(slots[0].className.includes('relic-slot-filled') && slots[1].className.includes('relic-slot-empty'));
+                        assert.equal(text('relic-count'), '1/' + MAX_RELICS);
+                        assert.isTrue(slots[0].className.includes('relic-ready-glow'), 'есть шестёрка в руке — релика готова');
+                        battle.playerHand = [C('p1', 'Hearts', 9)];
+                        renderRelicsBar();
+                        assert.isFalse(document.getElementById('relics-bar').children[0].className.includes('relic-ready-glow'));
+                    });
+                });
+
+                it('renderTable() / renderPlayerHand(): пары на столе и рука игрока', () => {
+                    inGame({}, { table: [{ attack: C('a1', 'Pikes', 7), defend: C('b1', 'Pikes', 10) }, { attack: C('a2', 'Hearts', 8), defend: null }] }, () => {
+                        renderTable();
+                        assert.equal(document.getElementById('table-pairs').children.length, 2);
+                        renderPlayerHand();
+                        assert.equal(document.getElementById('player-hand').children.length, 2);
+                    });
+                });
+
+                it('renderActionButtons(): БИТО/ВЗЯТЬ/ПЕРЕВОД включаются по фазе и столу', () => {
+                    inGame({}, { defender: 'enemy', phase: BATTLE_PHASES.PLAYER_ATTACK, table: [] }, () => {
+                        renderActionButtons();
+                        assert.isTrue(document.getElementById('btn-action').disabled, 'нечем бито при пустом столе');
+                        assert.isTrue(document.getElementById('btn-take').disabled);
+                        battle.table = [{ attack: C('a1', 'Pikes', 7), defend: null }];
+                        renderActionButtons();
+                        assert.isFalse(document.getElementById('btn-action').disabled);
+                        battle.phase = BATTLE_PHASES.AI_WAITING;
+                        renderActionButtons();
+                        assert.isTrue(document.getElementById('btn-action').disabled, 'пока ходит ИИ, БИТО недоступно');
+                        battle.phase = BATTLE_PHASES.PLAYER_ATTACK;
+                        battle.defender = 'player'; battle.phase = BATTLE_PHASES.PLAYER_DEFENSE;
+                        renderActionButtons();
+                        assert.isFalse(document.getElementById('btn-take').disabled, 'защитник может взять');
+                        assert.isTrue(document.getElementById('btn-action').disabled, 'есть непобитая атака — бито нельзя');
+                    });
+                });
+
+                // ---- modals ----
+                it('openModal(): заголовок, текст, кнопки; подтверждение закрывает окно и вызывает onConfirm', () => {
+                    inGame({}, {}, () => {
+                        let confirmed = 0;
+                        openModal({ title: 'Заголовок', text: 'Текст', confirmLabel: 'ДА', onConfirm: () => confirmed++ });
+                        const box = document.getElementById('msg-box');
+                        assert.isTrue(!box.classList.contains('hidden') && box.classList.contains('flex'));
+                        assert.equal(text('msg-title'), 'Заголовок');
+                        assert.equal(text('msg-body'), 'Текст');
+                        assert.equal(document.getElementById('msg-btn').innerText, 'ДА');
+                        assert.isTrue(document.getElementById('msg-btn-cancel').classList.contains('hidden'), 'без cancel кнопка отмены скрыта');
+                        document.getElementById('msg-btn').click();
+                        assert.equal(confirmed, 1);
+                        assert.isTrue(box.classList.contains('hidden'));
+                    });
+                });
+
+                it('openModal(): состояние прошлого окна не утекает — отмена, disabled, обработчик фона, метка релики', () => {
+                    inGame({ relics: [relicOf('pocket_discard')] }, {}, () => {
+                        showRelicPopover('pocket_discard'); // отключённая/активная кнопка, ЗАКРЫТЬ, обработчик фона, метка релики
+                        const box = document.getElementById('msg-box');
+                        assert.isTrue(!!box.onclick && !document.getElementById('msg-btn-cancel').classList.contains('hidden'));
+                        showModal('Обычное', 'окно');
+                        assert.isTrue(box.onclick === null, 'обработчик фона должен сброситься');
+                        assert.isTrue(document.getElementById('msg-btn-cancel').classList.contains('hidden'));
+                        assert.isFalse(document.getElementById('msg-btn').disabled);
+                        assert.isFalse(document.getElementById('msg-btn').classList.contains('opacity-40'));
+                        assert.equal(document.getElementById('msg-btn').innerText, 'ПОНЯТНО');
+                        assert.isTrue(openRelicPopoverId === null, 'метка попапа релики должна сброситься');
+                    });
+                });
+
+                it('showConfirm(): отмена закрывает без onConfirm, подтверждение — с ним', () => {
+                    inGame({}, {}, () => {
+                        let sold = 0;
+                        showConfirm('Продать?', 'точно', () => sold++);
+                        assert.equal(document.getElementById('msg-btn').innerText, 'ПРОДАТЬ');
+                        assert.equal(document.getElementById('msg-btn-cancel').innerText, 'ОТМЕНА');
+                        document.getElementById('msg-btn-cancel').click();
+                        assert.equal(sold, 0);
+                        assert.isTrue(document.getElementById('msg-box').classList.contains('hidden'));
+                        showConfirm('Продать?', 'точно', () => sold++);
+                        document.getElementById('msg-btn').click();
+                        assert.equal(sold, 1);
+                    });
+                });
+
+                it('closeModal(): скрывает окно, снимает обработчик фона и метку попапа релики', () => {
+                    inGame({ relics: [relicOf('pocket_discard')] }, {}, () => {
+                        showRelicPopover('pocket_discard');
+                        assert.equal(openRelicPopoverId, 'pocket_discard');
+                        closeModal();
+                        assert.isTrue(document.getElementById('msg-box').classList.contains('hidden'));
+                        assert.isTrue(document.getElementById('msg-box').onclick === null);
+                        assert.isTrue(openRelicPopoverId === null);
+                    });
+                });
+
+                it('Попап релики: активная — две кнопки, «активировать» недоступна пока релика не готова; обычная — одна ПОНЯТНО', () => {
+                    inGame({ relics: [relicOf('pocket_discard'), relicOf('cheat_eye')] }, { playerHand: [C('p1', 'Hearts', 9)] }, () => {
+                        showRelicPopover('pocket_discard');
+                        assert.isTrue(document.getElementById('msg-btn').disabled, 'нет 6/7 в руке');
+                        assert.isTrue(document.getElementById('msg-btn').classList.contains('opacity-40'));
+                        assert.equal(document.getElementById('msg-btn-cancel').innerText, 'ЗАКРЫТЬ');
+                        battle.playerHand = [C('p1', 'Hearts', 6)];
+                        refreshRelicPopoverIfOpen();
+                        assert.isFalse(document.getElementById('msg-btn').disabled, 'попап обновляется вслед за состоянием игры');
+                        showRelicPopover('cheat_eye');
+                        assert.equal(document.getElementById('msg-btn').innerText, 'ПОНЯТНО');
+                        assert.isTrue(document.getElementById('msg-btn-cancel').classList.contains('hidden'));
+                    });
+                });
+
+                it('Попап релики закрывается сам, когда релика исчезла из run.relics', () => {
+                    inGame({ relics: [relicOf('pocket_discard')] }, {}, () => {
+                        showRelicPopover('pocket_discard');
+                        run.relics = [];
+                        refreshRelicPopoverIfOpen();
+                        assert.isTrue(document.getElementById('msg-box').classList.contains('hidden'));
+                        assert.isTrue(openRelicPopoverId === null);
+                    });
+                });
+
+                it('Нет ручного скрытия #msg-box вне closeModal(): классы hidden/flex модалки меняют только openModal/closeModal', () => {
+                    const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
+                    const prod = fullSource.slice(0, fullSource.indexOf('class TinyTestRunner'));
+                    const hides = prod.match(/modal\.classList\.add\('hidden'\)/g) || [];
+                    assert.equal(hides.length, 1, 'ожидается ровно одно место, где окно скрывается (closeModal): ' + hides.length);
+                });
+
+                // ---- audio ----
+                const makeFakeCtx = () => {
+                    const calls = [];
+                    const param = (tag) => ({
+                        setValueAtTime: (v, t) => calls.push([tag, 'set', v, t]),
+                        exponentialRampToValueAtTime: (v, t) => calls.push([tag, 'exp', v, t]),
+                        linearRampToValueAtTime: (v, t) => calls.push([tag, 'lin', v, t])
+                    });
+                    const ctx = {
+                        currentTime: 2, state: 'running', destination: {},
+                        createOscillator() {
+                            const o = { frequency: param('freq'), connect() {}, start: (t) => calls.push(['start', t]), stop: (t) => calls.push(['stop', t]) };
+                            Object.defineProperty(o, 'type', { set: (v) => calls.push(['type', v]) });
+                            return o;
+                        },
+                        createGain() { return { gain: param('gain'), connect() {} }; }
+                    };
+                    return { ctx, calls };
+                };
+                const withFakeAudio = (fn) => {
+                    const saved = { ctx: audio.ctx, muted: audio.isMuted };
+                    const fake = makeFakeCtx();
+                    audio.ctx = fake.ctx; audio.isMuted = false;
+                    try { fn(fake.calls); } finally { audio.ctx = saved.ctx; audio.isMuted = saved.muted; }
+                };
+
+                it('playTone(): осциллятор + огибающая громкости; экспоненциальная/линейная рампа; delay сдвигает всё', () => {
+                    withFakeAudio((calls) => {
+                        audio.playTone({ type: 'sawtooth', freq: 160, freqEnd: 75, gain: 0.3, gainEnd: 0.01, duration: 0.18, immediate: true });
+                        assert.equal(JSON.stringify(calls), JSON.stringify([
+                            ['type', 'sawtooth'], ['freq', 'set', 160, 2], ['freq', 'lin', 75, 2.18],
+                            ['gain', 'set', 0.3, 2], ['gain', 'lin', 0.01, 2.18], ['start', undefined], ['stop', 2.18]]));
+                        calls.length = 0;
+                        audio.playTone({ freq: 440, gain: 0.2, gainEnd: 0.005, gainRamp: 'exponential', duration: 0.5, delay: 1 });
+                        assert.equal(JSON.stringify(calls), JSON.stringify([
+                            ['type', 'triangle'], ['freq', 'set', 440, 3], ['gain', 'set', 0.2, 3], ['gain', 'exp', 0.005, 3.5], ['start', 3], ['stop', 3.5]]));
+                    });
+                });
+
+                it('Звуки: точные параметры тонов карты, взятия и первой ноты победы (форма волны, частоты, огибающая)', () => {
+                    const expectCalls = (play, expected) => withFakeAudio((calls) => {
+                        play();
+                        assert.equal(JSON.stringify(calls), JSON.stringify(expected));
+                    });
+                    expectCalls(() => audio.playCardSound(), [
+                        ['type', 'triangle'], ['freq', 'set', 220, 2], ['freq', 'exp', 70, 2.09],
+                        ['gain', 'set', 0.4, 2], ['gain', 'lin', 0.01, 2.09], ['start', undefined], ['stop', 2.09]]);
+                    expectCalls(() => audio.playTakeSound(), [
+                        ['type', 'sawtooth'], ['freq', 'set', 160, 2], ['freq', 'lin', 75, 2.18],
+                        ['gain', 'set', 0.3, 2], ['gain', 'lin', 0.01, 2.18], ['start', undefined], ['stop', 2.18]]);
+                    withFakeAudio((calls) => {
+                        audio.playWinSound();
+                        assert.equal(JSON.stringify(calls.slice(0, 6)), JSON.stringify([
+                            ['type', 'triangle'], ['freq', 'set', 261.63, 2],
+                            ['gain', 'set', 0.3, 2], ['gain', 'lin', 0.01, 2.25], ['start', 2], ['stop', 2.25]]));
+                    });
+                });
+
+                it('Звуки: карта — 1 тон, взятие — 1 тон, победа — 4 ноты по возрастанию; без звука при mute и без AudioContext', () => {
+                    const countTones = (fn) => { let n = 0; withFakeAudio((calls) => { fn(); n = calls.filter(c => c[0] === 'start').length; }); return n; };
+                    assert.equal(countTones(() => audio.playCardSound()), 1);
+                    assert.equal(countTones(() => audio.playTakeSound()), 1);
+                    withFakeAudio((calls) => {
+                        audio.playWinSound();
+                        const freqs = calls.filter(c => c[0] === 'freq' && c[1] === 'set').map(c => c[2]);
+                        const starts = calls.filter(c => c[0] === 'start').map(c => c[1]);
+                        assert.equal(freqs.length, 4);
+                        assert.isTrue(freqs.every((f, i) => i === 0 || f > freqs[i - 1]), 'арпеджио вверх');
+                        assert.equal(starts.map(t => +t.toFixed(2)).join(), '2,2.1,2.2,2.3');
+                    });
+                    withFakeAudio((calls) => {
+                        audio.isMuted = true;
+                        audio.playCardSound(); audio.playWinSound(); audio.playTakeSound();
+                        assert.equal(calls.length, 0, 'при mute — тишина');
+                    });
+                    const savedCtx = audio.ctx, savedMuted = audio.isMuted, realAC = window.AudioContext, realWAC = window.webkitAudioContext;
+                    try {
+                        audio.ctx = null; audio.isMuted = false; window.AudioContext = undefined; window.webkitAudioContext = undefined;
+                        audio.playCardSound(); audio.playWinSound(); audio.playTakeSound(); // не должны бросать
+                    } finally { audio.ctx = savedCtx; audio.isMuted = savedMuted; window.AudioContext = realAC; window.webkitAudioContext = realWAC; }
+                });
+
+                it('playTone(): сбой Web Audio не бросает исключение (звук просто пропадает)', () => {
+                    const saved = { ctx: audio.ctx, muted: audio.isMuted };
+                    audio.ctx = { currentTime: 0, state: 'running', createOscillator() { throw new Error('boom'); }, createGain() { return {}; } };
+                    audio.isMuted = false;
+                    try { audio.playCardSound(); audio.playTone({ freq: 1, gain: 1, gainEnd: 0.1, duration: 1 }); }
+                    finally { audio.ctx = saved.ctx; audio.isMuted = saved.muted; }
+                });
+
+                it('В SoundEngine createOscillator вызывается только из playTone()', () => {
+                    const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
+                    const prod = fullSource.slice(0, fullSource.indexOf('class TinyTestRunner'));
+                    const uses = prod.match(/createOscillator\(\)/g) || [];
+                    assert.equal(uses.length, 1, 'осцилляторы создаются в одном месте: ' + uses.length);
                 });
             });
 
