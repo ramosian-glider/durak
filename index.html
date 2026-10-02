@@ -519,6 +519,36 @@
     </div>
 
     <script>
+
+        // --- File map (top to bottom) ---
+        //   1. CONSTANTS AND STATIC DATA
+        //   2. DOM HELPERS
+        //   3. AUDIO
+        //   4. GAME STATE
+        //   5. BATTLE INVARIANTS
+        //   6. PERSISTENCE
+        //   7. CARD / TABLE PRIMITIVES
+        //   8. RULES (PURE FUNCTIONS)
+        //   9. BATTLE STATE TRANSITIONS
+        //  10. ENEMY AI
+        //  11. RELICS
+        //  12. SHOP
+        //  13. RENDERING
+        //  14. MODALS AND POPOVERS
+        //  15. EVENT BINDINGS
+        //  then, after the production code: the TEST FRAMEWORK, TEST HELPERS and the TESTS.
+        // Sections are physical only (one file, no modules): functions are hoisted, so within
+        // the production code only the load-time statements (consts, `let` state, the
+        // bindClick() calls at the very end) depend on order.
+        // -------------------------
+
+        // ============================================================
+        // CONSTANTS AND STATIC DATA
+        // ------------------------------------------------------------
+        // Tunable numbers, card/suit tables, the relic catalogue and the enemy ladder.
+        // Everything here is plain data: no function in this section touches `run` or `battle`.
+        // ============================================================
+
         // --- Code conventions ---
         // - Comments: English only.
         // - User-facing strings (UI text, test names/labels shown in the test panel) stay
@@ -526,6 +556,7 @@
         // -------------------------
 
         const SAVE_KEY = 'fools_deck_local_run';
+
         const SAVE_VERSION = 2;
 
         // Battle fields that should not be persisted (runtime-only)
@@ -546,6 +577,252 @@
             'pocketDiscardUsedThisRound'
         ]);
 
+        const SUITS = { Pikes: '♠', Hearts: '♥', Tiles: '♦', Clovers: '♣' };
+
+        const SUIT_COLORS = { Pikes: 'text-slate-900', Clovers: 'text-slate-900', Hearts: 'text-rose-600', Tiles: 'text-rose-600' };
+
+        const VALUES = { 6:'6', 7:'7', 8:'8', 9:'9', 10:'10', 11:'В', 12:'Д', 13:'К', 14:'Т' };
+
+        const MIN_CARD_VALUE = 6;
+
+        const ACE_VALUE = 14;
+
+        // New-run starting stats.
+        const START_PLAYER_HP = 30;
+
+        const START_GOLD = 15;
+
+        // cardPower(): any trump outranks every non-trump (values top out at ACE_VALUE).
+        const TRUMP_POWER_BONUS = 100;
+
+        const HAND_SIZE = 6;
+
+        const MAX_RELICS = 5;
+
+        const BASE_THROW_LIMIT = 6;
+
+        const AGGRESSIVE_THROW_BOSS_LIMIT = 8;
+
+        const EMPTY_HAND_BASE_DAMAGE = 6;
+
+        const EMPTY_HAND_DAMAGE_PER_CARD = 4;
+
+        const TAKE_DAMAGE_PER_CARD = 2;
+
+        const ACE_SLEEVE_BONUS_DAMAGE = 5;
+
+        const BOSS_MAX_HP_BONUS = 5;
+
+        const MIDAS_TOUCH_GOLD_ON_DEFEND = 3;
+
+        const BALLAST_DROP_DISCARD_COUNT = 2;
+
+        const WIN_GOLD_BASE = 10;
+
+        const WIN_GOLD_PER_FLOOR = 2;
+
+        // How many cards "over" the normal hand size still count toward relics
+        // that punish a bloated enemy hand (heavy_ballast, salted_wound). The
+        // enemy's real hand is never capped — only the damage math is.
+        const ENEMY_HAND_EXCESS_CAP = 4;
+
+        const HEAVY_BALLAST_DAMAGE_PER_CARD = 1;
+
+        const SALTED_WOUND_DAMAGE_PER_CARD = 1;
+
+        const CASCADE_TRANSFER_DAMAGE = 4;
+
+        const COIN_MAGNET_GOLD_PER_SIX = 1;
+
+        const SHARP_SUIT_DAMAGE = 1;
+
+        const MIRROR_RING_MULTIPLIER = 1;
+
+        // How long a relic's slot in the relics bar stays visually highlighted
+        // after one of its hooks fires successfully (see highlightRelic()).
+        const RELIC_HIGHLIGHT_DURATION_MS = 700;
+
+        // Slack added before the repaint that clears a highlight, so it fires after expiry.
+        const RELIC_HIGHLIGHT_REPAINT_PAD_MS = 20;
+
+        // pocket_discard may drop a card of either of these values.
+        const POCKET_DISCARD_VALUES = [6, 7];
+
+        // Shop: one heal potion.
+        const HEAL_COST = 10;
+
+        const HEAL_AMOUNT = 10;
+
+        const AI_QUICK_DELAY_MS = 400;
+
+        const AI_STANDARD_DELAY_MS = 500;
+
+        const AI_TAKE_RESOLVE_DELAY_MS = 600;
+
+        const AI_POST_THROW_DELAY_MS = 700;
+
+        const ALL_RELICS = [
+            { id: "ace_sleeve", name: "Туз в рукаве", icon: "🃏", desc: "Заставление врага взять карты наносит +5 ед. дополнительного урона.", price: 12 },
+            { id: "midas_touch", name: "Золотое пальто", icon: "🪙", desc: "Получайте +3$ каждый раз, когда успешно отбиваетесь.", price: 10 },
+            { id: "mirror_ring", name: "Зеркальный перстень", icon: "💍", desc: "Когда вы берете карты со стола, враг получает 2 урона за каждую взятую карту.", price: 14 },
+            { id: "cheat_eye", name: "Шулерский глаз", icon: "👁️", desc: "Показывает вам наименьшую карту в руке соперника.", price: 8 },
+            { id: "pocket_discard", name: "Карманный сброс", icon: "✂️", desc: "Раз за раунд можно безвозвратно сбросить из руки шестёрку или семёрку прямо в отбой.", price: 7 },
+            { id: "spam_mail", name: "Спам-рассылка", icon: "✉️", desc: "Когда враг забирает карты со стола, он дополнительно берёт верхнюю карту из колоды.", price: 9 },
+            { id: "heavy_ballast", name: "Тяжёлый балласт", icon: "⚓", desc: "В начале хода врага он получает урон за каждую карту в руке сверх 6 штук (не больше 4 ед.).", price: 13 },
+            { id: "ballast_drop", name: "Сброс балласта", icon: "🪂", desc: "При взятии карт со стола вы сразу сбрасываете в отбой 2 некозырные карты наименьшего ранга.", price: 10 },
+            { id: "coin_magnet", name: "Магнит для мелочи", icon: "🧲", desc: "Каждая сыгранная шестёрка (подкинутая или отбитая) приносит +1$.", price: 8 },
+            { id: "safety_rope", name: "Страховочный трос", icon: "🪢", desc: "При смертельном уроне вы выживаете с 1 HP и стол очищается (срабатывает 1 раз за забег).", price: 18 },
+            { id: "jester_discard", name: "Шутовской сброс", icon: "🃏", desc: "Раз за бой на своём ходу атаки можно сбросить всю руку и добрать столько же карт из колоды.", price: 9 },
+            { id: "cascade_transfer", name: "Каскадный перевод", icon: "🌊", desc: "Первый перевод карт за ход наносит врагу 4 ед. урона.", price: 11 },
+            { id: "sleight_of_hand", name: "Ловкость рук", icon: "🪄", desc: "Раз за бой можно заменить карту, которой враг пошёл на вас, случайной картой из колоды.", price: 12 },
+            { id: "salted_wound", name: "Солёная рана", icon: "🧂", desc: "Если враг берёт карты со стола, он получает +1 ед. урона за каждую карту сверх 6 в его руке (не больше 4 ед.).", price: 10 },
+            { id: "sharp_suit", name: "Острая масть", icon: "🗡️", desc: "Каждый раз, когда вы отбиваетесь козырной картой, враг получает 1 ед. урона.", price: 9 }
+        ];
+
+        // --- Enemy ladder ------------------------------------------------------------
+        // Everything you need to edit when adding/removing/swapping enemies lives in
+        // the two lists below. Floor numbers, filler HP between bosses, and whether a
+        // boss's ability "stays unlocked forever" are all computed by
+        // buildEnemyLadder(), so nothing here needs to be maintained by hand.
+
+        // Pool of filler enemies (no special ability, clones of the basic Sharper).
+        // buildEnemyLadder hands them out in order and, once it runs out of
+        // templates, loops back to the start of the pool.
+        const FILLER_POOL = [
+            { name: "Начинающий Шулер", avatar: "🙂" },
+            { name: "Уличный Мошенник", avatar: "🧔" },
+            { name: "Карточный Жучок", avatar: "🧑‍🦱" },
+            { name: "Барный Хитрец", avatar: "🍻" },
+            { name: "Ловкий Карманник", avatar: "🧤" },
+            { name: "Азартный Игрок", avatar: "🎲" },
+            { name: "Матёрый Катала", avatar: "🎰" },
+            { name: "Теневой Подручный", avatar: "🕶️" },
+        ];
+
+        // Named bosses, in the order they appear. Each one can specify:
+        //   fillersBefore    — how many filler enemies to place right before it;
+        //   fillerHpRange    — [HP of first filler, HP of last filler] before it
+        //                      (HP of the ones in between is linearly interpolated);
+        //   permanentAbility — true if, once this boss's ability is encountered, it
+        //                     should stay active on EVERY later enemy (a permanent
+        //                     difficulty ratchet, not a one-off mechanic).
+        const BOSS_ROSTER = [
+            {
+                name: "Карточный Трактирщик", hp: 30, avatar: "🍺",
+                abilityId: "no_transfer", abilityDesc: "Запрет на Перевод карт",
+                fillersBefore: 2, fillerHpRange: [12, 18],
+            },
+            {
+                name: "Фаворит Казино", hp: 40, avatar: "🎩",
+                abilityId: "ai_transfer", abilityDesc: "Умеет Переводить ваши атаки",
+                fillersBefore: 2, fillerHpRange: [24, 32],
+                permanentAbility: true, // с этого момента переводить умеют все противники
+            },
+            {
+                name: "Основатель Синдиката", hp: 55, avatar: "🕵️",
+                abilityId: "aggressive_throw", abilityDesc: "Агрессивно подкидывает до 8 карт",
+                fillersBefore: 2, fillerHpRange: [38, 46],
+            },
+            {
+                name: "Тень (Финальный БОСС)", hp: 75, avatar: "👑",
+                abilityId: "double_penalty", abilityDesc: "Удвоенный урон игроку при взятии карт",
+                fillersBefore: 2, fillerHpRange: [50, 62],
+            },
+        ];
+
+        // Builds the flat ENEMIES list from BOSS_ROSTER/FILLER_POOL. No other part of
+        // the code should need to know specific floor numbers — it should look at
+        // enemyData.floor and enemyData.activeAbilities instead.
+        function buildEnemyLadder(bossRoster, fillerPool) {
+            const ladder = [];
+            let fillerCursor = 0;
+            // level starts at 1 and increases by 1 after each boss: the fillers
+            // before a boss share that boss's level (e.g. the first boss and the
+            // two fillers before it are all level 1).
+            let level = 1;
+
+            bossRoster.forEach(boss => {
+                const fillersBefore = boss.fillersBefore || 0;
+                const [hpFrom, hpTo] = boss.fillerHpRange || [boss.hp, boss.hp];
+
+                for (let i = 0; i < fillersBefore; i++) {
+                    const template = fillerPool[fillerCursor % fillerPool.length];
+                    fillerCursor++;
+                    const t = fillersBefore > 1 ? i / (fillersBefore - 1) : 1;
+                    const hp = Math.round(hpFrom + (hpTo - hpFrom) * t);
+                    ladder.push({
+                        name: template.name, avatar: template.avatar, hp,
+                        abilityId: "none", abilityDesc: "Стандартный противник",
+                        level,
+                    });
+                }
+
+                ladder.push({
+                    name: boss.name, hp: boss.hp, avatar: boss.avatar,
+                    abilityId: boss.abilityId, abilityDesc: boss.abilityDesc,
+                    isBoss: true, permanentAbility: !!boss.permanentAbility,
+                    level,
+                });
+
+                level++;
+            });
+
+            // Assign floor numbers and the set of abilities "accumulated" by this
+            // floor (its own, plus every earlier boss's permanentAbility).
+            const unlockedForever = new Set();
+            ladder.forEach((enemy, idx) => {
+                enemy.floor = idx + 1;
+                if (enemy.permanentAbility) unlockedForever.add(enemy.abilityId);
+                enemy.activeAbilities = new Set(unlockedForever);
+                if (enemy.abilityId !== "none") enemy.activeAbilities.add(enemy.abilityId);
+            });
+
+            return ladder;
+        }
+
+        const ENEMIES = buildEnemyLadder(BOSS_ROSTER, FILLER_POOL);
+
+        const BATTLE_PHASES = Object.freeze({
+            IDLE: 'idle',
+            PLAYER_ATTACK: 'player_attack',
+            PLAYER_DEFENSE: 'player_defense',
+            AI_WAITING: 'ai_waiting',
+            RESOLVING: 'resolving',
+            ROUND_OVER: 'round_over',
+            BATTLE_OVER: 'battle_over'
+        });
+
+        // Phases in which a round is still being played (as opposed to the round or
+        // battle already being resolved). Used by the save validator's round-end
+        // invariant — see isImpossibleActiveBattleState().
+        const ACTIVE_BATTLE_PHASES = Object.freeze([
+            BATTLE_PHASES.PLAYER_ATTACK,
+            BATTLE_PHASES.PLAYER_DEFENSE,
+            BATTLE_PHASES.AI_WAITING,
+            BATTLE_PHASES.RESOLVING
+        ]);
+
+        const TRANSFER_BLOCK_MESSAGES = {
+            boss_block: ["Перевод заблокирован", "Трактирщик запрещает переводить карты на этом этаже!"],
+            already_defending: ["Перевод невозможен", "Нельзя переводить ход, если вы уже начали отбиваться!"],
+            mixed_ranks: ["Перевод невозможен", "Переводить можно только карты одинакового достоинства!"],
+            no_matching_card: ["Перевод невозможен", null],
+            enemy_hand_too_small: ["Перевод невозможен", "У противника недостаточно карт на руках, чтобы принять перевод!"]
+        };
+
+        // The active (button-triggered) relic abilities. Each has an
+        // isReady/label/onUse entry in RELIC_EFFECTS — this list is what makes
+        // showRelicPopover() decide whether to offer an activate button at all,
+        // and what makes a relic's relics-bar slot get the "ready to tap"
+        // .relic-ready-glow ring.
+        const ACTIVE_RELIC_IDS = ['pocket_discard', 'jester_discard', 'sleight_of_hand'];
+
+        // ============================================================
+        // DOM HELPERS
+        // ------------------------------------------------------------
+        // Tiny wrappers over getElementById used throughout.
+        // ============================================================
+
         function setElText(id, text) {
             const el = document.getElementById(id);
             if (el) el.innerText = text;
@@ -556,290 +833,11 @@
             if (el) el.onclick = handler;
         }
 
-        function updateSaveStatus(text) {
-            setElText('save-status-text', text);
-        }
-
-        /**
-         * Builds the save payload from the live run/battle. Only the fields listed in
-         * BATTLE_SAVED_FIELDS are copied (an allow-list, not "everything except the
-         * runtime fields"), so new runtime state can never leak into a save by accident.
-         * Pure: reads run/battle, mutates nothing, touches no storage.
-         */
-        function serializeGameState() {
-            const battleSnapshot = {};
-            for (const key of BATTLE_SAVED_FIELDS) {
-                if (key in battle) battleSnapshot[key] = battle[key];
-            }
-            return {
-                version: SAVE_VERSION,
-                run: run,
-                battle: battleSnapshot,
-                savedAt: new Date().toISOString()
-            };
-        }
-
-        /**
-         * Saves the full game state: run progress (run) and the current battle (battle).
-         * What gets written is decided by serializeGameState(); the aiTimer and
-         * actionToken fields are never persisted — they are reset on load.
-         */
-        function saveGameState() {
-            try {
-                localStorage.setItem(SAVE_KEY, JSON.stringify(serializeGameState()));
-                updateSaveStatus("Сохранено");
-            } catch (err) {
-                console.warn("Local storage unavailable:", err);
-                updateSaveStatus("Сессия");
-            }
-        }
-
-        /**
-         * Checks that a parsed save is not just present, but internally consistent
-         * enough to safely resume from. A save can pass the version/shape check and
-         * still be broken — e.g. a merge that changed the run/battle shape without
-         * bumping SAVE_VERSION, or a save written mid-mutation — so this does real
-         * structural + sanity checks, not just "the keys exist".
-         *
-         * The rules live in two focused validators — validateRunState() and
-         * validateBattleState() — so each can be read, tested and extended on its
-         * own; this function only checks the envelope (version) and combines them.
-         *
-         * Read-only — safe to call from hasSavedGame() (no load/mutation) as well as
-         * loadGameState().
-         */
-        function validateSaveData(parsed) {
-            if (!parsed || parsed.version !== SAVE_VERSION) return false;
-            return validateRunState(parsed.run) && validateBattleState(parsed.battle);
-        }
-
-        /**
-         * Structural + sanity checks for the persisted run (floor, HP, gold, relics,
-         * deck). Pure and read-only; returns true when the run is safe to resume.
-         */
-        function validateRunState(savedRun) {
-            if (!savedRun || typeof savedRun !== 'object') return false;
-
-            if (!Number.isFinite(savedRun.floor) || savedRun.floor < 1 || savedRun.floor > ENEMIES.length) return false;
-            if (!Number.isFinite(savedRun.maxHP) || savedRun.maxHP <= 0) return false;
-            if (!Number.isFinite(savedRun.playerHP) || savedRun.playerHP < 0 || savedRun.playerHP > savedRun.maxHP) return false;
-            if (!Number.isFinite(savedRun.gold) || savedRun.gold < 0) return false;
-            if (!Array.isArray(savedRun.relics)) return false;
-            if (!Array.isArray(savedRun.deck) || savedRun.deck.length === 0) return false;
-
-            return true;
-        }
-
-        /**
-         * The round-end invariant, named: true when a battle sits in an ACTIVE phase
-         * while the round-end condition already holds (draw deck AND table both empty,
-         * and at least one hand empty).
-         *
-         * checkRoundEnd() ends the round the instant that condition becomes true, so
-         * the game would have resolved win/loss/draw before the next autosave — a
-         * state like this can never be produced by normal play. Seeing it anyway (as
-         * in the reported bug: an empty player hand during "Ваш ход: Атака") means the
-         * save is inconsistent, not just old. In non-active phases (ROUND_OVER,
-         * BATTLE_OVER, IDLE) the very same card layout is legitimate.
-         *
-         * Expects a structurally valid battle (the array fields and `phase` present);
-         * validateBattleState() runs its structural checks first. Pure and read-only.
-         */
-        function isImpossibleActiveBattleState(savedBattle) {
-            if (!ACTIVE_BATTLE_PHASES.includes(savedBattle.phase)) return false;
-
-            const deckAndTableEmpty = savedBattle.drawDeck.length === 0 && savedBattle.table.length === 0;
-            const aHandIsEmpty = savedBattle.playerHand.length === 0 || savedBattle.enemyHand.length === 0;
-            return deckAndTableEmpty && aHandIsEmpty;
-        }
-
-        // ---- Battle invariants -------------------------------------------------
-        // Small, pure checkers: each takes a battle-shaped object and returns a list
-        // of human-readable violations ([] = fine). They expect the array fields to
-        // be arrays (validateBattleState() checks that first); getBattleInvariantViolations()
-        // combines them. Used by the save validator and, in dev/test mode, by
-        // assertBattleState() after every commit.
-
-        // A player phase and the defender role must agree: PLAYER_ATTACK <=> the
-        // enemy defends, PLAYER_DEFENSE <=> the player defends. (AI_WAITING and the
-        // transient/terminal phases can legitimately go with either role.)
-        function checkBattlePhaseInvariants(b) {
-            const violations = [];
-            if (!Object.values(BATTLE_PHASES).includes(b.phase)) violations.push('unknown phase: ' + b.phase);
-            if (b.defender !== 'player' && b.defender !== 'enemy') violations.push('unknown defender: ' + b.defender);
-            if (b.phase === BATTLE_PHASES.PLAYER_ATTACK && b.defender !== 'enemy') violations.push('PLAYER_ATTACK requires defender "enemy"');
-            if (b.phase === BATTLE_PHASES.PLAYER_DEFENSE && b.defender !== 'player') violations.push('PLAYER_DEFENSE requires defender "player"');
-            return violations;
-        }
-
-        // No card may sit in two places at once (deck, discard, either hand, table).
-        // trumpCard is deliberately not a zone: it is the same card as drawDeck[0].
-        function checkBattleCardInvariants(b) {
-            const violations = [];
-            const seen = new Set();
-            const visit = (card, where) => {
-                if (!card || card.id === undefined) return;
-                if (seen.has(card.id)) violations.push('duplicate card ' + card.id + ' (in ' + where + ')');
-                seen.add(card.id);
-            };
-            for (const zone of ['drawDeck', 'discardPile', 'playerHand', 'enemyHand']) {
-                b[zone].forEach(card => visit(card, zone));
-            }
-            b.table.forEach(pair => {
-                if (!pair || typeof pair !== 'object') return;
-                visit(pair.attack, 'table');
-                visit(pair.defend, 'table');
-            });
-            return violations;
-        }
-
-        // Every table pair is an attack card plus either no defender or a card.
-        function checkBattleTableInvariants(b) {
-            const violations = [];
-            b.table.forEach((pair, i) => {
-                if (!pair || typeof pair !== 'object') { violations.push('table[' + i + '] is not a pair'); return; }
-                if (!pair.attack || typeof pair.attack !== 'object') violations.push('table[' + i + '] has no attack card');
-                if (pair.defend !== null && (!pair.defend || typeof pair.defend !== 'object')) violations.push('table[' + i + '] has an invalid defend card');
-            });
-            return violations;
-        }
-
-        function checkBattleHPInvariants(b) {
-            return (Number.isFinite(b.enemyHP) && b.enemyHP >= 0) ? [] : ['invalid enemyHP: ' + b.enemyHP];
-        }
-
-        function getBattleInvariantViolations(b) {
-            return [
-                ...checkBattlePhaseInvariants(b),
-                ...checkBattleCardInvariants(b),
-                ...checkBattleTableInvariants(b),
-                ...checkBattleHPInvariants(b)
-            ];
-        }
-
-        /**
-         * Structural checks plus the round-end invariant for the persisted battle
-         * (see isImpossibleActiveBattleState()).
-         *
-         * Pure and read-only; returns true when the battle is safe to resume.
-         */
-        function validateBattleState(savedBattle) {
-            if (!savedBattle || typeof savedBattle !== 'object') return false;
-
-            // --- structural checks ---
-            const arrayFields = ['drawDeck', 'discardPile', 'playerHand', 'enemyHand', 'table'];
-            for (const key of arrayFields) {
-                if (!Array.isArray(savedBattle[key])) return false;
-            }
-            if (savedBattle.defender !== 'player' && savedBattle.defender !== 'enemy') return false;
-            if (!Object.values(BATTLE_PHASES).includes(savedBattle.phase)) return false;
-            if (!Number.isFinite(savedBattle.enemyHP)) return false;
-
-            // --- the round-end invariant ---
-            if (isImpossibleActiveBattleState(savedBattle)) return false;
-
-            // --- domain invariants (phase <-> defender, unique cards, table shape, HP) ---
-            if (getBattleInvariantViolations(savedBattle).length > 0) return false;
-
-            return true;
-        }
-
-        /**
-         * Loads the full game state from localStorage.
-         * If the version doesn't match, the outdated save is removed.
-         * Returns true on successful load, false if there is no save or it is corrupted
-         * or internally inconsistent (see validateSaveData()).
-         */
-        function loadGameState() {
-            try {
-                const raw = localStorage.getItem(SAVE_KEY);
-                if (!raw) return false;
-
-                const parsed = JSON.parse(raw);
-
-                if (!validateSaveData(parsed)) {
-                    console.info("Save missing, outdated, or inconsistent — clearing it.");
-                    clearLocalSave();
-                    return false;
-                }
-
-                run = parsed.run;
-
-                // Restore battle from the allow-list, keeping the runtime-only fields
-                // of the current object
-                const savedBattle = parsed.battle;
-                for (const key of BATTLE_SAVED_FIELDS) {
-                    if (key in savedBattle) battle[key] = savedBattle[key];
-                }
-
-                // After loading, reset the runtime-only fields to a safe state
-                battle.aiTimer = null;
-                battle.actionToken = (battle.actionToken || 0) + 1;
-
-                return true;
-            } catch (err) {
-                console.warn("Failed to load game state:", err);
-                clearLocalSave();
-                return false;
-            }
-        }
-
-        function clearLocalSave() {
-            try {
-                localStorage.removeItem(SAVE_KEY);
-            } catch (err) {}
-        }
-
-        /**
-         * Runs fn() while guaranteeing that whatever real save currently sits in
-         * localStorage is restored exactly afterwards, even if fn() (or something it
-         * calls) writes to or clears SAVE_KEY as a side effect. This protects the
-         * player's real save from being clobbered by, e.g., unit tests that call
-         * game functions with fake fixtures (some game functions autosave
-         * internally, such as handlePlayerTake() calling saveRunToLocal()).
-         */
-        function preserveLocalSaveAround(fn) {
-            let preRaw;
-            try {
-                preRaw = localStorage.getItem(SAVE_KEY);
-            } catch (err) {
-                preRaw = null;
-            }
-            try {
-                return fn();
-            } finally {
-                try {
-                    if (preRaw === null) {
-                        localStorage.removeItem(SAVE_KEY);
-                    } else {
-                        localStorage.setItem(SAVE_KEY, preRaw);
-                    }
-                } catch (err) {
-                    console.warn("Failed to restore save after preserveLocalSaveAround:", err);
-                }
-            }
-        }
-
-        /**
-         * Checks whether a valid save exists WITHOUT loading or mutating
-         * the current run/battle state. Use this for UI checks
-         * (e.g. the button label), where a full load is unnecessary
-         * and would be an undesirable side effect.
-         */
-        function hasSavedGame() {
-            try {
-                const raw = localStorage.getItem(SAVE_KEY);
-                if (!raw) return false;
-                const parsed = JSON.parse(raw);
-                return validateSaveData(parsed);
-            } catch (err) {
-                return false;
-            }
-        }
-
-        // Backward compatibility: old saveRunToLocal() calls now call saveGameState()
-        function saveRunToLocal() { saveGameState(); }
-        function loadRunFromLocal() { return loadGameState(); }
+        // ============================================================
+        // AUDIO
+        // ------------------------------------------------------------
+        // SoundEngine (Web Audio): one playTone() primitive plus the sounds and background music built on it.
+        // ============================================================
 
         class SoundEngine {
             constructor() {
@@ -966,6 +964,7 @@
                 this.noteIndex = 0;
             }
         }
+
         const audio = new SoundEngine();
 
         window.addEventListener('click', () => {
@@ -974,169 +973,13 @@
             }
         }, { once: false });
 
-        const SUITS = { Pikes: '♠', Hearts: '♥', Tiles: '♦', Clovers: '♣' };
-        const SUIT_COLORS = { Pikes: 'text-slate-900', Clovers: 'text-slate-900', Hearts: 'text-rose-600', Tiles: 'text-rose-600' };
-        const VALUES = { 6:'6', 7:'7', 8:'8', 9:'9', 10:'10', 11:'В', 12:'Д', 13:'К', 14:'Т' };
-
-        const HAND_SIZE = 6;
-        const MAX_RELICS = 5;
-
-        const BASE_THROW_LIMIT = 6;
-        const AGGRESSIVE_THROW_BOSS_LIMIT = 8;
-
-        const EMPTY_HAND_BASE_DAMAGE = 6;
-        const EMPTY_HAND_DAMAGE_PER_CARD = 4;
-
-        const TAKE_DAMAGE_PER_CARD = 2;
-        const ACE_SLEEVE_BONUS_DAMAGE = 5;
-
-        const BOSS_MAX_HP_BONUS = 5;
-
-        const MIDAS_TOUCH_GOLD_ON_DEFEND = 3;
-        const BALLAST_DROP_DISCARD_COUNT = 2;
-        const WIN_GOLD_BASE = 10;
-        const WIN_GOLD_PER_FLOOR = 2;
-
-        // How many cards "over" the normal hand size still count toward relics
-        // that punish a bloated enemy hand (heavy_ballast, salted_wound). The
-        // enemy's real hand is never capped — only the damage math is.
-        const ENEMY_HAND_EXCESS_CAP = 4;
-        const HEAVY_BALLAST_DAMAGE_PER_CARD = 1;
-        const SALTED_WOUND_DAMAGE_PER_CARD = 1;
-        const CASCADE_TRANSFER_DAMAGE = 4;
-        const COIN_MAGNET_GOLD_PER_SIX = 1;
-        const SHARP_SUIT_DAMAGE = 1;
-        const MIRROR_RING_MULTIPLIER = 1;
-
-        // How long a relic's slot in the relics bar stays visually highlighted
-        // after one of its hooks fires successfully (see highlightRelic()).
-        const RELIC_HIGHLIGHT_DURATION_MS = 700;
-
-        const AI_QUICK_DELAY_MS = 400;
-        const AI_STANDARD_DELAY_MS = 500;
-        const AI_TAKE_RESOLVE_DELAY_MS = 600;
-        const AI_POST_THROW_DELAY_MS = 700;
-
-        const ALL_RELICS = [
-            { id: "ace_sleeve", name: "Туз в рукаве", icon: "🃏", desc: "Заставление врага взять карты наносит +5 ед. дополнительного урона.", price: 12 },
-            { id: "midas_touch", name: "Золотое пальто", icon: "🪙", desc: "Получайте +3$ каждый раз, когда успешно отбиваетесь.", price: 10 },
-            { id: "mirror_ring", name: "Зеркальный перстень", icon: "💍", desc: "Когда вы берете карты со стола, враг получает 2 урона за каждую взятую карту.", price: 14 },
-            { id: "cheat_eye", name: "Шулерский глаз", icon: "👁️", desc: "Показывает вам наименьшую карту в руке соперника.", price: 8 },
-            { id: "pocket_discard", name: "Карманный сброс", icon: "✂️", desc: "Раз за раунд можно безвозвратно сбросить из руки шестёрку или семёрку прямо в отбой.", price: 7 },
-            { id: "spam_mail", name: "Спам-рассылка", icon: "✉️", desc: "Когда враг забирает карты со стола, он дополнительно берёт верхнюю карту из колоды.", price: 9 },
-            { id: "heavy_ballast", name: "Тяжёлый балласт", icon: "⚓", desc: "В начале хода врага он получает урон за каждую карту в руке сверх 6 штук (не больше 4 ед.).", price: 13 },
-            { id: "ballast_drop", name: "Сброс балласта", icon: "🪂", desc: "При взятии карт со стола вы сразу сбрасываете в отбой 2 некозырные карты наименьшего ранга.", price: 10 },
-            { id: "coin_magnet", name: "Магнит для мелочи", icon: "🧲", desc: "Каждая сыгранная шестёрка (подкинутая или отбитая) приносит +1$.", price: 8 },
-            { id: "safety_rope", name: "Страховочный трос", icon: "🪢", desc: "При смертельном уроне вы выживаете с 1 HP и стол очищается (срабатывает 1 раз за забег).", price: 18 },
-            { id: "jester_discard", name: "Шутовской сброс", icon: "🃏", desc: "Раз за бой на своём ходу атаки можно сбросить всю руку и добрать столько же карт из колоды.", price: 9 },
-            { id: "cascade_transfer", name: "Каскадный перевод", icon: "🌊", desc: "Первый перевод карт за ход наносит врагу 4 ед. урона.", price: 11 },
-            { id: "sleight_of_hand", name: "Ловкость рук", icon: "🪄", desc: "Раз за бой можно заменить карту, которой враг пошёл на вас, случайной картой из колоды.", price: 12 },
-            { id: "salted_wound", name: "Солёная рана", icon: "🧂", desc: "Если враг берёт карты со стола, он получает +1 ед. урона за каждую карту сверх 6 в его руке (не больше 4 ед.).", price: 10 },
-            { id: "sharp_suit", name: "Острая масть", icon: "🗡️", desc: "Каждый раз, когда вы отбиваетесь козырной картой, враг получает 1 ед. урона.", price: 9 }
-        ];
-
-        // --- Enemy ladder ------------------------------------------------------------
-        // Everything you need to edit when adding/removing/swapping enemies lives in
-        // the two lists below. Floor numbers, filler HP between bosses, and whether a
-        // boss's ability "stays unlocked forever" are all computed by
-        // buildEnemyLadder(), so nothing here needs to be maintained by hand.
-
-        // Pool of filler enemies (no special ability, clones of the basic Sharper).
-        // buildEnemyLadder hands them out in order and, once it runs out of
-        // templates, loops back to the start of the pool.
-        const FILLER_POOL = [
-            { name: "Начинающий Шулер", avatar: "🙂" },
-            { name: "Уличный Мошенник", avatar: "🧔" },
-            { name: "Карточный Жучок", avatar: "🧑‍🦱" },
-            { name: "Барный Хитрец", avatar: "🍻" },
-            { name: "Ловкий Карманник", avatar: "🧤" },
-            { name: "Азартный Игрок", avatar: "🎲" },
-            { name: "Матёрый Катала", avatar: "🎰" },
-            { name: "Теневой Подручный", avatar: "🕶️" },
-        ];
-
-        // Named bosses, in the order they appear. Each one can specify:
-        //   fillersBefore    — how many filler enemies to place right before it;
-        //   fillerHpRange    — [HP of first filler, HP of last filler] before it
-        //                      (HP of the ones in between is linearly interpolated);
-        //   permanentAbility — true if, once this boss's ability is encountered, it
-        //                     should stay active on EVERY later enemy (a permanent
-        //                     difficulty ratchet, not a one-off mechanic).
-        const BOSS_ROSTER = [
-            {
-                name: "Карточный Трактирщик", hp: 30, avatar: "🍺",
-                abilityId: "no_transfer", abilityDesc: "Запрет на Перевод карт",
-                fillersBefore: 2, fillerHpRange: [12, 18],
-            },
-            {
-                name: "Фаворит Казино", hp: 40, avatar: "🎩",
-                abilityId: "ai_transfer", abilityDesc: "Умеет Переводить ваши атаки",
-                fillersBefore: 2, fillerHpRange: [24, 32],
-                permanentAbility: true, // с этого момента переводить умеют все противники
-            },
-            {
-                name: "Основатель Синдиката", hp: 55, avatar: "🕵️",
-                abilityId: "aggressive_throw", abilityDesc: "Агрессивно подкидывает до 8 карт",
-                fillersBefore: 2, fillerHpRange: [38, 46],
-            },
-            {
-                name: "Тень (Финальный БОСС)", hp: 75, avatar: "👑",
-                abilityId: "double_penalty", abilityDesc: "Удвоенный урон игроку при взятии карт",
-                fillersBefore: 2, fillerHpRange: [50, 62],
-            },
-        ];
-
-        // Builds the flat ENEMIES list from BOSS_ROSTER/FILLER_POOL. No other part of
-        // the code should need to know specific floor numbers — it should look at
-        // enemyData.floor and enemyData.activeAbilities instead.
-        function buildEnemyLadder(bossRoster, fillerPool) {
-            const ladder = [];
-            let fillerCursor = 0;
-            // level starts at 1 and increases by 1 after each boss: the fillers
-            // before a boss share that boss's level (e.g. the first boss and the
-            // two fillers before it are all level 1).
-            let level = 1;
-
-            bossRoster.forEach(boss => {
-                const fillersBefore = boss.fillersBefore || 0;
-                const [hpFrom, hpTo] = boss.fillerHpRange || [boss.hp, boss.hp];
-
-                for (let i = 0; i < fillersBefore; i++) {
-                    const template = fillerPool[fillerCursor % fillerPool.length];
-                    fillerCursor++;
-                    const t = fillersBefore > 1 ? i / (fillersBefore - 1) : 1;
-                    const hp = Math.round(hpFrom + (hpTo - hpFrom) * t);
-                    ladder.push({
-                        name: template.name, avatar: template.avatar, hp,
-                        abilityId: "none", abilityDesc: "Стандартный противник",
-                        level,
-                    });
-                }
-
-                ladder.push({
-                    name: boss.name, hp: boss.hp, avatar: boss.avatar,
-                    abilityId: boss.abilityId, abilityDesc: boss.abilityDesc,
-                    isBoss: true, permanentAbility: !!boss.permanentAbility,
-                    level,
-                });
-
-                level++;
-            });
-
-            // Assign floor numbers and the set of abilities "accumulated" by this
-            // floor (its own, plus every earlier boss's permanentAbility).
-            const unlockedForever = new Set();
-            ladder.forEach((enemy, idx) => {
-                enemy.floor = idx + 1;
-                if (enemy.permanentAbility) unlockedForever.add(enemy.abilityId);
-                enemy.activeAbilities = new Set(unlockedForever);
-                if (enemy.abilityId !== "none") enemy.activeAbilities.add(enemy.abilityId);
-            });
-
-            return ladder;
-        }
-
-        const ENEMIES = buildEnemyLadder(BOSS_ROSTER, FILLER_POOL);
+        // ============================================================
+        // GAME STATE
+        // ------------------------------------------------------------
+        // The two live objects (`run` = the whole run, `battle` = the current battle) and the
+        // machinery around them: phase changes, the single commit point, AI scheduling, and
+        // starting/resuming runs, floors and rounds.
+        // ============================================================
 
         let run = {
             floor: 1,
@@ -1173,151 +1016,11 @@
             pocketDiscardUsedThisRound: false
         };
 
-        const BATTLE_PHASES = Object.freeze({
-            IDLE: 'idle',
-            PLAYER_ATTACK: 'player_attack',
-            PLAYER_DEFENSE: 'player_defense',
-            AI_WAITING: 'ai_waiting',
-            RESOLVING: 'resolving',
-            ROUND_OVER: 'round_over',
-            BATTLE_OVER: 'battle_over'
-        });
-
-        // Phases in which a round is still being played (as opposed to the round or
-        // battle already being resolved). Used by the save validator's round-end
-        // invariant — see isImpossibleActiveBattleState().
-        const ACTIVE_BATTLE_PHASES = Object.freeze([
-            BATTLE_PHASES.PLAYER_ATTACK,
-            BATTLE_PHASES.PLAYER_DEFENSE,
-            BATTLE_PHASES.AI_WAITING,
-            BATTLE_PHASES.RESOLVING
-        ]);
-
         function clearAITimer() {
             if (battle.aiTimer !== null) {
                 clearTimeout(battle.aiTimer);
                 battle.aiTimer = null;
             }
-        }
-
-        // Runs `testFn` against a throwaway run/battle pair, guaranteeing the real
-        // run/battle are restored afterward NO MATTER WHAT — including when an
-        // assertion inside testFn throws. Without the try/finally here, a failed
-        // assertion would skip a test's own restore lines (they're written *after*
-        // the assertions), leaving every later test — and the real game, once the
-        // test panel closes — running against that test's fake fixture instead of
-        // the player's actual state.
-        function withIsolatedGameState(fixtureRun, fixtureBattle, testFn) {
-            const oldRun = run, oldBattle = battle, oldTimer = battle.aiTimer;
-            clearAITimer();
-            run = fixtureRun;
-            battle = fixtureBattle;
-            try {
-                testFn();
-            } finally {
-                clearAITimer(); // cancel anything the test scheduled on the fake battle
-                run = oldRun;
-                battle = oldBattle;
-                battle.aiTimer = oldTimer;
-            }
-        }
-
-        // Snapshots the given battle/run fields, runs testFn, and restores them
-        // afterward no matter what — including when an assertion throws — instead
-        // of each test block hand-writing "const oldX = battle.x; ... battle.x =
-        // oldX;" for every field it touches. Also clears any AI timer left behind
-        // by the test, mirroring withIsolatedGameState()'s safety net. Use this for
-        // tests that only need to override a few fields on the real run/battle;
-        // use withIsolatedGameState() instead when a test needs a full throwaway
-        // run/battle pair.
-        function withFieldSnapshot(fields, testFn) {
-            const targets = { battle, run };
-            const saved = {};
-            for (const key in fields) {
-                const obj = targets[key];
-                saved[key] = {};
-                fields[key].forEach(f => { saved[key][f] = obj[f]; });
-            }
-            clearAITimer();
-            try {
-                testFn();
-            } finally {
-                clearAITimer();
-                for (const key in fields) {
-                    const obj = targets[key];
-                    fields[key].forEach(f => { obj[f] = saved[key][f]; });
-                }
-            }
-        }
-
-        // The helpers above cancel the real battle's pending AI move while tests
-        // run, and nothing else re-arms it. These two bracket a whole test run:
-        // capture what the real game was doing, then put it back afterward, so
-        // running the tests mid-battle can never freeze the game on "Ход соперника".
-        function captureRealBattleForTests() {
-            return {
-                battle,
-                inBattle: battle.phase !== BATTLE_PHASES.IDLE,
-                aiPending: battle.phase === BATTLE_PHASES.AI_WAITING && battle.aiTimer !== null
-            };
-        }
-
-        function restoreRealBattleAfterTests(snapshot) {
-            if (snapshot.inBattle && battle === snapshot.battle && snapshot.aiPending) {
-                syncEnemyDisplay();
-                scheduleEnemyAI(AI_STANDARD_DELAY_MS);
-            }
-        }
-
-        // Catch-all for tests that touch the REAL run/battle without snapshotting
-        // every field they change (e.g. a test that writes battle.phase directly, or
-        // one that drives damageEnemyHP() into BATTLE_OVER). Without it such a leak
-        // survives the test run and the player comes back to a broken screen — the
-        // reported case: a mid-round battle left in BATTLE_OVER, so "БИТО" stayed
-        // disabled. The pair below deep-copies the game state at the start of a run
-        // and puts it back at the end, so no test — present or future — can leak.
-        //
-        // aiTimer and actionToken are runtime-only (BATTLE_RUNTIME_FIELDS) and are
-        // deliberately NOT restored: a timer id from before the run is dead (the
-        // helpers cancel it; restoreRealBattleAfterTests() re-arms it when needed),
-        // and actionToken must only ever move forward so stale callbacks stay stale.
-        function cloneGameState(obj) {
-            try {
-                return structuredClone(obj);
-            } catch (err) {
-                return JSON.parse(JSON.stringify(obj));
-            }
-        }
-
-        function captureRealStateForTests() {
-            const pick = (source, skip) => {
-                const copy = {};
-                for (const key of Object.keys(source)) {
-                    if (!skip.includes(key)) copy[key] = source[key];
-                }
-                return cloneGameState(copy);
-            };
-            return {
-                run,
-                battle,
-                runState: pick(run, []),
-                battleState: pick(battle, BATTLE_RUNTIME_FIELDS)
-            };
-        }
-
-        // Restores IN PLACE (same run/battle objects), and only if they are still the
-        // objects that were captured — a fixture pair swapped in by a test helper is
-        // not ours to touch.
-        function restoreRealStateAfterTests(snapshot) {
-            const restoreInto = (target, saved, skip) => {
-                for (const key of Object.keys(target)) {
-                    if (!skip.includes(key) && !(key in saved)) delete target[key];
-                }
-                const fresh = cloneGameState(saved);
-                for (const key of Object.keys(fresh)) target[key] = fresh[key];
-            };
-            if (run === snapshot.run) restoreInto(run, snapshot.runState, []);
-            if (battle === snapshot.battle) restoreInto(battle, snapshot.battleState, BATTLE_RUNTIME_FIELDS);
         }
 
         // The ONLY place allowed to write battle.phase (guarded by a source-scan
@@ -1344,7 +1047,7 @@
         //   there would show a half-applied state under the win modal).
         function commitBattleState({ render = true } = {}) {
             assertBattleState();
-            saveRunToLocal();
+            saveGameState();
             if (render) renderAll();
         }
 
@@ -1353,6 +1056,7 @@
         // them (instead of the corruption surfacing turns later). Off in the shipped
         // game, where it costs a single boolean check; the test suite switches it on.
         let battleInvariantChecksEnabled = false;
+
         function assertBattleState() {
             if (!battleInvariantChecksEnabled) return;
             const violations = getBattleInvariantViolations(battle);
@@ -1405,13 +1109,6 @@
             battle.heavyBallastAppliedThisTurn = false;
         }
 
-        // cascade_transfer: the first transfer within a turn (whether the player
-        // initiates it, or the ai_transfer boss bounces it back) deals a flat hit.
-        // Guarded per-turn so a chain of transfers can't be farmed for repeat damage.
-        function triggerCascadeTransfer() {
-            fireAllHooks('onTransfer');
-        }
-
         // First step of every handler that resolves a table (bito / take): park the
         // battle in RESOLVING so nothing else acts while it runs, and drop a
         // pending transfer offer. Call it only AFTER the handler's precondition
@@ -1451,7 +1148,7 @@
             const deck = [];
             let cardSeq = 0;
             for (let suit in SUITS) {
-                for (let val = 6; val <= 14; val++) {
+                for (let val = MIN_CARD_VALUE; val <= ACE_VALUE; val++) {
                     deck.push({ id: `${suit}_${val}_${cardSeq++}`, suit, value: val });
                 }
             }
@@ -1463,16 +1160,16 @@
         }
 
         function cardPower(card) {
-            return (card.suit === battle.trumpSuit ? 100 : 0) + card.value;
+            return (card.suit === battle.trumpSuit ? TRUMP_POWER_BONUS : 0) + card.value;
         }
 
         function initNewRun() {
             clearAITimer();
             run = {
                 floor: 1,
-                playerHP: 30,
-                maxHP: 30,
-                gold: 15,
+                playerHP: START_PLAYER_HP,
+                maxHP: START_PLAYER_HP,
+                gold: START_GOLD,
                 relics: [],
                 deck: generateStandardDeck()
             };
@@ -1568,14 +1265,278 @@
         }
 
         // ============================================================
+        // BATTLE INVARIANTS
+        // ------------------------------------------------------------
+        // Pure checkers that say whether a battle-shaped object is possible. Used by the save
+        // validator and, in dev/test mode, by assertBattleState() on every commit.
+        // ============================================================
+
+        /**
+         * The round-end invariant, named: true when a battle sits in an ACTIVE phase
+         * while the round-end condition already holds (draw deck AND table both empty,
+         * and at least one hand empty).
+         *
+         * checkRoundEnd() ends the round the instant that condition becomes true, so
+         * the game would have resolved win/loss/draw before the next autosave — a
+         * state like this can never be produced by normal play. Seeing it anyway (as
+         * in the reported bug: an empty player hand during "Ваш ход: Атака") means the
+         * save is inconsistent, not just old. In non-active phases (ROUND_OVER,
+         * BATTLE_OVER, IDLE) the very same card layout is legitimate.
+         *
+         * Expects a structurally valid battle (the array fields and `phase` present);
+         * validateBattleState() runs its structural checks first. Pure and read-only.
+         */
+        function isImpossibleActiveBattleState(savedBattle) {
+            if (!ACTIVE_BATTLE_PHASES.includes(savedBattle.phase)) return false;
+
+            const deckAndTableEmpty = savedBattle.drawDeck.length === 0 && savedBattle.table.length === 0;
+            const aHandIsEmpty = savedBattle.playerHand.length === 0 || savedBattle.enemyHand.length === 0;
+            return deckAndTableEmpty && aHandIsEmpty;
+        }
+
+        // ---- Battle invariants -------------------------------------------------
+        // Small, pure checkers: each takes a battle-shaped object and returns a list
+        // of human-readable violations ([] = fine). They expect the array fields to
+        // be arrays (validateBattleState() checks that first); getBattleInvariantViolations()
+        // combines them. Used by the save validator and, in dev/test mode, by
+        // assertBattleState() after every commit.
+
+        // A player phase and the defender role must agree: PLAYER_ATTACK <=> the
+        // enemy defends, PLAYER_DEFENSE <=> the player defends. (AI_WAITING and the
+        // transient/terminal phases can legitimately go with either role.)
+        function checkBattlePhaseInvariants(b) {
+            const violations = [];
+            if (!Object.values(BATTLE_PHASES).includes(b.phase)) violations.push('unknown phase: ' + b.phase);
+            if (b.defender !== 'player' && b.defender !== 'enemy') violations.push('unknown defender: ' + b.defender);
+            if (b.phase === BATTLE_PHASES.PLAYER_ATTACK && b.defender !== 'enemy') violations.push('PLAYER_ATTACK requires defender "enemy"');
+            if (b.phase === BATTLE_PHASES.PLAYER_DEFENSE && b.defender !== 'player') violations.push('PLAYER_DEFENSE requires defender "player"');
+            return violations;
+        }
+
+        // No card may sit in two places at once (deck, discard, either hand, table).
+        // trumpCard is deliberately not a zone: it is the same card as drawDeck[0].
+        function checkBattleCardInvariants(b) {
+            const violations = [];
+            const seen = new Set();
+            const visit = (card, where) => {
+                if (!card || card.id === undefined) return;
+                if (seen.has(card.id)) violations.push('duplicate card ' + card.id + ' (in ' + where + ')');
+                seen.add(card.id);
+            };
+            for (const zone of ['drawDeck', 'discardPile', 'playerHand', 'enemyHand']) {
+                b[zone].forEach(card => visit(card, zone));
+            }
+            b.table.forEach(pair => {
+                if (!pair || typeof pair !== 'object') return;
+                visit(pair.attack, 'table');
+                visit(pair.defend, 'table');
+            });
+            return violations;
+        }
+
+        // Every table pair is an attack card plus either no defender or a card.
+        function checkBattleTableInvariants(b) {
+            const violations = [];
+            b.table.forEach((pair, i) => {
+                if (!pair || typeof pair !== 'object') { violations.push('table[' + i + '] is not a pair'); return; }
+                if (!pair.attack || typeof pair.attack !== 'object') violations.push('table[' + i + '] has no attack card');
+                if (pair.defend !== null && (!pair.defend || typeof pair.defend !== 'object')) violations.push('table[' + i + '] has an invalid defend card');
+            });
+            return violations;
+        }
+
+        function checkBattleHPInvariants(b) {
+            return (Number.isFinite(b.enemyHP) && b.enemyHP >= 0) ? [] : ['invalid enemyHP: ' + b.enemyHP];
+        }
+
+        function getBattleInvariantViolations(b) {
+            return [
+                ...checkBattlePhaseInvariants(b),
+                ...checkBattleCardInvariants(b),
+                ...checkBattleTableInvariants(b),
+                ...checkBattleHPInvariants(b)
+            ];
+        }
+
+        // ============================================================
+        // PERSISTENCE
+        // ------------------------------------------------------------
+        // Save / load / validate. serializeGameState() decides exactly what is written
+        // (BATTLE_SAVED_FIELDS allow-list); validate* decide whether a stored save is usable.
+        // ============================================================
+
+        function updateSaveStatus(text) {
+            setElText('save-status-text', text);
+        }
+
+        /**
+         * Builds the save payload from the live run/battle. Only the fields listed in
+         * BATTLE_SAVED_FIELDS are copied (an allow-list, not "everything except the
+         * runtime fields"), so new runtime state can never leak into a save by accident.
+         * Pure: reads run/battle, mutates nothing, touches no storage.
+         */
+        function serializeGameState() {
+            const battleSnapshot = {};
+            for (const key of BATTLE_SAVED_FIELDS) {
+                if (key in battle) battleSnapshot[key] = battle[key];
+            }
+            return {
+                version: SAVE_VERSION,
+                run: run,
+                battle: battleSnapshot,
+                savedAt: new Date().toISOString()
+            };
+        }
+
+        /**
+         * Saves the full game state: run progress (run) and the current battle (battle).
+         * What gets written is decided by serializeGameState(); the aiTimer and
+         * actionToken fields are never persisted — they are reset on load.
+         */
+        function saveGameState() {
+            try {
+                localStorage.setItem(SAVE_KEY, JSON.stringify(serializeGameState()));
+                updateSaveStatus("Сохранено");
+            } catch (err) {
+                console.warn("Local storage unavailable:", err);
+                updateSaveStatus("Сессия");
+            }
+        }
+
+        /**
+         * Checks that a parsed save is not just present, but internally consistent
+         * enough to safely resume from. A save can pass the version/shape check and
+         * still be broken — e.g. a merge that changed the run/battle shape without
+         * bumping SAVE_VERSION, or a save written mid-mutation — so this does real
+         * structural + sanity checks, not just "the keys exist".
+         *
+         * The rules live in two focused validators — validateRunState() and
+         * validateBattleState() — so each can be read, tested and extended on its
+         * own; this function only checks the envelope (version) and combines them.
+         *
+         * Read-only — safe to call from hasSavedGame() (no load/mutation) as well as
+         * loadGameState().
+         */
+        function validateSaveData(parsed) {
+            if (!parsed || parsed.version !== SAVE_VERSION) return false;
+            return validateRunState(parsed.run) && validateBattleState(parsed.battle);
+        }
+
+        /**
+         * Structural + sanity checks for the persisted run (floor, HP, gold, relics,
+         * deck). Pure and read-only; returns true when the run is safe to resume.
+         */
+        function validateRunState(savedRun) {
+            if (!savedRun || typeof savedRun !== 'object') return false;
+
+            if (!Number.isFinite(savedRun.floor) || savedRun.floor < 1 || savedRun.floor > ENEMIES.length) return false;
+            if (!Number.isFinite(savedRun.maxHP) || savedRun.maxHP <= 0) return false;
+            if (!Number.isFinite(savedRun.playerHP) || savedRun.playerHP < 0 || savedRun.playerHP > savedRun.maxHP) return false;
+            if (!Number.isFinite(savedRun.gold) || savedRun.gold < 0) return false;
+            if (!Array.isArray(savedRun.relics)) return false;
+            if (!Array.isArray(savedRun.deck) || savedRun.deck.length === 0) return false;
+
+            return true;
+        }
+
+        /**
+         * Structural checks plus the round-end invariant for the persisted battle
+         * (see isImpossibleActiveBattleState()).
+         *
+         * Pure and read-only; returns true when the battle is safe to resume.
+         */
+        function validateBattleState(savedBattle) {
+            if (!savedBattle || typeof savedBattle !== 'object') return false;
+
+            // --- structural checks ---
+            const arrayFields = ['drawDeck', 'discardPile', 'playerHand', 'enemyHand', 'table'];
+            for (const key of arrayFields) {
+                if (!Array.isArray(savedBattle[key])) return false;
+            }
+            if (savedBattle.defender !== 'player' && savedBattle.defender !== 'enemy') return false;
+            if (!Object.values(BATTLE_PHASES).includes(savedBattle.phase)) return false;
+            if (!Number.isFinite(savedBattle.enemyHP)) return false;
+
+            // --- the round-end invariant ---
+            if (isImpossibleActiveBattleState(savedBattle)) return false;
+
+            // --- domain invariants (phase <-> defender, unique cards, table shape, HP) ---
+            if (getBattleInvariantViolations(savedBattle).length > 0) return false;
+
+            return true;
+        }
+
+        /**
+         * Loads the full game state from localStorage.
+         * If the version doesn't match, the outdated save is removed.
+         * Returns true on successful load, false if there is no save or it is corrupted
+         * or internally inconsistent (see validateSaveData()).
+         */
+        function loadGameState() {
+            try {
+                const raw = localStorage.getItem(SAVE_KEY);
+                if (!raw) return false;
+
+                const parsed = JSON.parse(raw);
+
+                if (!validateSaveData(parsed)) {
+                    console.info("Save missing, outdated, or inconsistent — clearing it.");
+                    clearLocalSave();
+                    return false;
+                }
+
+                run = parsed.run;
+
+                // Restore battle from the allow-list, keeping the runtime-only fields
+                // of the current object
+                const savedBattle = parsed.battle;
+                for (const key of BATTLE_SAVED_FIELDS) {
+                    if (key in savedBattle) battle[key] = savedBattle[key];
+                }
+
+                // After loading, reset the runtime-only fields to a safe state
+                battle.aiTimer = null;
+                battle.actionToken = (battle.actionToken || 0) + 1;
+
+                return true;
+            } catch (err) {
+                console.warn("Failed to load game state:", err);
+                clearLocalSave();
+                return false;
+            }
+        }
+
+        function clearLocalSave() {
+            try {
+                localStorage.removeItem(SAVE_KEY);
+            } catch (err) {}
+        }
+
+        /**
+         * Checks whether a valid save exists WITHOUT loading or mutating
+         * the current run/battle state. Use this for UI checks
+         * (e.g. the button label), where a full load is unnecessary
+         * and would be an undesirable side effect.
+         */
+        function hasSavedGame() {
+            try {
+                const raw = localStorage.getItem(SAVE_KEY);
+                if (!raw) return false;
+                const parsed = JSON.parse(raw);
+                return validateSaveData(parsed);
+            } catch (err) {
+                return false;
+            }
+        }
+
+        // ============================================================
         // CARD / TABLE PRIMITIVES
         // ------------------------------------------------------------
-        // Every card move in the battle goes through these helpers, so the
-        // "a card lives in exactly one place" rule is enforced in one spot
-        // instead of at each findIndex/splice/push site. Plain functions over
-        // the `battle` object — no classes. A move either happens completely
-        // or not at all: a primitive that cannot do its job returns false/null
-        // and leaves every zone untouched.
+        // Every card move in the battle goes through these helpers, so the "a card lives in
+        // exactly one place" rule is enforced in one spot instead of at each findIndex/splice/
+        // push site. Plain functions over the `battle` object — no classes. A move either
+        // happens completely or not at all: a primitive that cannot do its job returns
+        // false/null and leaves every zone untouched.
         // ============================================================
 
         // Index of `card` inside `cards`: by identity first, then by id (a card
@@ -1641,10 +1602,6 @@
                 if (pair.defend) cards.push(pair.defend);
             }
             return cards;
-        }
-
-        function countTableCards() {
-            return getTableCards().length;
         }
 
         function getTableRanks() {
@@ -1718,6 +1675,88 @@
                 return a.suit.localeCompare(b.suit);
             });
         }
+
+        // ============================================================
+        // RULES (PURE FUNCTIONS)
+        // ------------------------------------------------------------
+        // Questions about the rules of the game: they only read the battle and return an answer.
+        // ============================================================
+
+        function canBeat(attackCard, defendCard) {
+            if (defendCard.suit === attackCard.suit) {
+                return defendCard.value > attackCard.value;
+            }
+            if (defendCard.suit === battle.trumpSuit && attackCard.suit !== battle.trumpSuit) {
+                return true;
+            }
+            return false;
+        }
+
+        function isRankOnTable(value) {
+            return getTableRanks().has(value);
+        }
+
+        function getTransferBlockReason() {
+            const enemyData = getCurrentEnemy();
+            if (enemyData.abilityId === 'no_transfer') return 'boss_block';
+            if (battle.defender !== 'player') return 'not_defender';
+            if (battle.table.length === 0) return 'empty_table';
+            if (battle.table.some(p => p.defend !== null)) return 'already_defending';
+
+            const requiredRank = battle.table[0].attack.value;
+            const allSameRank = battle.table.every(p => p.attack.value === requiredRank);
+            if (!allSameRank) return 'mixed_ranks';
+
+            const hasMatchingCard = battle.playerHand.some(c => c.value === requiredRank);
+            if (!hasMatchingCard) return 'no_matching_card';
+
+            if (battle.enemyHand.length < battle.table.length + 1) return 'enemy_hand_too_small';
+
+            return null;
+        }
+
+        function isTransferAllowedForPlayer() {
+            return getTransferBlockReason() === null;
+        }
+
+        function getMaxAllowedAttacks() {
+            const enemyData = getCurrentEnemy();
+            // fireHook: first-truthy-wins, same as onLethalDamage — at most one
+            // relic should set the base throw limit. Falls back to BASE_THROW_LIMIT
+            // when no relic returns anything (fireHook returns null, or a future
+            // relic could validly return 0, but no such relic exists today).
+            let baseLimit = BASE_THROW_LIMIT;
+            // aggressive_throw governs how many cards the BOSS itself throws at the
+            // player — battle.defender === 'player' (player defends). It must not
+            // touch the player's own throw limit against that boss (defender ===
+            // 'enemy') — bug fixed 2026-09-22, previously this ran unconditionally
+            // and inflated the player's own limit to 8 (even above the base 6) on
+            // that boss's floor.
+            if (enemyData.abilityId === 'aggressive_throw' && battle.defender === 'player') {
+                baseLimit = AGGRESSIVE_THROW_BOSS_LIMIT;
+            }
+
+            if (battle.defender === 'enemy') {
+                return Math.min(baseLimit, battle.enemyHand.length + getDefendedPairCount());
+            } else {
+                return Math.min(baseLimit, battle.playerHand.length + getDefendedPairCount());
+            }
+        }
+
+        // "Alive before, dead now" — the only meaningful kill test around a block
+        // that may deal damage. Not merely `enemyHP <= 0`: fixtures that never
+        // set HP start at 0 and must not read as a kill.
+        function didEnemyJustDie(enemyHPBefore) {
+            return enemyHPBefore > 0 && battle.enemyHP <= 0;
+        }
+
+        // ============================================================
+        // BATTLE STATE TRANSITIONS
+        // ------------------------------------------------------------
+        // What happens when someone acts: bito, take, a card played, the round or the battle
+        // ending. Handlers follow check -> beginResolution() -> mutate -> settleTurn() -> present;
+        // applyX() functions change state only, presentX() functions touch only the UI.
+        // ============================================================
 
         // ---- Round end: decide -> apply -> present -----------------------------
         // A round is over when the draw deck and the table are empty and at least
@@ -1811,65 +1850,11 @@
             return true;
         }
 
-        function canBeat(attackCard, defendCard) {
-            if (defendCard.suit === attackCard.suit) {
-                return defendCard.value > attackCard.value;
-            }
-            if (defendCard.suit === battle.trumpSuit && attackCard.suit !== battle.trumpSuit) {
-                return true;
-            }
-            return false;
-        }
-
-        function isRankOnTable(value) {
-            return getTableRanks().has(value);
-        }
-
-        function getTransferBlockReason() {
-            const enemyData = getCurrentEnemy();
-            if (enemyData.abilityId === 'no_transfer') return 'boss_block';
-            if (battle.defender !== 'player') return 'not_defender';
-            if (battle.table.length === 0) return 'empty_table';
-            if (battle.table.some(p => p.defend !== null)) return 'already_defending';
-
-            const requiredRank = battle.table[0].attack.value;
-            const allSameRank = battle.table.every(p => p.attack.value === requiredRank);
-            if (!allSameRank) return 'mixed_ranks';
-
-            const hasMatchingCard = battle.playerHand.some(c => c.value === requiredRank);
-            if (!hasMatchingCard) return 'no_matching_card';
-
-            if (battle.enemyHand.length < battle.table.length + 1) return 'enemy_hand_too_small';
-
-            return null;
-        }
-
-        function isTransferAllowedForPlayer() {
-            return getTransferBlockReason() === null;
-        }
-
-        function getMaxAllowedAttacks() {
-            const enemyData = getCurrentEnemy();
-            // fireHook: first-truthy-wins, same as onLethalDamage — at most one
-            // relic should set the base throw limit. Falls back to BASE_THROW_LIMIT
-            // when no relic returns anything (fireHook returns null, or a future
-            // relic could validly return 0, but no such relic exists today).
-            let baseLimit = BASE_THROW_LIMIT;
-            // aggressive_throw governs how many cards the BOSS itself throws at the
-            // player — battle.defender === 'player' (player defends). It must not
-            // touch the player's own throw limit against that boss (defender ===
-            // 'enemy') — bug fixed 2026-09-22, previously this ran unconditionally
-            // and inflated the player's own limit to 8 (even above the base 6) on
-            // that boss's floor.
-            if (enemyData.abilityId === 'aggressive_throw' && battle.defender === 'player') {
-                baseLimit = AGGRESSIVE_THROW_BOSS_LIMIT;
-            }
-
-            if (battle.defender === 'enemy') {
-                return Math.min(baseLimit, battle.enemyHand.length + getDefendedPairCount());
-            } else {
-                return Math.min(baseLimit, battle.playerHand.length + getDefendedPairCount());
-            }
+        // cascade_transfer: the first transfer within a turn (whether the player
+        // initiates it, or the ai_transfer boss bounces it back) deals a flat hit.
+        // Guarded per-turn so a chain of transfers can't be farmed for repeat damage.
+        function triggerCascadeTransfer() {
+            fireAllHooks('onTransfer');
         }
 
         function handleBito(isAIAction = false) {
@@ -1916,13 +1901,6 @@
                     enterPlayerPhase();
                 }
             }
-        }
-
-        // "Alive before, dead now" — the only meaningful kill test around a block
-        // that may deal damage. Not merely `enemyHP <= 0`: fixtures that never
-        // set HP start at 0 and must not read as a kill.
-        function didEnemyJustDie(enemyHPBefore) {
-            return enemyHPBefore > 0 && battle.enemyHP <= 0;
         }
 
         // State only: the enemy collects the table and takes damage for it.
@@ -2047,6 +2025,147 @@
                 moveCard(card, hand, battle.discardPile);
             }
         }
+
+        // Fired whenever the player successfully plays a card (attack, toss, or
+        // defend). Single canonical dispatch point for per-card-played relic
+        // effects (currently just coin_magnet) instead of repeating checks at
+        // every play site.
+        function onPlayerCardPlayed(card) {
+            fireAllHooks('onCardPlayed', card);
+        }
+
+        window.onPlayerCardClick = function(index) {
+            if (!canAcceptPlayerAction()) return;
+            const card = battle.playerHand[index];
+
+            if (battle.defender === 'enemy') {
+                const maxAllowed = getMaxAllowedAttacks();
+
+                if (battle.table.length === 0) {
+                    playAttackCard(battle.playerHand, card);
+                    onPlayerCardPlayed(card);
+                    audio.playCardSound();
+                    scheduleEnemyAI(AI_STANDARD_DELAY_MS);
+                } else {
+                    if (battle.table.length >= maxAllowed) {
+                        showModal("Лимит карт", "Нельзя подкинуть больше карт, чем есть на руках у защищающегося!");
+                        return;
+                    }
+                    if (isRankOnTable(card.value)) {
+                        playAttackCard(battle.playerHand, card);
+                        onPlayerCardPlayed(card);
+                        audio.playCardSound();
+                        scheduleEnemyAI(AI_STANDARD_DELAY_MS);
+                    } else {
+                        showModal("Недопустимый ход", "Вы можете подкидывать только карты того номинала, что уже есть на столе!");
+                    }
+                }
+            } else {
+                if (battle.isTransferActive) {
+                    const requiredRank = battle.table[0].attack.value;
+                    if (card.value === requiredRank) {
+                        if (battle.enemyHand.length < battle.table.length + 1) {
+                            showModal("Перевод невозможен", "У противника недостаточно карт на руках, чтобы принять перевод!");
+                            battle.isTransferActive = false;
+                            renderAll();
+                            return;
+                        }
+                        playAttackCard(battle.playerHand, card);
+                        battle.defender = 'enemy';
+                        battle.isTransferActive = false;
+                        onPlayerCardPlayed(card);
+                        triggerCascadeTransfer();
+                        audio.playCardSound();
+                        renderAll();
+                        scheduleEnemyAI(AI_STANDARD_DELAY_MS);
+                        return;
+                    } else {
+                        showModal("Неверная карта", `Для перевода необходимо выбрать карту номинала ${VALUES[requiredRank]}.`);
+                        return;
+                    }
+                }
+
+                const undefendedPair = getOpenAttacks()[0];
+                if (undefendedPair) {
+                    if (canBeat(undefendedPair.attack, card)) {
+                        playDefenseCard(battle.playerHand, undefendedPair, card);
+                        onPlayerCardPlayed(card);
+                        fireAllHooks('onPlayerDefend', card);
+                        audio.playCardSound();
+
+                        scheduleEnemyAI(AI_QUICK_DELAY_MS);
+                    } else {
+                        showModal("Нельзя отбить", "Эта карта не покрывает атакующего! Нужна карта той же масти старше или козырь.");
+                    }
+                }
+            }
+            renderAll();
+        };
+
+        // State only: pays out the battle-won gold (and the boss max-HP bonus) and
+        // returns the text to show for it.
+        function grantVictoryRewards() {
+            const goldReward = WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR;
+            run.gold += goldReward;
+
+            let rewardText = `Вы одолели соперника! Получено +${goldReward}$`;
+            if (getCurrentEnemy().isBoss) {
+                run.maxHP += BOSS_MAX_HP_BONUS;
+                run.playerHP = Math.min(run.maxHP, run.playerHP + BOSS_MAX_HP_BONUS);
+                rewardText += ` и +${BOSS_MAX_HP_BONUS} к максимальному здоровью за победу над боссом!`;
+            }
+            return rewardText;
+        }
+
+        // The enemy just hit 0 HP: reward, persist the win as its own phase, show the
+        // modal that leads to the shop.
+        function winBattle() {
+            audio.playWinSound();
+            const rewardText = grantVictoryRewards();
+
+            // The reward is already in run.gold / run.maxHP, so persist the win as its
+            // own phase BEFORE the modal: a save taken from here on (or the one the
+            // caller writes right after this returns) must resume as "battle won,
+            // shop pending", never as a live round against a 0-HP enemy.
+            setBattlePhase(BATTLE_PHASES.BATTLE_OVER);
+            commitBattleState({ render: false });
+            showModal("Победа в Бою!", rewardText, () => {
+                openShop();
+            });
+        }
+
+        // The single way enemy HP goes down. Reaching 0 ends the battle (winBattle()).
+        // This commits on its own (inside winBattle) because it is also reached from
+        // relic hooks and modal callbacks that have no commit of their own after it.
+        function damageEnemyHP(amount) {
+            battle.enemyHP = Math.max(0, battle.enemyHP - amount);
+            setElText('enemy-hp', battle.enemyHP);
+
+            if (battle.enemyHP <= 0) {
+                winBattle();
+            }
+        }
+
+        // Single choke point for all damage dealt to the player. Centralizing this
+        // (instead of `run.playerHP -= x` scattered at each call site) is what lets
+        // safety_rope reliably intercept a lethal hit no matter where it came from.
+        function applyPlayerDamage(amount) {
+            run.playerHP = Math.max(0, run.playerHP - amount);
+            let savedBySafetyRope = false;
+
+            if (run.playerHP <= 0) {
+                savedBySafetyRope = !!fireHook('onLethalDamage');
+            }
+
+            return { isDefeated: run.playerHP <= 0, savedBySafetyRope };
+        }
+
+        // ============================================================
+        // ENEMY AI
+        // ------------------------------------------------------------
+        // chooseEnemyAction() only looks and returns a plain-data action; executeEnemyAction()
+        // is the one place that carries it out.
+        // ============================================================
 
         // ---- Enemy AI: choose -> execute --------------------------------------
         // chooseEnemyAction() only LOOKS at the battle and returns a plain-data
@@ -2239,156 +2358,12 @@
             executeEnemyAction(chooseEnemyAction());
         }
 
-        // Fired whenever the player successfully plays a card (attack, toss, or
-        // defend). Single canonical dispatch point for per-card-played relic
-        // effects (currently just coin_magnet) instead of repeating checks at
-        // every play site.
-        function onPlayerCardPlayed(card) {
-            fireAllHooks('onCardPlayed', card);
-        }
-
-        window.onPlayerCardClick = function(index) {
-            if (!canAcceptPlayerAction()) return;
-            const card = battle.playerHand[index];
-
-            if (battle.defender === 'enemy') {
-                const maxAllowed = getMaxAllowedAttacks();
-
-                if (battle.table.length === 0) {
-                    playAttackCard(battle.playerHand, card);
-                    onPlayerCardPlayed(card);
-                    audio.playCardSound();
-                    scheduleEnemyAI(AI_STANDARD_DELAY_MS);
-                } else {
-                    if (battle.table.length >= maxAllowed) {
-                        showModal("Лимит карт", "Нельзя подкинуть больше карт, чем есть на руках у защищающегося!");
-                        return;
-                    }
-                    if (isRankOnTable(card.value)) {
-                        playAttackCard(battle.playerHand, card);
-                        onPlayerCardPlayed(card);
-                        audio.playCardSound();
-                        scheduleEnemyAI(AI_STANDARD_DELAY_MS);
-                    } else {
-                        showModal("Недопустимый ход", "Вы можете подкидывать только карты того номинала, что уже есть на столе!");
-                    }
-                }
-            } else {
-                if (battle.isTransferActive) {
-                    const requiredRank = battle.table[0].attack.value;
-                    if (card.value === requiredRank) {
-                        if (battle.enemyHand.length < battle.table.length + 1) {
-                            showModal("Перевод невозможен", "У противника недостаточно карт на руках, чтобы принять перевод!");
-                            battle.isTransferActive = false;
-                            renderAll();
-                            return;
-                        }
-                        playAttackCard(battle.playerHand, card);
-                        battle.defender = 'enemy';
-                        battle.isTransferActive = false;
-                        onPlayerCardPlayed(card);
-                        triggerCascadeTransfer();
-                        audio.playCardSound();
-                        renderAll();
-                        scheduleEnemyAI(AI_STANDARD_DELAY_MS);
-                        return;
-                    } else {
-                        showModal("Неверная карта", `Для перевода необходимо выбрать карту номинала ${VALUES[requiredRank]}.`);
-                        return;
-                    }
-                }
-
-                const undefendedPair = getOpenAttacks()[0];
-                if (undefendedPair) {
-                    if (canBeat(undefendedPair.attack, card)) {
-                        playDefenseCard(battle.playerHand, undefendedPair, card);
-                        onPlayerCardPlayed(card);
-                        fireAllHooks('onPlayerDefend', card);
-                        audio.playCardSound();
-
-                        scheduleEnemyAI(AI_QUICK_DELAY_MS);
-                    } else {
-                        showModal("Нельзя отбить", "Эта карта не покрывает атакующего! Нужна карта той же масти старше или козырь.");
-                    }
-                }
-            }
-            renderAll();
-        };
-
-        bindClick('btn-action', () => handleBito());
-        bindClick('btn-take', () => handlePlayerTake());
-
-        const TRANSFER_BLOCK_MESSAGES = {
-            boss_block: ["Перевод заблокирован", "Трактирщик запрещает переводить карты на этом этаже!"],
-            already_defending: ["Перевод невозможен", "Нельзя переводить ход, если вы уже начали отбиваться!"],
-            mixed_ranks: ["Перевод невозможен", "Переводить можно только карты одинакового достоинства!"],
-            no_matching_card: ["Перевод невозможен", null],
-            enemy_hand_too_small: ["Перевод невозможен", "У противника недостаточно карт на руках, чтобы принять перевод!"]
-        };
-
-        bindClick('btn-transfer', () => {
-            const reason = getTransferBlockReason();
-
-            if (reason === null) {
-                battle.isTransferActive = !battle.isTransferActive;
-                renderAll();
-                return;
-            }
-
-            if (reason === 'not_defender' || reason === 'empty_table') return;
-
-            const [title, text] = TRANSFER_BLOCK_MESSAGES[reason];
-            if (reason === 'no_matching_card') {
-                const requiredRank = battle.table[0].attack.value;
-                showModal(title, `У вас нет карты достоинства ${VALUES[requiredRank]} для перевода.`);
-            } else {
-                showModal(title, text);
-            }
-        });
-
-        // State only: pays out the battle-won gold (and the boss max-HP bonus) and
-        // returns the text to show for it.
-        function grantVictoryRewards() {
-            const goldReward = WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR;
-            run.gold += goldReward;
-
-            let rewardText = `Вы одолели соперника! Получено +${goldReward}$`;
-            if (getCurrentEnemy().isBoss) {
-                run.maxHP += BOSS_MAX_HP_BONUS;
-                run.playerHP = Math.min(run.maxHP, run.playerHP + BOSS_MAX_HP_BONUS);
-                rewardText += ` и +${BOSS_MAX_HP_BONUS} к максимальному здоровью за победу над боссом!`;
-            }
-            return rewardText;
-        }
-
-        // The enemy just hit 0 HP: reward, persist the win as its own phase, show the
-        // modal that leads to the shop.
-        function winBattle() {
-            audio.playWinSound();
-            const rewardText = grantVictoryRewards();
-
-            // The reward is already in run.gold / run.maxHP, so persist the win as its
-            // own phase BEFORE the modal: a save taken from here on (or the one the
-            // caller writes right after this returns) must resume as "battle won,
-            // shop pending", never as a live round against a 0-HP enemy.
-            setBattlePhase(BATTLE_PHASES.BATTLE_OVER);
-            commitBattleState({ render: false });
-            showModal("Победа в Бою!", rewardText, () => {
-                openShop();
-            });
-        }
-
-        // The single way enemy HP goes down. Reaching 0 ends the battle (winBattle()).
-        // This commits on its own (inside winBattle) because it is also reached from
-        // relic hooks and modal callbacks that have no commit of their own after it.
-        function damageEnemyHP(amount) {
-            battle.enemyHP = Math.max(0, battle.enemyHP - amount);
-            setElText('enemy-hp', battle.enemyHP);
-
-            if (battle.enemyHP <= 0) {
-                winBattle();
-            }
-        }
+        // ============================================================
+        // RELICS
+        // ------------------------------------------------------------
+        // The relic registry (RELIC_EFFECTS), the single hook walk behind fireHook/fireAllHooks/
+        // fireHookSum/queryRelicHook, and the active relic abilities the player triggers.
+        // ============================================================
 
         function hasRelic(relicId) {
             return run.relics.some(r => r.id === relicId);
@@ -2592,7 +2567,7 @@
                 isReady() {
                     return !battle.pocketDiscardUsedThisRound && canAcceptPlayerAction()
                         && battle.defender === 'enemy'
-                        && battle.playerHand.some(c => c.value === 6 || c.value === 7);
+                        && battle.playerHand.some(isPocketDiscardCard);
                 },
                 label: '✂️ Сбросить 6/7 (Карманный сброс)',
                 onUse: () => usePocketDiscard()
@@ -2663,7 +2638,7 @@
                 if (Date.now() >= (relicHighlightUntil[relicId] || 0)) {
                     renderAll();
                 }
-            }, RELIC_HIGHLIGHT_DURATION_MS + 20);
+            }, RELIC_HIGHLIGHT_DURATION_MS + RELIC_HIGHLIGHT_REPAINT_PAD_MS);
         }
 
         // The one place that walks the owned relics: calls `visit(relic, handler)` for
@@ -2749,6 +2724,11 @@
             return found;
         }
 
+        // pocket_discard: a card the player may drop (a 6 or a 7).
+        function isPocketDiscardCard(card) {
+            return POCKET_DISCARD_VALUES.includes(card.value);
+        }
+
         // How many cards "count" as excess in an oversized enemy hand, for relics
         // that scale off it (heavy_ballast, salted_wound). Capped so a runaway
         // hand size (e.g. via spam_mail) can't translate into unbounded damage.
@@ -2756,19 +2736,90 @@
             return Math.max(0, Math.min(handLength - HAND_SIZE, ENEMY_HAND_EXCESS_CAP));
         }
 
-        // Single choke point for all damage dealt to the player. Centralizing this
-        // (instead of `run.playerHP -= x` scattered at each call site) is what lets
-        // safety_rope reliably intercept a lethal hit no matter where it came from.
-        function applyPlayerDamage(amount) {
-            run.playerHP = Math.max(0, run.playerHP - amount);
-            let savedBySafetyRope = false;
-
-            if (run.playerHP <= 0) {
-                savedBySafetyRope = !!fireHook('onLethalDamage');
-            }
-
-            return { isDefeated: run.playerHP <= 0, savedBySafetyRope };
+        // Shared plumbing for the active relic abilities above: guards on
+        // hasRelic + isReady() (the single source of truth for "can this fire
+        // right now", also used by showRelicPopover()), then runs the
+        // relic-specific effect. effectFn returns:
+        //   - false: the effect couldn't find a valid target (e.g. no 6/7 in
+        //     hand) — bail out with no sound/save/render.
+        //   - 'checkRound': the effect may have emptied the player's hand, so
+        //     run checkRoundEnd() after the usual sound/save/render.
+        //   - anything else (including undefined): ran normally, no round
+        //     check needed.
+        function useActiveRelic(id, effectFn) {
+            if (!hasRelic(id) || !RELIC_EFFECTS[id].isReady()) return;
+            const result = effectFn();
+            if (result === false) return;
+            highlightRelic(id);
+            audio.playCardSound();
+            commitBattleState();
+            if (result === 'checkRound') checkRoundEnd();
         }
+
+        // pocket_discard: once per round, permanently bin a 6 or 7 from hand.
+        // Auto-picks the first matching card (lowest value first) rather than
+        // prompting, to keep the interaction one tap.
+        function usePocketDiscard() {
+            useActiveRelic('pocket_discard', () => {
+                const card = battle.playerHand.find(isPocketDiscardCard);
+                if (!card || !moveCard(card, battle.playerHand, battle.discardPile)) return false;
+
+                battle.pocketDiscardUsedThisRound = true;
+                // This can be the card that empties the player's hand: if the draw
+                // deck and table are also already empty, that's a round win the
+                // normal БИТО/take/replenish call sites would catch via
+                // checkRoundEnd() but this one-off discard bypassed. Without this
+                // call the round just sits there with an empty hand and no way
+                // forward (see: discarding the last card didn't end the battle).
+                return 'checkRound';
+            });
+        }
+
+        // jester_discard: once per battle, on your own attacking turn with an
+        // empty table, bin your whole hand and redraw the same number of cards.
+        // isReady() guarantees the deck has enough cards for a full redraw, so
+        // this always returns the same hand size it started with.
+        function useJesterDiscard() {
+            useActiveRelic('jester_discard', () => {
+                const handSize = battle.playerHand.length;
+                discardHand(battle.playerHand);
+                for (let i = 0; i < handSize; i++) {
+                    dealCard(battle.playerHand);
+                }
+                sortPlayerHand();
+
+                battle.jesterDiscardUsedThisBattle = true;
+                // Defensive: isReady() ensures the redraw is always full, so the
+                // hand shouldn't come back empty here — but this mirrors the same
+                // call in usePocketDiscard() in case that ever stops holding,
+                // rather than leave the round unable to end.
+                return 'checkRound';
+            });
+        }
+
+        // sleight_of_hand: once per battle, while defending against an
+        // undefended attack, swap that attack card for a random card from the
+        // draw deck. The original attack card goes to the discard pile.
+        function useSleightOfHand() {
+            useActiveRelic('sleight_of_hand', () => {
+                const pair = getOpenAttacks()[0];
+                if (!pair) return false;
+
+                const oldCard = pair.attack;
+                const newCard = takeRandomDeckCard();
+                if (newCard === null) return false;
+                pair.attack = newCard;
+                battle.discardPile.push(oldCard);
+
+                battle.sleightOfHandUsedThisBattle = true;
+            });
+        }
+
+        // ============================================================
+        // SHOP
+        // ------------------------------------------------------------
+        // Between-battle shop: buying, selling and healing.
+        // ============================================================
 
         function openShop() {
             const shopModal = document.getElementById('shop-modal');
@@ -2786,12 +2837,12 @@
                         <div class="flex items-center gap-2.5 min-w-0 flex-1">
                             <span class="text-2xl">❤️</span>
                             <div class="min-w-0">
-                                <div class="text-xs font-bold text-rose-300">Принять лекарство (+10 HP)</div>
-                                <div class="text-[10px] text-slate-400 leading-tight">Восстановить до 10 здоровья (до макс. ${run.maxHP})</div>
+                                <div class="text-xs font-bold text-rose-300">Принять лекарство (+${HEAL_AMOUNT} HP)</div>
+                                <div class="text-[10px] text-slate-400 leading-tight">Восстановить до ${HEAL_AMOUNT} здоровья (до макс. ${run.maxHP})</div>
                             </div>
                         </div>
                         <button class="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-lg shadow border border-rose-400 active:scale-95 transition flex-shrink-0" onclick="buyHeal()">
-                            10$
+                            ${HEAL_COST}$
                         </button>
                     </div>
                 `;
@@ -2821,7 +2872,7 @@
             }
 
             renderShopRelicSlots();
-            saveRunToLocal();
+            saveGameState();
         }
 
         // Renders the player's owned artifacts as a slot grid inside the shop.
@@ -2870,18 +2921,18 @@
         };
 
         window.buyHeal = function() {
-            if (run.gold >= 10) {
+            if (run.gold >= HEAL_COST) {
                 if (run.playerHP >= run.maxHP) {
                     showModal("Здоровье полное", "У вас уже максимальный запас здоровья!");
                     return;
                 }
-                run.gold -= 10;
-                run.playerHP = Math.min(run.maxHP, run.playerHP + 10);
+                run.gold -= HEAL_COST;
+                run.playerHP = Math.min(run.maxHP, run.playerHP + HEAL_AMOUNT);
                 audio.playWinSound();
                 openShop();
                 renderAll();
             } else {
-                showModal("Недостаточно денег", "Нужно 10 золотых монет для покупки здоровья.");
+                showModal("Недостаточно денег", `Нужно ${HEAL_COST} золотых монет для покупки здоровья.`);
             }
         };
 
@@ -2904,24 +2955,11 @@
             }
         };
 
-        bindClick('btn-next-floor', () => {
-            const shopModal = document.getElementById('shop-modal');
-            if (shopModal) {
-                shopModal.classList.add('hidden');
-                shopModal.classList.remove('flex');
-            }
-
-            run.floor++;
-            if (run.floor > ENEMIES.length) {
-                clearLocalSave();
-                showModal("ПОБЕДА В ЗАБЕГЕ!", "Вы прошли все этажи подземелья и стали Легендой Дурака!", () => {
-                    showSplashScreen();
-                });
-            } else {
-                startFloorBattle();
-                saveRunToLocal();
-            }
-        });
+        // ============================================================
+        // RENDERING
+        // ------------------------------------------------------------
+        // Pure projections of `run` / `battle` onto the DOM. renderAll() is only the order of the parts.
+        // ============================================================
 
         function renderCardHTML(card, extraClass = '') {
             const color = SUIT_COLORS[card.suit];
@@ -3149,12 +3187,11 @@
             refreshRelicPopoverIfOpen();
         }
 
-        // The active (button-triggered) relic abilities. Each has an
-        // isReady/label/onUse entry in RELIC_EFFECTS — this list is what makes
-        // showRelicPopover() decide whether to offer an activate button at all,
-        // and what makes a relic's relics-bar slot get the "ready to tap"
-        // .relic-ready-glow ring.
-        const ACTIVE_RELIC_IDS = ['pocket_discard', 'jester_discard', 'sleight_of_hand'];
+        // ============================================================
+        // MODALS AND POPOVERS
+        // ------------------------------------------------------------
+        // One dialog (#msg-box) with one way to open and close it; the relic popover is built on top.
+        // ============================================================
 
         // Which relic's popover (the reused #msg-box modal) is currently open,
         // if any — so renderAll() can keep its button's enabled/disabled state
@@ -3227,85 +3264,6 @@
                 return;
             }
             renderRelicPopoverContent(relic);
-        }
-
-        // Shared plumbing for the active relic abilities above: guards on
-        // hasRelic + isReady() (the single source of truth for "can this fire
-        // right now", also used by showRelicPopover()), then runs the
-        // relic-specific effect. effectFn returns:
-        //   - false: the effect couldn't find a valid target (e.g. no 6/7 in
-        //     hand) — bail out with no sound/save/render.
-        //   - 'checkRound': the effect may have emptied the player's hand, so
-        //     run checkRoundEnd() after the usual sound/save/render.
-        //   - anything else (including undefined): ran normally, no round
-        //     check needed.
-        function useActiveRelic(id, effectFn) {
-            if (!hasRelic(id) || !RELIC_EFFECTS[id].isReady()) return;
-            const result = effectFn();
-            if (result === false) return;
-            highlightRelic(id);
-            audio.playCardSound();
-            commitBattleState();
-            if (result === 'checkRound') checkRoundEnd();
-        }
-
-        // pocket_discard: once per round, permanently bin a 6 or 7 from hand.
-        // Auto-picks the first matching card (lowest value first) rather than
-        // prompting, to keep the interaction one tap.
-        function usePocketDiscard() {
-            useActiveRelic('pocket_discard', () => {
-                const card = battle.playerHand.find(c => c.value === 6 || c.value === 7);
-                if (!card || !moveCard(card, battle.playerHand, battle.discardPile)) return false;
-
-                battle.pocketDiscardUsedThisRound = true;
-                // This can be the card that empties the player's hand: if the draw
-                // deck and table are also already empty, that's a round win the
-                // normal БИТО/take/replenish call sites would catch via
-                // checkRoundEnd() but this one-off discard bypassed. Without this
-                // call the round just sits there with an empty hand and no way
-                // forward (see: discarding the last card didn't end the battle).
-                return 'checkRound';
-            });
-        }
-
-        // jester_discard: once per battle, on your own attacking turn with an
-        // empty table, bin your whole hand and redraw the same number of cards.
-        // isReady() guarantees the deck has enough cards for a full redraw, so
-        // this always returns the same hand size it started with.
-        function useJesterDiscard() {
-            useActiveRelic('jester_discard', () => {
-                const handSize = battle.playerHand.length;
-                discardHand(battle.playerHand);
-                for (let i = 0; i < handSize; i++) {
-                    dealCard(battle.playerHand);
-                }
-                sortPlayerHand();
-
-                battle.jesterDiscardUsedThisBattle = true;
-                // Defensive: isReady() ensures the redraw is always full, so the
-                // hand shouldn't come back empty here — but this mirrors the same
-                // call in usePocketDiscard() in case that ever stops holding,
-                // rather than leave the round unable to end.
-                return 'checkRound';
-            });
-        }
-
-        // sleight_of_hand: once per battle, while defending against an
-        // undefended attack, swap that attack card for a random card from the
-        // draw deck. The original attack card goes to the discard pile.
-        function useSleightOfHand() {
-            useActiveRelic('sleight_of_hand', () => {
-                const pair = getOpenAttacks()[0];
-                if (!pair) return false;
-
-                const oldCard = pair.attack;
-                const newCard = takeRandomDeckCard();
-                if (newCard === null) return false;
-                pair.attack = newCard;
-                battle.discardPile.push(oldCard);
-
-                battle.sleightOfHandUsedThisBattle = true;
-            });
         }
 
         // ---- Modal: one dialog (#msg-box), one way to open and close it ---------
@@ -3387,6 +3345,55 @@
                 cancel: { label: "ОТМЕНА", onClick: () => closeModal() }
             });
         }
+
+        // ============================================================
+        // EVENT BINDINGS
+        // ------------------------------------------------------------
+        // Wires the buttons to the handlers above. Runs once at load, so it stays last.
+        // ============================================================
+
+        bindClick('btn-action', () => handleBito());
+
+        bindClick('btn-take', () => handlePlayerTake());
+
+        bindClick('btn-transfer', () => {
+            const reason = getTransferBlockReason();
+
+            if (reason === null) {
+                battle.isTransferActive = !battle.isTransferActive;
+                renderAll();
+                return;
+            }
+
+            if (reason === 'not_defender' || reason === 'empty_table') return;
+
+            const [title, text] = TRANSFER_BLOCK_MESSAGES[reason];
+            if (reason === 'no_matching_card') {
+                const requiredRank = battle.table[0].attack.value;
+                showModal(title, `У вас нет карты достоинства ${VALUES[requiredRank]} для перевода.`);
+            } else {
+                showModal(title, text);
+            }
+        });
+
+        bindClick('btn-next-floor', () => {
+            const shopModal = document.getElementById('shop-modal');
+            if (shopModal) {
+                shopModal.classList.add('hidden');
+                shopModal.classList.remove('flex');
+            }
+
+            run.floor++;
+            if (run.floor > ENEMIES.length) {
+                clearLocalSave();
+                showModal("ПОБЕДА В ЗАБЕГЕ!", "Вы прошли все этажи подземелья и стали Легендой Дурака!", () => {
+                    showSplashScreen();
+                });
+            } else {
+                startFloorBattle();
+                saveGameState();
+            }
+        });
 
         bindClick('btn-open-menu', () => {
             showSplashScreen();
@@ -3483,6 +3490,202 @@
 
                 return { total, passed, failed, details };
             }
+        }
+
+        // ============================================================
+        // TEST HELPERS — used only by the test suites below. They live here (after
+        // the production code and the test runner) so scans of the production
+        // source never see them.
+        // ============================================================
+
+        /**
+         * Runs fn() while guaranteeing that whatever real save currently sits in
+         * localStorage is restored exactly afterwards, even if fn() (or something it
+         * calls) writes to or clears SAVE_KEY as a side effect. This protects the
+         * player's real save from being clobbered by, e.g., unit tests that call
+         * game functions with fake fixtures (some game functions autosave
+         * internally, such as handlePlayerTake() calling saveGameState()).
+         */
+        // ---- Shared fixtures ----------------------------------------------------
+        // Every suite that needs a battle/run builds it from these. The base only
+        // holds the plumbing fields that never differ (flags, timers, counters); a
+        // suite passes its own cards / phase / HP as `defaults`, and each test
+        // overrides what it cares about:
+        //     const makeFixtureBattle = (o = {}) => makeTestBattle({ playerHand: [...] }, o);
+        function makeTestBattle(defaults = {}, overrides = {}) {
+            return Object.assign({
+                drawDeck: [], discardPile: [], playerHand: [], enemyHand: [], table: [],
+                trumpCard: null, trumpSuit: 'Hearts',
+                defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
+                enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
+                cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
+                jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+            }, defaults, overrides);
+        }
+
+        function makeTestRun(overrides = {}) {
+            return Object.assign({ floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() }, overrides);
+        }
+
+        function testCard(id, suit, value) {
+            return { id, suit, value };
+        }
+
+        // Runs fn against a throwaway run/battle under full test conditions: the
+        // real save is preserved, battle invariants are enforced on every commit,
+        // and afterwards the AI timer, the save and the modal are cleaned up.
+        function withTestGame(fixtureRun, fixtureBattle, fn) {
+            return preserveLocalSaveAround(() =>
+                withIsolatedGameState(fixtureRun, fixtureBattle, () => {
+                    const wasEnabled = battleInvariantChecksEnabled;
+                    battleInvariantChecksEnabled = true;
+                    try { fn(); } finally {
+                        battleInvariantChecksEnabled = wasEnabled;
+                        clearAITimer(); clearLocalSave(); closeModal();
+                    }
+                }));
+        }
+
+        function preserveLocalSaveAround(fn) {
+            let preRaw;
+            try {
+                preRaw = localStorage.getItem(SAVE_KEY);
+            } catch (err) {
+                preRaw = null;
+            }
+            try {
+                return fn();
+            } finally {
+                try {
+                    if (preRaw === null) {
+                        localStorage.removeItem(SAVE_KEY);
+                    } else {
+                        localStorage.setItem(SAVE_KEY, preRaw);
+                    }
+                } catch (err) {
+                    console.warn("Failed to restore save after preserveLocalSaveAround:", err);
+                }
+            }
+        }
+
+        // Runs `testFn` against a throwaway run/battle pair, guaranteeing the real
+        // run/battle are restored afterward NO MATTER WHAT — including when an
+        // assertion inside testFn throws. Without the try/finally here, a failed
+        // assertion would skip a test's own restore lines (they're written *after*
+        // the assertions), leaving every later test — and the real game, once the
+        // test panel closes — running against that test's fake fixture instead of
+        // the player's actual state.
+        function withIsolatedGameState(fixtureRun, fixtureBattle, testFn) {
+            const oldRun = run, oldBattle = battle, oldTimer = battle.aiTimer;
+            clearAITimer();
+            run = fixtureRun;
+            battle = fixtureBattle;
+            try {
+                testFn();
+            } finally {
+                clearAITimer(); // cancel anything the test scheduled on the fake battle
+                run = oldRun;
+                battle = oldBattle;
+                battle.aiTimer = oldTimer;
+            }
+        }
+
+        // Snapshots the given battle/run fields, runs testFn, and restores them
+        // afterward no matter what — including when an assertion throws — instead
+        // of each test block hand-writing "const oldX = battle.x; ... battle.x =
+        // oldX;" for every field it touches. Also clears any AI timer left behind
+        // by the test, mirroring withIsolatedGameState()'s safety net. Use this for
+        // tests that only need to override a few fields on the real run/battle;
+        // use withIsolatedGameState() instead when a test needs a full throwaway
+        // run/battle pair.
+        function withFieldSnapshot(fields, testFn) {
+            const targets = { battle, run };
+            const saved = {};
+            for (const key in fields) {
+                const obj = targets[key];
+                saved[key] = {};
+                fields[key].forEach(f => { saved[key][f] = obj[f]; });
+            }
+            clearAITimer();
+            try {
+                testFn();
+            } finally {
+                clearAITimer();
+                for (const key in fields) {
+                    const obj = targets[key];
+                    fields[key].forEach(f => { obj[f] = saved[key][f]; });
+                }
+            }
+        }
+
+        // The helpers above cancel the real battle's pending AI move while tests
+        // run, and nothing else re-arms it. These two bracket a whole test run:
+        // capture what the real game was doing, then put it back afterward, so
+        // running the tests mid-battle can never freeze the game on "Ход соперника".
+        function captureRealBattleForTests() {
+            return {
+                battle,
+                inBattle: battle.phase !== BATTLE_PHASES.IDLE,
+                aiPending: battle.phase === BATTLE_PHASES.AI_WAITING && battle.aiTimer !== null
+            };
+        }
+
+        function restoreRealBattleAfterTests(snapshot) {
+            if (snapshot.inBattle && battle === snapshot.battle && snapshot.aiPending) {
+                syncEnemyDisplay();
+                scheduleEnemyAI(AI_STANDARD_DELAY_MS);
+            }
+        }
+
+        // Catch-all for tests that touch the REAL run/battle without snapshotting
+        // every field they change (e.g. a test that writes battle.phase directly, or
+        // one that drives damageEnemyHP() into BATTLE_OVER). Without it such a leak
+        // survives the test run and the player comes back to a broken screen — the
+        // reported case: a mid-round battle left in BATTLE_OVER, so "БИТО" stayed
+        // disabled. The pair below deep-copies the game state at the start of a run
+        // and puts it back at the end, so no test — present or future — can leak.
+        //
+        // aiTimer and actionToken are runtime-only (BATTLE_RUNTIME_FIELDS) and are
+        // deliberately NOT restored: a timer id from before the run is dead (the
+        // helpers cancel it; restoreRealBattleAfterTests() re-arms it when needed),
+        // and actionToken must only ever move forward so stale callbacks stay stale.
+        function cloneGameState(obj) {
+            try {
+                return structuredClone(obj);
+            } catch (err) {
+                return JSON.parse(JSON.stringify(obj));
+            }
+        }
+
+        function captureRealStateForTests() {
+            const pick = (source, skip) => {
+                const copy = {};
+                for (const key of Object.keys(source)) {
+                    if (!skip.includes(key)) copy[key] = source[key];
+                }
+                return cloneGameState(copy);
+            };
+            return {
+                run,
+                battle,
+                runState: pick(run, []),
+                battleState: pick(battle, BATTLE_RUNTIME_FIELDS)
+            };
+        }
+
+        // Restores IN PLACE (same run/battle objects), and only if they are still the
+        // objects that were captured — a fixture pair swapped in by a test helper is
+        // not ours to touch.
+        function restoreRealStateAfterTests(snapshot) {
+            const restoreInto = (target, saved, skip) => {
+                for (const key of Object.keys(target)) {
+                    if (!skip.includes(key) && !(key in saved)) delete target[key];
+                }
+                const fresh = cloneGameState(saved);
+                for (const key of Object.keys(fresh)) target[key] = fresh[key];
+            };
+            if (run === snapshot.run) restoreInto(run, snapshot.runState, []);
+            if (battle === snapshot.battle) restoreInto(battle, snapshot.battleState, BATTLE_RUNTIME_FIELDS);
         }
 
         function runGameUnitTests() {
@@ -3806,7 +4009,7 @@
                             // 2 карты на руках → урон 6 + 2*4 = 14, с 30 HP игрок выживает.
                             assert.equal(run.playerHP, 16);
                             const msgBox = document.getElementById('msg-box');
-                            if (msgBox) { msgBox.classList.add('hidden'); msgBox.classList.remove('flex'); }
+                            closeModal();
                         }
                     );
                 });
@@ -3832,7 +4035,7 @@
                             // 1 карта на руке → урон 6 + 1*4 = 10, с 5 HP это смертельно.
                             assert.equal(run.playerHP, 0);
                             const msgBox = document.getElementById('msg-box');
-                            if (msgBox) { msgBox.classList.add('hidden'); msgBox.classList.remove('flex'); }
+                            closeModal();
                         }
                     );
                 });
@@ -3856,7 +4059,7 @@
                             assert.equal(document.getElementById('msg-title').innerText, 'Ничья в кону');
                             assert.equal(run.playerHP, 20, 'ничья не должна наносить урон');
                             const msgBox = document.getElementById('msg-box');
-                            if (msgBox) { msgBox.classList.add('hidden'); msgBox.classList.remove('flex'); }
+                            closeModal();
                         }
                     );
                 });
@@ -4047,7 +4250,7 @@
 
                 it('РЕГРЕССИЯ: переход на следующий этаж сохраняет бой после его инициализации', () => {
                     // The same bug was duplicated in the btn-next-floor handler:
-                    // saveRunToLocal() used to be called before startFloorBattle().
+                    // saveGameState() used to be called before startFloorBattle().
                     // Same withIsolatedGameState reasoning as the test above — this one
                     // additionally used to leave the *real* battle's table/enemyHand/
                     // trumpCard/phase/etc. overwritten with a floor-2 fresh-battle fixture,
@@ -4059,7 +4262,7 @@
                         () => {
                             clearLocalSave();
                             startFloorBattle();
-                            saveRunToLocal();
+                            saveGameState();
 
                             const raw = localStorage.getItem(SAVE_KEY);
                             const parsed = JSON.parse(raw);
@@ -4272,7 +4475,7 @@
             runner.describe('8d. Автосохранение внутри раунда (setBattlePhase/scheduleEnemyAI/scheduleEnemyAction)', (it, assert) => {
                 // РЕГРЕССИЯ (репорт): выйти в меню посреди боя (например, сразу после
                 // того, как соперник подкинул карту) не сохранялось нигде — до этой
-                // правки saveRunToLocal() вызывался только на границах раунда (bito/
+                // правки saveGameState() вызывался только на границах раунда (bito/
                 // take), а не после каждого отдельного хода. Если вкладка выгружалась
                 // (типично для Android Chrome при переключении приложений), при
                 // восстановлении игра откатывалась к началу раунда.
@@ -4370,18 +4573,15 @@
             });
 
             runner.describe('8e. Централизация переходов фазы (setBattlePhase — единственный писатель battle.phase)', (it, assert) => {
-                const makeFixtureBattle = (overrides = {}) => Object.assign({
+                const makeFixtureBattle = (overrides = {}) => makeTestBattle({
                     drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
                     playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
                     enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
                     table: [{ attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: null }],
                     trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                    defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                    cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                    jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                }, overrides);
-                const makeFixtureRun = () => ({ floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() });
+                    defender: 'player',   
+                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_DEFENSE }, overrides);
+                const makeFixtureRun = (overrides = {}) => makeTestRun(overrides);
 
                 // Static guard: production code (everything before the test runner) must
                 // never assign battle.phase outside setBattlePhase(). Tests may still
@@ -4413,7 +4613,7 @@
                     const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
                     const body = (fullSource.match(/function setBattlePhase\(phase\) \{[\s\S]*?\n        \}\n/) || [''])[0];
                     assert.isTrue(body.length > 0, 'тело setBattlePhase() не найдено');
-                    assert.isFalse(/saveRunToLocal|saveGameState|renderAll|commitBattleState/.test(body), 'setBattlePhase() не должен сохранять или рисовать');
+                    assert.isFalse(/saveGameState|saveGameState|renderAll|commitBattleState/.test(body), 'setBattlePhase() не должен сохранять или рисовать');
 
                     withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => {
                         const realRenderAll = window.renderAll;
@@ -4620,18 +4820,15 @@
             });
 
             runner.describe('8g. enterAIWaitingPhase (единственная точка перехода хода к ИИ)', (it, assert) => {
-                const makeFixtureBattle = (overrides = {}) => Object.assign({
+                const makeFixtureBattle = (overrides = {}) => makeTestBattle({
                     drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
                     playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
                     enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
                     table: [{ attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: null }],
                     trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                    defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                    cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                    jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                }, overrides);
-                const makeFixtureRun = () => ({ floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() });
+                    defender: 'enemy',   
+                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK }, overrides);
+                const makeFixtureRun = (overrides = {}) => makeTestRun(overrides);
 
                 // Runs fn with setTimeout/clearTimeout replaced by recorders, restoring them afterwards.
                 function withFakeTimers(fn) {
@@ -4699,17 +4896,14 @@
             });
 
             runner.describe('8h. Победа над соперником и продолжение игры (враг с 0 HP)', (it, assert) => {
-                const makeFixtureBattle = (overrides = {}) => Object.assign({
+                const makeFixtureBattle = (overrides = {}) => makeTestBattle({
                     drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
                     playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
                     enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
                     table: [], trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                    defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                    enemyHP: 5, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                    cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                    jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                }, overrides);
-                const makeFixtureRun = () => ({ floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() });
+                    defender: 'enemy',   
+                    enemyHP: 5, phase: BATTLE_PHASES.PLAYER_ATTACK }, overrides);
+                const makeFixtureRun = (overrides = {}) => makeTestRun({ gold: 15, ...overrides });
                 const closeUi = () => {
                     const modal = document.getElementById('msg-box');
                     if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
@@ -4775,21 +4969,15 @@
             });
 
             runner.describe('8i. Этап 1 рефакторинга: дисциплина состояния (проверки до смены фазы, единый commit, allow-list сохранения, инварианты)', (it, assert) => {
-                const makeFixtureBattle = (overrides = {}) => Object.assign({
+                const makeFixtureBattle = (overrides = {}) => makeTestBattle({
                     drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }, { id: 'd2', suit: 'Hearts', value: 8 }], discardPile: [],
                     playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
                     enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
                     table: [], trumpCard: { id: 'd1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                    defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                    cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                    jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                }, overrides);
-                const makeFixtureRun = () => ({ floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() });
-                const closeUi = () => {
-                    const modal = document.getElementById('msg-box');
-                    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
-                };
+                    defender: 'enemy',   
+                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK }, overrides);
+                const makeFixtureRun = (overrides = {}) => makeTestRun(overrides);
+                const closeUi = closeModal;
                 const openAttack = () => [{ attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: null }];
                 // The exact pair the original bug needed: a handler entered with a valid phase
                 // but nothing on the table used to set RESOLVING and then bail out.
@@ -4835,10 +5023,10 @@
                 });
 
                 // ---- 1.1: one commit, not save+render by hand ----
-                it('В боевом коде нет ручной пары saveRunToLocal(); renderAll(); — только commitBattleState()', () => {
+                it('В боевом коде нет ручной пары saveGameState(); renderAll(); — только commitBattleState()', () => {
                     const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
                     const productionSource = fullSource.slice(0, fullSource.indexOf('class TinyTestRunner'));
-                    const offenders = productionSource.match(/saveRunToLocal\(\);\s*renderAll\(\);/g) || [];
+                    const offenders = productionSource.match(/saveGameState\(\);\s*renderAll\(\);/g) || [];
                     assert.equal(offenders.length, 0, 'найдена ручная пара save+render: ' + offenders.length);
                 });
 
@@ -5012,18 +5200,15 @@
             });
 
             runner.describe('8j. Этап 2 рефакторинга: примитивы карт и стола (moveCard, removeCard, dealCard, API стола)', (it, assert) => {
-                const C = (id, suit, value) => ({ id, suit, value });
-                const makeFixtureBattle = (overrides = {}) => Object.assign({
+                const C = testCard;
+                const makeFixtureBattle = (overrides = {}) => makeTestBattle({
                     drawDeck: [C('d1', 'Hearts', 6), C('d2', 'Hearts', 8), C('d3', 'Pikes', 9)], discardPile: [],
                     playerHand: [C('p1', 'Hearts', 6), C('p2', 'Pikes', 9)],
                     enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 9)],
                     table: [], trumpCard: C('d1', 'Hearts', 6), trumpSuit: 'Hearts',
-                    defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                    cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                    jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                }, overrides);
-                const makeFixtureRun = () => ({ floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() });
+                    defender: 'enemy',   
+                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK }, overrides);
+                const makeFixtureRun = (overrides = {}) => makeTestRun(overrides);
                 const inGame = (overrides, fn) => withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(overrides), fn);
                 const allIds = () => [...battle.drawDeck, ...battle.discardPile, ...battle.playerHand, ...battle.enemyHand, ...getTableCards()].map(c => c.id).sort();
 
@@ -5125,7 +5310,7 @@
                     });
                 });
 
-                it('getOpenAttacks / hasOpenAttacks / getDefendedPairCount / getTableCards / countTableCards / getTableRanks', () => {
+                it('getOpenAttacks / hasOpenAttacks / getDefendedPairCount / getTableCards / getTableRanks', () => {
                     inGame({
                         table: [
                             { attack: C('a1', 'Pikes', 7), defend: C('b1', 'Pikes', 10) },
@@ -5136,7 +5321,7 @@
                         assert.equal(getOpenAttacks()[0].attack.id, 'a2');
                         assert.isTrue(hasOpenAttacks());
                         assert.equal(getDefendedPairCount(), 1);
-                        assert.equal(countTableCards(), 3);
+                        assert.equal(getTableCards().length, 3);
                         assert.equal(getTableCards().map(c => c.id).join(), 'a1,b1,a2');
                         const ranks = getTableRanks();
                         assert.isTrue(ranks.has(7) && ranks.has(10) && ranks.size === 2);
@@ -5145,7 +5330,7 @@
                         assert.isFalse(hasOpenAttacks());
                         battle.table = [];
                         assert.isFalse(hasOpenAttacks());
-                        assert.equal(countTableCards(), 0);
+                        assert.equal(getTableCards().length, 0);
                     });
                 });
 
@@ -5224,7 +5409,7 @@
                                 assert.equal(battle.discardPile.map(c => c.id).sort().join(), 'a1,b1');
                                 battle.playerHand.push(C('a1', 'Pikes', 7)); // тот же id уже в сбросе
                                 assert.isTrue(getBattleInvariantViolations(battle).length > 0, 'дубликат в сбросе должен ловиться');
-                            } finally { clearAITimer(); clearLocalSave(); const m = document.getElementById('msg-box'); if (m) { m.classList.add('hidden'); m.classList.remove('flex'); } }
+                            } finally { clearAITimer(); clearLocalSave(); closeModal(); }
                         });
                     });
                 });
@@ -5246,7 +5431,7 @@
                                 assert.equal(battle.table.length, 0);
                                 assert.equal(battle.playerHand.length, 4 + 4);
                                 assert.equal(allIds().join(), before.join());
-                            } finally { clearAITimer(); clearLocalSave(); const m = document.getElementById('msg-box'); if (m) { m.classList.add('hidden'); m.classList.remove('flex'); } }
+                            } finally { clearAITimer(); clearLocalSave(); closeModal(); }
                         });
                     });
                 });
@@ -5267,29 +5452,16 @@
             });
 
             runner.describe('8k. Этап 3 рефакторинга: конец раунда (decide/apply/present), взятие, победа в бою', (it, assert) => {
-                const C = (id, suit, value) => ({ id, suit, value });
-                const makeFixtureBattle = (overrides = {}) => Object.assign({
+                const C = testCard;
+                const makeFixtureBattle = (overrides = {}) => makeTestBattle({
                     drawDeck: [], discardPile: [],
                     playerHand: [C('p1', 'Hearts', 6)],
                     enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 9)],
                     table: [], trumpCard: C('t1', 'Hearts', 6), trumpSuit: 'Hearts',
-                    defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                    cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                    jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                }, overrides);
-                const makeFixtureRun = (overrides = {}) => Object.assign({ floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() }, overrides);
-                const inGame = (runOv, battleOv, fn) => preserveLocalSaveAround(() =>
-                    withIsolatedGameState(makeFixtureRun(runOv), makeFixtureBattle(battleOv), () => {
-                        const wasEnabled = battleInvariantChecksEnabled;
-                        battleInvariantChecksEnabled = true;
-                        try { fn(); } finally {
-                            battleInvariantChecksEnabled = wasEnabled;
-                            clearAITimer(); clearLocalSave();
-                            const m = document.getElementById('msg-box');
-                            if (m) { m.classList.add('hidden'); m.classList.remove('flex'); m.onclick = null; }
-                        }
-                    }));
+                    defender: 'enemy',   
+                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK }, overrides);
+                const makeFixtureRun = (overrides = {}) => makeTestRun(overrides);
+                const inGame = (runOv, battleOv, fn) => withTestGame(makeFixtureRun(runOv), makeFixtureBattle(battleOv), fn);
                 const snapshot = () => JSON.stringify({ b: serializeGameState().battle, hp: run.playerHP, gold: run.gold, relics: run.relics });
 
                 // ---- getRoundResult: decide ----
@@ -5395,7 +5567,7 @@
                         let title = null;
                         window.showModal = (t) => { title = t; };
                         try {
-                            saveRunToLocal();
+                            saveGameState();
                             assert.isTrue(localStorage.getItem(SAVE_KEY) !== null);
                             presentRoundResult(applyRoundResult(getRoundResult()));
                             assert.equal(title, 'Поражение!');
@@ -5496,7 +5668,7 @@
                             presentPlayerTakeOutcome({ enemyJustDied: true, isDefeated: false, savedBySafetyRope: false });
                             assert.equal(titles.length + scheduled, 0, 'мёртвый враг: ни модалок, ни хода ИИ');
 
-                            saveRunToLocal();
+                            saveGameState();
                             presentPlayerTakeOutcome({ enemyJustDied: false, isDefeated: true, savedBySafetyRope: false });
                             assert.equal(titles.join(), 'Поражение!');
                             assert.equal(scheduled, 0);
@@ -5561,29 +5733,16 @@
             });
 
             runner.describe('8l. Этап 4 рефакторинга: ИИ (chooseEnemyAction / executeEnemyAction) и единый обход хуков relics', (it, assert) => {
-                const C = (id, suit, value) => ({ id, suit, value });
-                const makeFixtureBattle = (overrides = {}) => Object.assign({
+                const C = testCard;
+                const makeFixtureBattle = (overrides = {}) => makeTestBattle({
                     drawDeck: [], discardPile: [],
                     playerHand: [C('p1', 'Hearts', 6), C('p2', 'Hearts', 7)],
                     enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Pikes', 12), C('e3', 'Hearts', 8)],
                     table: [], trumpCard: C('t1', 'Hearts', 6), trumpSuit: 'Hearts',
-                    defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                    enemyHP: 40, phase: BATTLE_PHASES.RESOLVING, aiTimer: null, actionToken: 0,
-                    cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                    jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                }, overrides);
-                const makeFixtureRun = (overrides = {}) => Object.assign({ floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() }, overrides);
-                const inGame = (runOv, battleOv, fn) => preserveLocalSaveAround(() =>
-                    withIsolatedGameState(makeFixtureRun(runOv), makeFixtureBattle(battleOv), () => {
-                        const wasEnabled = battleInvariantChecksEnabled;
-                        battleInvariantChecksEnabled = true;
-                        try { fn(); } finally {
-                            battleInvariantChecksEnabled = wasEnabled;
-                            clearAITimer(); clearLocalSave();
-                            const m = document.getElementById('msg-box');
-                            if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
-                        }
-                    }));
+                    defender: 'player',   
+                    enemyHP: 40, phase: BATTLE_PHASES.RESOLVING }, overrides);
+                const makeFixtureRun = (overrides = {}) => makeTestRun(overrides);
+                const inGame = (runOv, battleOv, fn) => withTestGame(makeFixtureRun(runOv), makeFixtureBattle(battleOv), fn);
                 const pair = (atk, def = null) => ({ attack: atk, defend: def });
                 const snapshot = () => JSON.stringify({ b: serializeGameState().battle, hp: run.playerHP, gold: run.gold });
 
@@ -5852,18 +6011,15 @@
             });
 
             runner.describe('8m. Этап 5 рефакторинга: рендер по частям, единый API модалок, playTone', (it, assert) => {
-                const C = (id, suit, value) => ({ id, suit, value });
-                const makeFixtureBattle = (overrides = {}) => Object.assign({
+                const C = testCard;
+                const makeFixtureBattle = (overrides = {}) => makeTestBattle({
                     drawDeck: [C('d1', 'Hearts', 6), C('d2', 'Pikes', 8)], discardPile: [],
                     playerHand: [C('p1', 'Hearts', 7), C('p2', 'Pikes', 9)],
                     enemyHand: [C('e1', 'Pikes', 10), C('e2', 'Hearts', 8), C('e3', 'Clubs', 6)],
                     table: [], trumpCard: C('d1', 'Hearts', 6), trumpSuit: 'Hearts',
-                    defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                    cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                    jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
-                }, overrides);
-                const makeFixtureRun = (overrides = {}) => Object.assign({ floor: 1, playerHP: 30, maxHP: 30, gold: 7, relics: [], deck: generateStandardDeck() }, overrides);
+                    defender: 'enemy',   
+                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK }, overrides);
+                const makeFixtureRun = (overrides = {}) => makeTestRun({ gold: 7, ...overrides });
                 const relicOf = (id) => Object.assign({}, ALL_RELICS.find(r => r.id === id));
                 const inGame = (runOv, battleOv, fn) => withIsolatedGameState(makeFixtureRun(runOv), makeFixtureBattle(battleOv), () => {
                     try { fn(); } finally { closeModal(); }
@@ -6155,6 +6311,170 @@
                     const prod = fullSource.slice(0, fullSource.indexOf('class TinyTestRunner'));
                     const uses = prod.match(/createOscillator\(\)/g) || [];
                     assert.equal(uses.length, 1, 'осцилляторы создаются в одном месте: ' + uses.length);
+                });
+            });
+
+            runner.describe('8n. Этап 6 рефакторинга: константы, отсутствие legacy-обёрток, структура файла, общие тестовые фикстуры', (it, assert) => {
+                const productionSource = () => {
+                    const full = [...document.scripts].map(sc => sc.textContent).join('\n');
+                    return full.slice(0, full.indexOf('const assert = {'));
+                };
+
+                // ---- constants ----
+                it('Стартовые параметры забега берутся из START_PLAYER_HP / START_GOLD', () => {
+                    const snapshot = captureRealStateForTests();
+                    const realBattle = battle, realRun = run;
+                    preserveLocalSaveAround(() => {
+                        try {
+                            initNewRun();
+                            assert.equal(run.playerHP, START_PLAYER_HP);
+                            assert.equal(run.maxHP, START_PLAYER_HP);
+                            assert.equal(run.gold, START_GOLD);
+                            assert.equal(run.floor, 1);
+                            assert.equal(run.deck.length, (ACE_VALUE - MIN_CARD_VALUE + 1) * Object.keys(SUITS).length, 'колода из всех номиналов MIN..ACE во всех мастях');
+                        } finally {
+                            clearAITimer();
+                            run = realRun; battle = realBattle;
+                            restoreRealStateAfterTests(snapshot);
+                            clearLocalSave();
+                        }
+                    });
+                });
+
+                it('cardPower(): любой козырь сильнее любой некозырной карты (бонус больше разброса значений)', () => {
+                    withIsolatedGameState(makeTestRun(), makeTestBattle({ trumpSuit: 'Hearts' }), () => {
+                        const weakestTrump = cardPower(testCard('t', 'Hearts', MIN_CARD_VALUE));
+                        const strongestPlain = cardPower(testCard('p', 'Pikes', ACE_VALUE));
+                        assert.isTrue(weakestTrump > strongestPlain);
+                        assert.equal(cardPower(testCard('t', 'Hearts', 9)) - cardPower(testCard('p', 'Pikes', 9)), TRUMP_POWER_BONUS);
+                    });
+                });
+
+                it('isPocketDiscardCard(): ровно значения из POCKET_DISCARD_VALUES', () => {
+                    for (let v = MIN_CARD_VALUE; v <= ACE_VALUE; v++) {
+                        assert.equal(isPocketDiscardCard(testCard('x', 'Hearts', v)), POCKET_DISCARD_VALUES.includes(v), 'значение ' + v);
+                    }
+                    assert.isTrue(isPocketDiscardCard(testCard('x', 'Hearts', 6)) && isPocketDiscardCard(testCard('x', 'Hearts', 7)));
+                });
+
+                it('buyHeal(): цена HEAL_COST, лечение HEAL_AMOUNT не выше максимума; без денег и при полном HP — отказ', () => {
+                    const realMuted = audio.isMuted;
+                    audio.isMuted = true;
+                    try {
+                        withTestGame(makeTestRun({ gold: HEAL_COST + 3, playerHP: 10, maxHP: 30 }), makeTestBattle(), () => {
+                            window.buyHeal();
+                            assert.equal(run.gold, 3);
+                            assert.equal(run.playerHP, 10 + HEAL_AMOUNT);
+                        });
+                        withTestGame(makeTestRun({ gold: HEAL_COST, playerHP: 28, maxHP: 30 }), makeTestBattle(), () => {
+                            window.buyHeal();
+                            assert.equal(run.playerHP, 30, 'не выше максимума');
+                        });
+                        withTestGame(makeTestRun({ gold: HEAL_COST - 1, playerHP: 10, maxHP: 30 }), makeTestBattle(), () => {
+                            window.buyHeal();
+                            assert.equal(run.gold, HEAL_COST - 1, 'денег не хватает — ничего не списано');
+                            assert.equal(run.playerHP, 10);
+                        });
+                        withTestGame(makeTestRun({ gold: HEAL_COST, playerHP: 30, maxHP: 30 }), makeTestBattle(), () => {
+                            window.buyHeal();
+                            assert.equal(run.gold, HEAL_COST, 'при полном HP деньги не списываются');
+                        });
+                    } finally { audio.isMuted = realMuted; }
+                });
+
+                it('Магазин показывает цену и лечение из констант (HEAL_COST / HEAL_AMOUNT)', () => {
+                    withTestGame(makeTestRun({ gold: 50 }), makeTestBattle(), () => {
+                        openShop();
+                        const html = document.getElementById('shop-heal-list').innerHTML;
+                        assert.isTrue(html.includes('+' + HEAL_AMOUNT + ' HP') && html.includes(HEAL_COST + '$'));
+                        const shop = document.getElementById('shop-modal');
+                        if (shop) { shop.classList.add('hidden'); shop.classList.remove('flex'); }
+                    });
+                });
+
+                // ---- no legacy / dead code ----
+                it('Обёртки совместимости удалены: нет saveRunToLocal / loadRunFromLocal / countTableCards', () => {
+                    assert.equal(typeof window.saveRunToLocal, 'undefined');
+                    assert.equal(typeof window.loadRunFromLocal, 'undefined');
+                    assert.equal(typeof window.countTableCards, 'undefined');
+                    assert.isFalse(/saveRunToLocal|loadRunFromLocal/.test(productionSource().replace(/\/\/[^\n]*/g, '')), 'в коде не должно остаться упоминаний');
+                });
+
+                it('Тестовые хелперы не входят в боевой код: withIsolatedGameState и др. определены после раннера', () => {
+                    const prod = productionSource();
+                    for (const name of ['withIsolatedGameState', 'withFieldSnapshot', 'captureRealStateForTests', 'preserveLocalSaveAround', 'makeTestBattle']) {
+                        assert.equal(typeof window[name], 'function', name + ' должен существовать');
+                        assert.isFalse(new RegExp('function ' + name + '\\(').test(prod), name + ' не должен быть в боевой части файла');
+                    }
+                });
+
+                // ---- file structure ----
+                it('Файл разбит на секции в документированном порядке, EVENT BINDINGS — последняя', () => {
+                    const prod = productionSource();
+                    const expected = ['CONSTANTS AND STATIC DATA', 'DOM HELPERS', 'AUDIO', 'GAME STATE', 'BATTLE INVARIANTS', 'PERSISTENCE',
+                        'CARD / TABLE PRIMITIVES', 'RULES (PURE FUNCTIONS)', 'BATTLE STATE TRANSITIONS', 'ENEMY AI', 'RELICS', 'SHOP',
+                        'RENDERING', 'MODALS AND POPOVERS', 'EVENT BINDINGS'];
+                    let last = -1;
+                    for (const title of expected) {
+                        const at = prod.indexOf('        // ' + title + '\n', last + 1);
+                        assert.isTrue(at > last, 'секция «' + title + '» отсутствует или стоит не на своём месте');
+                        last = at;
+                    }
+                });
+
+                it('Все вызовы bindClick() при загрузке собраны в секции EVENT BINDINGS (после всех определений)', () => {
+                    const prod = productionSource();
+                    const boot = prod.indexOf('        // EVENT BINDINGS\n');
+                    assert.isTrue(boot > 0);
+                    const before = prod.slice(0, boot).replace(/\/\/[^\n]*/g, '');
+                    const stray = (before.match(/^\s{8}bindClick\(/gm) || []).length;
+                    assert.equal(stray, 0, 'bindClick() вне секции EVENT BINDINGS: ' + stray);
+                    assert.isTrue((prod.slice(boot).match(/^\s{8}bindClick\(/gm) || []).length >= 6);
+                });
+
+                it('Секции данных не лезут в игровое состояние: CONSTANTS не читает run/battle на верхнем уровне', () => {
+                    const prod = productionSource();
+                    const a = prod.indexOf('        // CONSTANTS AND STATIC DATA\n');
+                    const b = prod.indexOf('        // DOM HELPERS\n');
+                    const topLevel = prod.slice(a, b).split('\n').filter(l => /^ {8}\S/.test(l) && !l.trim().startsWith('//')).join('\n');
+                    assert.isFalse(/\b(run|battle)\./.test(topLevel), 'константы не должны зависеть от run/battle');
+                });
+
+                // ---- shared fixtures ----
+                it('makeTestBattle(): форма боя совпадает с реальным battle (поля = BATTLE_SAVED_FIELDS ∪ BATTLE_RUNTIME_FIELDS), defaults и overrides применяются по порядку', () => {
+                    const keys = Object.keys(makeTestBattle()).sort().join();
+                    assert.equal(keys, [...BATTLE_SAVED_FIELDS, ...BATTLE_RUNTIME_FIELDS].sort().join());
+                    const b = makeTestBattle({ enemyHP: 5, defender: 'player' }, { enemyHP: 9 });
+                    assert.equal(b.enemyHP, 9, 'overrides сильнее defaults');
+                    assert.equal(b.defender, 'player', 'defaults сильнее базы');
+                    assert.isFalse(makeTestBattle().playerHand === makeTestBattle().playerHand, 'массивы не должны делиться между вызовами');
+                });
+
+                it('makeTestRun()/testCard(): значения по умолчанию и overrides', () => {
+                    const r = makeTestRun({ gold: 4 });
+                    assert.equal(r.gold, 4); assert.equal(r.playerHP, 30); assert.equal(r.floor, 1);
+                    assert.equal(r.deck.length, 36);
+                    assert.equal(JSON.stringify(testCard('a', 'Pikes', 9)), JSON.stringify({ id: 'a', suit: 'Pikes', value: 9 }));
+                });
+
+                it('withTestGame(): включает инварианты на время теста, потом восстанавливает флаг, закрывает модалку и чистит сейв; реальный сейв сохраняется', () => {
+                    const wasEnabled = battleInvariantChecksEnabled;
+                    const marker = '{"marker":"real-save-sentinel"}';
+                    const preRaw = localStorage.getItem(SAVE_KEY);
+                    try {
+                        localStorage.setItem(SAVE_KEY, marker);
+                        battleInvariantChecksEnabled = false;
+                        withTestGame(makeTestRun(), makeTestBattle(), () => {
+                            assert.isTrue(battleInvariantChecksEnabled, 'инварианты должны быть включены внутри');
+                            showModal('t', 'b');
+                        });
+                        assert.isFalse(battleInvariantChecksEnabled, 'флаг должен вернуться к прежнему значению');
+                        assert.isTrue(document.getElementById('msg-box').classList.contains('hidden'), 'модалка закрыта');
+                        assert.equal(localStorage.getItem(SAVE_KEY), marker, 'реальный сейв восстановлен');
+                    } finally {
+                        battleInvariantChecksEnabled = wasEnabled;
+                        if (preRaw === null) localStorage.removeItem(SAVE_KEY); else localStorage.setItem(SAVE_KEY, preRaw);
+                    }
                 });
             });
 
@@ -6925,7 +7245,7 @@
                             assert.equal(run.playerHP, 100, 'Урон по игроку от этого взятия не применяется, если враг уже добит');
 
                             const msgBox = document.getElementById('msg-box');
-                            if (msgBox) { msgBox.classList.add('hidden'); msgBox.classList.remove('flex'); }
+                            closeModal();
                         }
                     );
                 });
@@ -6953,7 +7273,7 @@
                             assert.equal(battle.aiTimer, null, 'ИИ не должен ходить за мёртвого врага под модалкой победы');
                             assert.isTrue(battle.phase !== BATTLE_PHASES.AI_WAITING, 'Фаза не должна переходить в AI_WAITING после победы');
                             const msgBox = document.getElementById('msg-box');
-                            if (msgBox) { msgBox.classList.add('hidden'); msgBox.classList.remove('flex'); }
+                            closeModal();
                         }
                     );
                 });
@@ -6982,7 +7302,7 @@
                             assert.equal(run.playerHP, 1);
                             assert.equal(run.gold, WIN_GOLD_BASE + 1 * WIN_GOLD_PER_FLOOR, 'Награда выдаётся один раз');
                             const msgBox = document.getElementById('msg-box');
-                            if (msgBox) { msgBox.classList.add('hidden'); msgBox.classList.remove('flex'); }
+                            closeModal();
                         }
                     );
                 });
@@ -7009,7 +7329,7 @@
                             assert.equal(document.getElementById('msg-title').innerText, 'Победа в Бою!');
                             assert.isTrue(hasRelic('safety_rope'), 'Трос не должен расходоваться: смертельный урон не применялся');
                             const msgBox = document.getElementById('msg-box');
-                            if (msgBox) { msgBox.classList.add('hidden'); msgBox.classList.remove('flex'); }
+                            closeModal();
                         }
                     );
                 });
@@ -7062,7 +7382,7 @@
                             // Победа фиксируется фазой BATTLE_OVER; PLAYER_ATTACK означал бы, что enterPlayerPhase() всё же вызвали.
                             assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER, 'enterPlayerPhase() не должен вызываться после победы');
                             const msgBox = document.getElementById('msg-box');
-                            if (msgBox) { msgBox.classList.add('hidden'); msgBox.classList.remove('flex'); }
+                            closeModal();
                         }
                     );
                 });
@@ -7182,7 +7502,7 @@
                             assert.equal(battle.discardPile.filter(c => c.id === 'p1' || c.id === 'p2').length, 0, 'Сброс балласта не должен срабатывать после победы');
 
                             const msgBox = document.getElementById('msg-box');
-                            if (msgBox) { msgBox.classList.add('hidden'); msgBox.classList.remove('flex'); }
+                            closeModal();
                         }
                     );
                 });
@@ -7541,7 +7861,7 @@
                             assert.equal(battle.phase, BATTLE_PHASES.ROUND_OVER, 'checkRoundEnd() должен был сработать и завершить раунд');
                             assert.equal(document.getElementById('msg-title').innerText, 'Раунд Выигран!');
                             const msgBox = document.getElementById('msg-box');
-                            if (msgBox) { msgBox.classList.add('hidden'); msgBox.classList.remove('flex'); }
+                            closeModal();
                         }
                     );
                 });
