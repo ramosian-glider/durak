@@ -3902,13 +3902,9 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }, { id: 'p2', suit: 'Pikes', value: 7 }],
                             trumpCard: { id: 't1', suit: 'Pikes', value: 6 }, trumpSuit: 'Pikes',
-                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            enemyHP: 50
                         }),
                         () => {
                             const result = checkRoundEnd();
@@ -3927,13 +3923,9 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 5, maxHP: 30, gold: 0, relics: [], deck: [] },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
                             trumpCard: { id: 't1', suit: 'Pikes', value: 6 }, trumpSuit: 'Pikes',
-                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            enemyHP: 50
                         }),
                         () => {
                             const result = checkRoundEnd();
@@ -3952,13 +3944,8 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 20, maxHP: 30, gold: 0, relics: [], deck: [] },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [],
-                            playerHand: [], enemyHand: [],
                             trumpCard: { id: 't1', suit: 'Pikes', value: 6 }, trumpSuit: 'Pikes',
-                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            enemyHP: 50
                         }),
                         () => {
                             const result = checkRoundEnd();
@@ -3976,13 +3963,9 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 20, maxHP: 30, gold: 0, relics: [], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
-                            playerHand: [], enemyHand: [],
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                             trumpCard: { id: 't1', suit: 'Pikes', value: 6 }, trumpSuit: 'Pikes',
-                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            enemyHP: 50
                         }),
                         () => {
                             // Пустые руки сами по себе не значат конец раунда, пока
@@ -4016,7 +3999,7 @@
                 it('Сохраняет run и battle целиком (формат с version)', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
-                        makeTestBattle({ enemyHP: 0, playerHand: [], aiTimer: null }),
+                        makeTestBattle({ enemyHP: 0 }),
                         () => {
                             run.floor = 4;
                             run.gold = 77;
@@ -4040,7 +4023,7 @@
                 it('aiTimer и actionToken НЕ попадают в сохранение', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
-                        makeTestBattle({ enemyHP: 10, playerHand: [], aiTimer: null, actionToken: 7 }),
+                        makeTestBattle({ enemyHP: 10, actionToken: 7 }),
                         () => {
                             saveGameState();
                             const raw = localStorage.getItem(SAVE_KEY);
@@ -4056,7 +4039,7 @@
                 it('loadGameState восстанавливает run и battle', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
-                        makeTestBattle({ drawDeck: [], discardPile: [], playerHand: [], enemyHand: [], table: [], defender: 'enemy', phase: BATTLE_PHASES.IDLE, trumpSuit: null, enemyHP: 0, aiTimer: null }),
+                        makeTestBattle({ phase: BATTLE_PHASES.IDLE, trumpSuit: null, enemyHP: 0 }),
                         () => {
                             run.floor = 3;
                             battle.enemyHP = 55;
@@ -4081,7 +4064,7 @@
                 it('После загрузки aiTimer === null', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
-                        makeTestBattle({ drawDeck: [], discardPile: [], playerHand: [], enemyHand: [], table: [], defender: 'enemy', phase: BATTLE_PHASES.IDLE, trumpSuit: null, enemyHP: 10, aiTimer: null }),
+                        makeTestBattle({ phase: BATTLE_PHASES.IDLE, trumpSuit: null, enemyHP: 10 }),
                         () => {
                             saveGameState();
                             loadGameState();
@@ -4095,7 +4078,7 @@
                 it('Несовпадение версии сбрасывает сохранение', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
-                        makeTestBattle({ enemyHP: 10, playerHand: [], aiTimer: null }),
+                        makeTestBattle({ enemyHP: 10 }),
                         () => {
                             localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 1, run: { floor: 5 }, battle: {} }));
                             const loaded = loadGameState();
@@ -4108,7 +4091,7 @@
                 it('clearLocalSave удаляет сохранение', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
-                        makeTestBattle({ enemyHP: 10, playerHand: [], aiTimer: null }),
+                        makeTestBattle({ enemyHP: 10 }),
                         () => {
                             saveGameState();
                             clearLocalSave();
@@ -4137,7 +4120,7 @@
                     // battle was the live object throughout, not a swapped-in fixture.
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
-                        makeTestBattle({ aiTimer: null }),
+                        makeTestBattle(),
                         () => {
                             clearLocalSave();
                             initNewRun();
@@ -4166,7 +4149,7 @@
                     // element for the rest of the play session.
                     withIsolatedGameState(
                         { floor: 2, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
-                        makeTestBattle({ aiTimer: null }),
+                        makeTestBattle(),
                         () => {
                             clearLocalSave();
                             startFloorBattle();
@@ -4355,7 +4338,7 @@
                 it('hasSavedGame() и loadGameState() согласованы: неконсистентный сейв — false у обоих, без побочных мутаций реального run/battle', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
-                        makeTestBattle({ drawDeck: [], discardPile: [], playerHand: [], enemyHand: [], table: [], defender: 'enemy', phase: BATTLE_PHASES.IDLE, trumpSuit: null, enemyHP: 0, aiTimer: null }),
+                        makeTestBattle({ phase: BATTLE_PHASES.IDLE, trumpSuit: null, enemyHP: 0 }),
                         () => {
                             const corrupted = buildGoodSave();
                             corrupted.battle.drawDeck = [];
@@ -4391,15 +4374,12 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                             playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
                             enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
                             table: [{ attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: null }],
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 40, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                            defender: 'player', phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
                             clearLocalSave();
@@ -4419,18 +4399,13 @@
                     withIsolatedGameState(
                         { floor: 2, playerHP: 25, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
                             enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
                             table: [
                                 { attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: { id: 'd1', suit: 'Hearts', value: 10 } },
                                 { attack: { id: 'a2', suit: 'Hearts', value: 8 }, defend: null }
-                            ],
-                            trumpCard: null, trumpSuit: 'Spades',
-                            defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 20, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 5,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            ], trumpSuit: 'Spades',
+                            enemyHP: 20, actionToken: 5
                         }),
                         () => {
                             clearLocalSave();
@@ -4451,14 +4426,10 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Spades', value: 6 }], discardPile: [],
+                            drawDeck: [{ id: 'd1', suit: 'Spades', value: 6 }],
                             playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }, { id: 'p2', suit: 'Hearts', value: 7 }],
                             enemyHand: [{ id: 'e1', suit: 'Hearts', value: 9 }],
-                            trumpCard: { id: 't1', suit: 'Spades', value: 6 }, trumpSuit: 'Spades',
-                            defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            trumpCard: { id: 't1', suit: 'Spades', value: 6 }, trumpSuit: 'Spades'
                         }),
                         () => {
                             clearLocalSave();
@@ -4481,13 +4452,12 @@
 
             runner.describe('8e. Централизация переходов фазы (setBattlePhase — единственный писатель battle.phase)', (it, assert) => {
                 const makeFixtureBattle = (overrides = {}) => makeTestBattle({
-                    drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
+                    drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                     playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
                     enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
                     table: [{ attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: null }],
-                    trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                    defender: 'player',   
-                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_DEFENSE }, overrides);
+                    trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                    defender: 'player', phase: BATTLE_PHASES.PLAYER_DEFENSE }, overrides);
                 const makeFixtureRun = (overrides = {}) => makeTestRun(overrides);
 
                 // Static guard: production code (everything before the test runner) must
@@ -4728,13 +4698,11 @@
 
             runner.describe('8g. enterAIWaitingPhase (единственная точка перехода хода к ИИ)', (it, assert) => {
                 const makeFixtureBattle = (overrides = {}) => makeTestBattle({
-                    drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
+                    drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                     playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
                     enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
                     table: [{ attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: null }],
-                    trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                    defender: 'enemy',   
-                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK }, overrides);
+                    trumpCard: { id: 't1', suit: 'Hearts', value: 6 } }, overrides);
                 const makeFixtureRun = (overrides = {}) => makeTestRun(overrides);
 
                 // Runs fn with setTimeout/clearTimeout replaced by recorders, restoring them afterwards.
@@ -4804,12 +4772,10 @@
 
             runner.describe('8h. Победа над соперником и продолжение игры (враг с 0 HP)', (it, assert) => {
                 const makeFixtureBattle = (overrides = {}) => makeTestBattle({
-                    drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
+                    drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                     playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
-                    enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
-                    table: [], trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                    defender: 'enemy',   
-                    enemyHP: 5, phase: BATTLE_PHASES.PLAYER_ATTACK }, overrides);
+                    enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }], trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                    enemyHP: 5 }, overrides);
                 const makeFixtureRun = (overrides = {}) => makeTestRun({ gold: 15, ...overrides });
                 const closeUi = () => {
                     const modal = document.getElementById('msg-box');
@@ -4877,12 +4843,9 @@
 
             runner.describe('8i. Этап 1 рефакторинга: дисциплина состояния (проверки до смены фазы, единый commit, allow-list сохранения, инварианты)', (it, assert) => {
                 const makeFixtureBattle = (overrides = {}) => makeTestBattle({
-                    drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }, { id: 'd2', suit: 'Hearts', value: 8 }], discardPile: [],
+                    drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }, { id: 'd2', suit: 'Hearts', value: 8 }],
                     playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
-                    enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
-                    table: [], trumpCard: { id: 'd1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                    defender: 'enemy',   
-                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK }, overrides);
+                    enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }], trumpCard: { id: 'd1', suit: 'Hearts', value: 6 } }, overrides);
                 const makeFixtureRun = (overrides = {}) => makeTestRun(overrides);
                 const closeUi = closeModal;
                 const openAttack = () => [{ attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: null }];
@@ -5109,12 +5072,9 @@
             runner.describe('8j. Этап 2 рефакторинга: примитивы карт и стола (moveCard, removeCard, dealCard, API стола)', (it, assert) => {
                 const C = testCard;
                 const makeFixtureBattle = (overrides = {}) => makeTestBattle({
-                    drawDeck: [C('d1', 'Hearts', 6), C('d2', 'Hearts', 8), C('d3', 'Pikes', 9)], discardPile: [],
+                    drawDeck: [C('d1', 'Hearts', 6), C('d2', 'Hearts', 8), C('d3', 'Pikes', 9)],
                     playerHand: [C('p1', 'Hearts', 6), C('p2', 'Pikes', 9)],
-                    enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 9)],
-                    table: [], trumpCard: C('d1', 'Hearts', 6), trumpSuit: 'Hearts',
-                    defender: 'enemy',   
-                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK }, overrides);
+                    enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 9)], trumpCard: C('d1', 'Hearts', 6) }, overrides);
                 const makeFixtureRun = (overrides = {}) => makeTestRun(overrides);
                 const inGame = (overrides, fn) => withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(overrides), fn);
                 const allIds = () => [...battle.drawDeck, ...battle.discardPile, ...battle.playerHand, ...battle.enemyHand, ...getTableCards()].map(c => c.id).sort();
@@ -5361,12 +5321,8 @@
             runner.describe('8k. Этап 3 рефакторинга: конец раунда (decide/apply/present), взятие, победа в бою', (it, assert) => {
                 const C = testCard;
                 const makeFixtureBattle = (overrides = {}) => makeTestBattle({
-                    drawDeck: [], discardPile: [],
                     playerHand: [C('p1', 'Hearts', 6)],
-                    enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 9)],
-                    table: [], trumpCard: C('t1', 'Hearts', 6), trumpSuit: 'Hearts',
-                    defender: 'enemy',   
-                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK }, overrides);
+                    enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 9)], trumpCard: C('t1', 'Hearts', 6) }, overrides);
                 const makeFixtureRun = (overrides = {}) => makeTestRun(overrides);
                 const inGame = (runOv, battleOv, fn) => withTestGame(makeFixtureRun(runOv), makeFixtureBattle(battleOv), fn);
                 const snapshot = () => JSON.stringify({ b: serializeGameState().battle, hp: run.playerHP, gold: run.gold, relics: run.relics });
@@ -5642,12 +5598,9 @@
             runner.describe('8l. Этап 4 рефакторинга: ИИ (chooseEnemyAction / executeEnemyAction) и единый обход хуков relics', (it, assert) => {
                 const C = testCard;
                 const makeFixtureBattle = (overrides = {}) => makeTestBattle({
-                    drawDeck: [], discardPile: [],
                     playerHand: [C('p1', 'Hearts', 6), C('p2', 'Hearts', 7)],
-                    enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Pikes', 12), C('e3', 'Hearts', 8)],
-                    table: [], trumpCard: C('t1', 'Hearts', 6), trumpSuit: 'Hearts',
-                    defender: 'player',   
-                    enemyHP: 40, phase: BATTLE_PHASES.RESOLVING }, overrides);
+                    enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Pikes', 12), C('e3', 'Hearts', 8)], trumpCard: C('t1', 'Hearts', 6),
+                    defender: 'player', phase: BATTLE_PHASES.RESOLVING }, overrides);
                 const makeFixtureRun = (overrides = {}) => makeTestRun(overrides);
                 const inGame = (runOv, battleOv, fn) => withTestGame(makeFixtureRun(runOv), makeFixtureBattle(battleOv), fn);
                 const pair = (atk, def = null) => ({ attack: atk, defend: def });
@@ -5920,12 +5873,9 @@
             runner.describe('8m. Этап 5 рефакторинга: рендер по частям, единый API модалок, playTone', (it, assert) => {
                 const C = testCard;
                 const makeFixtureBattle = (overrides = {}) => makeTestBattle({
-                    drawDeck: [C('d1', 'Hearts', 6), C('d2', 'Pikes', 8)], discardPile: [],
+                    drawDeck: [C('d1', 'Hearts', 6), C('d2', 'Pikes', 8)],
                     playerHand: [C('p1', 'Hearts', 7), C('p2', 'Pikes', 9)],
-                    enemyHand: [C('e1', 'Pikes', 10), C('e2', 'Hearts', 8), C('e3', 'Clubs', 6)],
-                    table: [], trumpCard: C('d1', 'Hearts', 6), trumpSuit: 'Hearts',
-                    defender: 'enemy',   
-                    enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK }, overrides);
+                    enemyHand: [C('e1', 'Pikes', 10), C('e2', 'Hearts', 8), C('e3', 'Clubs', 6)], trumpCard: C('d1', 'Hearts', 6) }, overrides);
                 const makeFixtureRun = (overrides = {}) => makeTestRun({ gold: 7, ...overrides });
                 const relicOf = (id) => Object.assign({}, ALL_RELICS.find(r => r.id === id));
                 const inGame = (runOv, battleOv, fn) => withIsolatedGameState(makeFixtureRun(runOv), makeFixtureBattle(battleOv), () => {
@@ -6249,7 +6199,7 @@
                 });
 
                 it('cardPower(): любой козырь сильнее любой некозырной карты (бонус больше разброса значений)', () => {
-                    withIsolatedGameState(makeTestRun(), makeTestBattle({ trumpSuit: 'Hearts' }), () => {
+                    withIsolatedGameState(makeTestRun(), makeTestBattle(), () => {
                         const weakestTrump = cardPower(testCard('t', 'Hearts', MIN_CARD_VALUE));
                         const strongestPlain = cardPower(testCard('p', 'Pikes', ACE_VALUE));
                         assert.isTrue(weakestTrump > strongestPlain);
@@ -6604,18 +6554,14 @@
                         { floor: 12, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
                         makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            discardPile: [], playerHand: [],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
                             table: [
                                 { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
                                 { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
                                 { attack: { id: 'x3', suit: 'Hearts', value: 8 }, defend: null },
                             ],
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            defender: 'player',
+                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
                             handlePlayerTake();
@@ -6631,7 +6577,7 @@
                 it('safety_rope: спасает от смертельного урона один раз за забег, очищает стол и исчезает из инвентаря', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 5, maxHP: 30, gold: 0, relics: [{ id: 'safety_rope' }], deck: [] },
-                        makeTestBattle({ table: [{ attack: { id: 'a', suit: 'Hearts', value: 6 }, defend: null }], discardPile: [], aiTimer: null }),
+                        makeTestBattle({ table: [{ attack: { id: 'a', suit: 'Hearts', value: 6 }, defend: null }] }),
                         () => {
                             const first = applyPlayerDamage(100);
                             assert.isTrue(first.savedBySafetyRope);
@@ -6653,12 +6599,8 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 5, maxHP: 30, gold: 100, relics: [{ id: 'safety_rope' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [], playerHand: [], enemyHand: [],
-                            trumpCard: null, trumpSuit: 'Hearts', table: [],
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            defender: 'player',
+                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
                             applyPlayerDamage(100); // срабатывает и потребляет safety_rope
@@ -6684,12 +6626,8 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 5, maxHP: 30, gold: 0, relics: [{ id: 'safety_rope', name: 'Страховочный трос', icon: '🪢', desc: 'x', price: 18 }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [], playerHand: [], enemyHand: [],
-                            trumpCard: null, trumpSuit: 'Hearts', table: [],
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            defender: 'player',
+                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
                             renderAll();
@@ -6706,7 +6644,7 @@
                 it('cascade_transfer: наносит урон один раз за ход, повторный вызов в тот же ход не бьёт снова', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'cascade_transfer' }], deck: [] },
-                        makeTestBattle({ enemyHP: 20, cascadeTransferUsedThisTurn: false, aiTimer: null }),
+                        makeTestBattle({ enemyHP: 20 }),
                         () => {
                             triggerCascadeTransfer();
                             assert.equal(battle.enemyHP, 16); // 20 - CASCADE_TRANSFER_DAMAGE(4)
@@ -6733,7 +6671,7 @@
                     try {
                         withIsolatedGameState(
                             { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'cascade_transfer' }, { id: '__test_transfer' }], deck: [] },
-                            makeTestBattle({ enemyHP: 20, cascadeTransferUsedThisTurn: false, aiTimer: null }),
+                            makeTestBattle({ enemyHP: 20 }),
                             () => {
                                 triggerCascadeTransfer();
                                 assert.equal(battle.enemyHP, 16, 'cascade_transfer всё ещё должен нанести урон');
@@ -6756,18 +6694,12 @@
                     withIsolatedGameState(
                         { floor: transferFloorIndex + 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'cascade_transfer' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [],
                             playerHand: [
                                 { id: 'p1', suit: 'Pikes', value: 10 },
                                 { id: 'p2', suit: 'Pikes', value: 11 }
                             ],
                             enemyHand: [{ id: 'e1', suit: 'Clubs', value: 8 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
-                            table: [{ attack: { id: 'a1', suit: 'Clubs', value: 8 }, defend: null }],
-                            defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 40, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            table: [{ attack: { id: 'a1', suit: 'Clubs', value: 8 }, defend: null }], phase: BATTLE_PHASES.AI_WAITING
                         }),
                         () => {
                             executeEnemyAI();
@@ -6784,13 +6716,10 @@
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'heavy_ballast' }], deck: [] },
                         makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            discardPile: [], playerHand: [],
                             enemyHand: bigEnemyHand,
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                            defender: 'player',
+                            enemyHP: 50, phase: BATTLE_PHASES.AI_WAITING
                         }),
                         () => {
                             executeEnemyAI();
@@ -6814,13 +6743,10 @@
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'heavy_ballast' }], deck: [] },
                         makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            discardPile: [], playerHand: [],
                             enemyHand: bigEnemyHand,
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 2, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                            defender: 'player',
+                            enemyHP: 2, phase: BATTLE_PHASES.AI_WAITING
                         }),
                         () => {
                             executeEnemyAI();
@@ -6839,14 +6765,10 @@
                     // reasons — exactly what broke the "AI закончил подкидывать" test.
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
-                        makeTestBattle({
-                            drawDeck: [], discardPile: [], playerHand: [{ id: 'p1', suit: 'Hearts', value: 9 }],
+                        makeTestBattle({ playerHand: [{ id: 'p1', suit: 'Hearts', value: 9 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 6 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 0, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            defender: 'player',
+                            enemyHP: 0, phase: BATTLE_PHASES.AI_WAITING
                         }),
                         () => {
                             executeEnemyAI();
@@ -6864,12 +6786,8 @@
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
                             enemyHand,
-                            trumpCard: null, trumpSuit: 'Hearts',
-                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }],
-                            defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }], cardsToTake: true,
+                            enemyHP: 50
                         }),
                         () => {
                             handleEnemyTake();
@@ -6891,12 +6809,9 @@
                             drawDeck: [{ id: 'd_bottom', suit: 'Hearts', value: 6 }, { id: 'd_mid', suit: 'Hearts', value: 8 }, { id: 'd_top', suit: 'Hearts', value: 7 }],
                             playerHand: fullHand('p', 'Pikes'),
                             enemyHand: fullHand('e', 'Pikes'),
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                            table: [{ attack: { id: 'x1', suit: 'Clubs', value: 7 }, defend: null }],
-                            defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                            table: [{ attack: { id: 'x1', suit: 'Clubs', value: 7 }, defend: null }], cardsToTake: true,
+                            enemyHP: 50
                         }),
                         () => {
                             handleEnemyTake();
@@ -6924,12 +6839,8 @@
                                 drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                                 playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
                                 enemyHand: [{ id: 'e1', suit: 'Pikes', value: 6 }],
-                                trumpCard: null, trumpSuit: 'Hearts',
-                                table: [{ attack: { id: 'x1', suit: 'Clubs', value: 7 }, defend: null }],
-                                defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
-                                enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                                cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                                jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                                table: [{ attack: { id: 'x1', suit: 'Clubs', value: 7 }, defend: null }], cardsToTake: true,
+                                enemyHP: 50
                             }),
                             () => {
                                 handleEnemyTake();
@@ -6953,12 +6864,9 @@
                             drawDeck: [trump],
                             playerHand: fullHand('p', 'Pikes'),
                             enemyHand: fullHand('e', 'Pikes'),
-                            trumpCard: trump, trumpSuit: 'Hearts',
-                            table: [{ attack: { id: 'x1', suit: 'Clubs', value: 7 }, defend: null }],
-                            defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            trumpCard: trump,
+                            table: [{ attack: { id: 'x1', suit: 'Clubs', value: 7 }, defend: null }], cardsToTake: true,
+                            enemyHP: 50
                         }),
                         () => {
                             handleEnemyTake();
@@ -6976,12 +6884,8 @@
                         makeTestBattle({
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 6 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
-                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }],
-                            defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }], cardsToTake: true,
+                            enemyHP: 50
                         }),
                         () => {
                             handleEnemyTake();
@@ -7004,15 +6908,10 @@
                     try {
                         withIsolatedGameState(
                             { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'salted_wound' }, { id: '__test_take' }], deck: [] },
-                            makeTestBattle({
-                                drawDeck: [], discardPile: [], playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
+                            makeTestBattle({ playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
                                 enemyHand: Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, suit: 'Pikes', value: 6 })),
-                                trumpCard: null, trumpSuit: 'Hearts',
-                                table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }],
-                                defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
-                                enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                                cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                                jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                                table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }], cardsToTake: true,
+                                enemyHP: 50
                             }),
                             () => {
                                 handleEnemyTake();
@@ -7041,17 +6940,13 @@
                             { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: '__test_player_take' }, { id: 'mirror_ring' }], deck: [] },
                             makeTestBattle({
                                 drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                                discardPile: [], playerHand: [],
                                 enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                                trumpCard: null, trumpSuit: 'Hearts',
                                 table: [
                                     { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
                                     { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
                                 ],
-                                defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                                enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                                cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                                jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                                defender: 'player',
+                                enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
                             }),
                             () => {
                                 handlePlayerTake();
@@ -7103,17 +6998,13 @@
                         { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
                         makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            discardPile: [], playerHand: [],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
                             table: [
                                 { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
                                 { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
                             ],
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            defender: 'player',
+                            enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
                             handlePlayerTake();
@@ -7135,17 +7026,13 @@
                         { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
                         makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            discardPile: [], playerHand: [],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
                             table: [
                                 { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
                                 { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
                             ],
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            defender: 'player',
+                            enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
                             handlePlayerTake();
@@ -7163,17 +7050,13 @@
                         { floor: 1, playerHP: 1, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
                         makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            discardPile: [], playerHand: [],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
                             table: [
                                 { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
                                 { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
                             ],
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            defender: 'player',
+                            enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
                             handlePlayerTake();
@@ -7192,17 +7075,13 @@
                         { floor: 1, playerHP: 1, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }, { id: 'safety_rope' }], deck: [] },
                         makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            discardPile: [], playerHand: [],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
                             table: [
                                 { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
                                 { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
                             ],
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            defender: 'player',
+                            enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
                             handlePlayerTake();
@@ -7219,17 +7098,13 @@
                         { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
                         makeTestBattle({
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            discardPile: [], playerHand: [],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
                             table: [
                                 { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
                                 { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
                             ],
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            defender: 'player',
+                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
                             handlePlayerTake();
@@ -7244,14 +7119,9 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [], playerHand: [],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
-                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }],
-                            defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
-                            enemyHP: TAKE_DAMAGE_PER_CARD, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }], cardsToTake: true,
+                            enemyHP: TAKE_DAMAGE_PER_CARD, phase: BATTLE_PHASES.AI_WAITING
                         }),
                         () => {
                             handleEnemyTake();
@@ -7270,15 +7140,10 @@
                 it('ace_sleeve: при взятии карт врагом добавляет +ACE_SLEEVE_BONUS_DAMAGE к урону (через хук onEnemyTookCards)', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'ace_sleeve' }], deck: [] },
-                        makeTestBattle({
-                            drawDeck: [], discardPile: [], playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
+                        makeTestBattle({ playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
-                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }],
-                            defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }], cardsToTake: true,
+                            enemyHP: 50
                         }),
                         () => {
                             handleEnemyTake();
@@ -7291,15 +7156,10 @@
                 it('ace_sleeve + salted_wound: оба бонуса onEnemyTookCards складываются в один урон', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'ace_sleeve' }, { id: 'salted_wound' }], deck: [] },
-                        makeTestBattle({
-                            drawDeck: [], discardPile: [], playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
+                        makeTestBattle({ playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
                             enemyHand: Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, suit: 'Pikes', value: 6 })),
-                            trumpCard: null, trumpSuit: 'Hearts',
-                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }],
-                            defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }], cardsToTake: true,
+                            enemyHP: 50
                         }),
                         () => {
                             handleEnemyTake();
@@ -7313,15 +7173,10 @@
                 it('ace_sleeve: без артефакта бонус не применяется', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
-                        makeTestBattle({
-                            drawDeck: [], discardPile: [], playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
+                        makeTestBattle({ playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
-                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }],
-                            defender: 'enemy', selectedCardIndex: null, cardsToTake: true, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }], cardsToTake: true,
+                            enemyHP: 50
                         }),
                         () => {
                             handleEnemyTake();
@@ -7340,12 +7195,9 @@
                                 { id: 'p2', suit: 'Pikes', value: 6 },
                             ],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
                             table: [{ attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null }],
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            defender: 'player',
+                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
                             handlePlayerTake();
@@ -7367,12 +7219,9 @@
                                 { id: 'p2', suit: 'Pikes', value: 6 },
                             ],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
                             table: [{ attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null }],
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 1, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            defender: 'player',
+                            enemyHP: 1, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
                             handlePlayerTake();
@@ -7394,14 +7243,9 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'coin_magnet' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
-                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            enemyHP: 50
                         }),
                         () => {
                             onPlayerCardClick(0);
@@ -7422,7 +7266,7 @@
                     try {
                         withIsolatedGameState(
                             { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: '__test_a' }, { id: '__test_b' }], deck: [] },
-                            makeTestBattle({ aiTimer: null }),
+                            makeTestBattle(),
                             () => {
                                 fireAllHooks('onTestHook');
                                 assert.equal(calls.join(','), 'a,b', 'fireAllHooks должен вызвать оба обработчика в порядке слотов, не останавливаясь на первом');
@@ -7443,14 +7287,10 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'sharp_suit' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Hearts', value: 9 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
                             table: [{ attack: { id: 'a1', suit: 'Pikes', value: 8 }, defend: null }],
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            defender: 'player',
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
                             onPlayerCardClick(0);
@@ -7463,14 +7303,9 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'sharp_suit' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Hearts', value: 9 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 6 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
-                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            enemyHP: 50
                         }),
                         () => {
                             onPlayerCardClick(0); // играет козырь в атаку, не в защиту
@@ -7490,11 +7325,8 @@
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }, { id: 'd2', suit: 'Hearts', value: 7 }],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }, { id: 'p2', suit: 'Hearts', value: 10 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                            enemyHP: 50
                         }),
                         () => {
                             showRelicPopover('pocket_discard');
@@ -7545,11 +7377,8 @@
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }, { id: 'p2', suit: 'Hearts', value: 10 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                            enemyHP: 50
                         }),
                         () => {
                             showRelicPopover('pocket_discard');
@@ -7569,7 +7398,7 @@
                 it('showRelicPopover(): пассивный артефакт показывает только описание, без кнопки активации', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'ace_sleeve', name: 'Туз в рукаве', icon: '🃏', desc: 'Тестовое описание', price: 12 }], deck: [] },
-                        makeTestBattle({ aiTimer: null }),
+                        makeTestBattle(),
                         () => {
                             showRelicPopover('ace_sleeve');
                             const modal = document.getElementById('msg-box');
@@ -7589,13 +7418,8 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }],
-                            enemyHand: [], trumpCard: null, trumpSuit: 'Hearts',
-                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            enemyHP: 50
                         }),
                         () => {
                             renderAll();
@@ -7618,7 +7442,7 @@
                     // "ПОНЯТНО"/"ПРОДАТЬ" не реагировала на клик.
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }], deck: [] },
-                        makeTestBattle({ aiTimer: null }),
+                        makeTestBattle(),
                         () => {
                             // pocket_discard недоступен (нет 6/7 в руке нет вовсе, т.к.
                             // battle тут не настроен под бой) — isReady() === false,
@@ -7655,11 +7479,8 @@
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }, { id: 'p2', suit: 'Hearts', value: 10 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                            enemyHP: 50
                         }),
                         () => {
                             usePocketDiscard();
@@ -7679,14 +7500,10 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }, { id: 'p2', suit: 'Hearts', value: 10 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                            enemyHP: 50
                         }),
                         () => {
                             // No 6/7 in hand: not ready.
@@ -7716,14 +7533,10 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 23, maxHP: 30, gold: 16, relics: [{ id: 'pocket_discard' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Hearts', value: 10 }],
                             trumpCard: { id: 't1', suit: 'Pikes', value: 6 }, trumpSuit: 'Pikes',
-                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 6, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            enemyHP: 6
                         }),
                         () => {
                             usePocketDiscard();
@@ -7746,14 +7559,11 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'jester_discard' }], deck: [] },
                         makeTestBattle({
-                            drawDeck, discardPile: [],
+                            drawDeck,
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }, { id: 'p2', suit: 'Pikes', value: 7 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                            enemyHP: 50
                         }),
                         () => {
                             useJesterDiscard();
@@ -7769,14 +7579,11 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'jester_discard' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
-                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                            enemyHP: 50
                         }),
                         () => {
                             assert.isTrue(RELIC_EFFECTS.jester_discard.isReady(), 'свой ход атаки, пустой стол, ещё не использовано — доступна');
@@ -7803,14 +7610,11 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 23, maxHP: 30, gold: 16, relics: [{ id: 'jester_discard' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Pikes', value: 6 }], discardPile: [],
+                            drawDeck: [{ id: 'd1', suit: 'Pikes', value: 6 }],
                             playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }, { id: 'p2', suit: 'Pikes', value: 7 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Hearts', value: 10 }],
                             trumpCard: { id: 't1', suit: 'Pikes', value: 6 }, trumpSuit: 'Pikes',
-                            table: [], defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 6, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            enemyHP: 6
                         }),
                         () => {
                             // Колода (1 карта) меньше руки (2 карты): раньше это
@@ -7834,12 +7638,10 @@
                             drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 12 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
                             table: [{ attack: { id: 'a1', suit: 'Pikes', value: 14 }, defend: null }],
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            defender: 'player',
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
                             useSleightOfHand();
@@ -7855,15 +7657,13 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'sleight_of_hand' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
+                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                             playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
                             enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 }, trumpSuit: 'Hearts',
+                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
                             table: [{ attack: { id: 'a1', suit: 'Pikes', value: 14 }, defend: null }],
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            defender: 'player',
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
                             assert.isTrue(RELIC_EFFECTS.sleight_of_hand.isReady(), 'защита от неотбитой атаки, карты в колоде есть — доступна');
@@ -7890,14 +7690,10 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
                             table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: { id: 'd1', suit: 'Pikes', value: 7 } }, { attack: { id: 'a2', suit: 'Pikes', value: 10 }, defend: { id: 'd2', suit: 'Pikes', value: 11 } }],
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            defender: 'player',
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
                             handleBito();
@@ -7910,14 +7706,10 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
                             table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: { id: 'd1', suit: 'Pikes', value: 7 } }],
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            defender: 'player',
+                            enemyHP: 50, phase: BATTLE_PHASES.AI_WAITING
                         }),
                         () => {
                             handleBito(true);
@@ -7930,14 +7722,10 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
                             table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: { id: 'd1', suit: 'Pikes', value: 7 } }, { attack: { id: 'a2', suit: 'Pikes', value: 10 }, defend: { id: 'd2', suit: 'Pikes', value: 11 } }],
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            defender: 'player',
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
                             handleBito();
@@ -7950,14 +7738,10 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
                             table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: null }],
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            defender: 'player',
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
                             handlePlayerTake();
@@ -7967,14 +7751,9 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
                             table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: { id: 'd1', suit: 'Pikes', value: 7 } }],
-                            defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            enemyHP: 50
                         }),
                         () => {
                             handleBito();
@@ -7987,14 +7766,10 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [], discardPile: [],
                             playerHand: [{ id: 'p9', suit: 'Pikes', value: 9 }],
-                            trumpCard: null, trumpSuit: 'Hearts',
                             table: [{ attack: { id: 'a1', suit: 'Pikes', value: 8 }, defend: null }],
-                            defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
-                            cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                            jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                            defender: 'player',
+                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
                             onPlayerCardClick(0);
@@ -8023,7 +7798,7 @@
                     const realName = getCurrentEnemy().name;
                     withIsolatedGameState(
                         { floor: ENEMIES.length, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() },
-                        makeTestBattle({ aiTimer: null }),
+                        makeTestBattle(),
                         () => {
                             startFloorBattle(); // paints the fixture floor's enemy into the DOM
                             assert.equal(document.getElementById('enemy-name').innerText, ENEMIES[ENEMIES.length - 1].name);
