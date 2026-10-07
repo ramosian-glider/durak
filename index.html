@@ -733,13 +733,21 @@
         // Tiny wrappers over getElementById used throughout.
         // ============================================================
 
+        const getEl = id => document.getElementById(id);
+
         function setElText(id, text) {
-            const el = document.getElementById(id);
+            const el = getEl(id);
             if (el) el.innerText = text;
         }
 
+        function setVisible(el, visible, displayClass = null) {
+            if (!el) return;
+            el.classList.toggle('hidden', !visible);
+            if (displayClass) el.classList.toggle(displayClass, visible);
+        }
+
         function bindClick(id, handler) {
-            const el = document.getElementById(id);
+            const el = getEl(id);
             if (el) el.onclick = handler;
         }
 
@@ -1095,7 +1103,7 @@
             const enemyData = getCurrentEnemy();
             setElText('enemy-name', enemyData.name);
             setElText('enemy-level', enemyData.level);
-            const avatarEl = document.getElementById('enemy-avatar');
+            const avatarEl = getEl('enemy-avatar');
             if (avatarEl) avatarEl.innerText = enemyData.avatar;
             setElText('boss-ability-badge', `Особенность: ${enemyData.abilityDesc}`);
         }
@@ -2732,15 +2740,14 @@
         // ============================================================
 
         function openShop() {
-            const shopModal = document.getElementById('shop-modal');
+            const shopModal = getEl('shop-modal');
             if (!shopModal) return;
-            shopModal.classList.remove('hidden');
-            shopModal.classList.add('flex');
+            setVisible(shopModal, true, 'flex');
             
             setElText('shop-gold-display', `${run.gold}$`);
             setElText('shop-hp-display', `${run.playerHP}/${run.maxHP}`);
 
-            const healList = document.getElementById('shop-heal-list');
+            const healList = getEl('shop-heal-list');
             if (healList) {
                 healList.innerHTML = `
                     <div class="flex items-center justify-between gap-3 p-2.5 bg-slate-900 border border-emerald-800/60 rounded-xl">
@@ -2758,7 +2765,7 @@
                 `;
             }
 
-            const shopList = document.getElementById('shop-relics-list');
+            const shopList = getEl('shop-relics-list');
             if (shopList) {
                 shopList.innerHTML = '';
                 const available = ALL_RELICS.filter(r => !hasRelic(r.id));
@@ -2789,26 +2796,34 @@
         // Slots are always filled left-to-right because run.relics is kept
         // compact (no gaps) — buying appends to the end (= first free slot)
         // and selling splices the sold item out, shifting the rest left.
-        function renderShopRelicSlots() {
-            const slotsBar = document.getElementById('shop-relic-slots');
-            if (slotsBar) {
-                slotsBar.innerHTML = '';
-                for (let i = 0; i < MAX_RELICS; i++) {
-                    const slot = document.createElement('div');
-                    if (run.relics[i]) {
-                        const r = run.relics[i];
-                        const sellPrice = Math.floor(r.price / 2);
-                        slot.className = "relic-slot-base relic-slot-filled relic-slot-sellable";
-                        slot.title = `${r.name}: ${r.desc} (продать за ${sellPrice}$)`;
-                        slot.innerText = r.icon;
-                        slot.onclick = () => sellRelic(i);
-                    } else {
-                        slot.className = "relic-slot-base relic-slot-empty";
-                        slot.innerText = "+";
-                    }
-                    slotsBar.appendChild(slot);
+        function renderRelicSlots(containerId, { sellable = false } = {}) {
+            const bar = getEl(containerId);
+            if (!bar) return;
+            bar.innerHTML = '';
+            for (let i = 0; i < MAX_RELICS; i++) {
+                const relic = run.relics[i];
+                const slot = document.createElement('div');
+                slot.className = relic
+                    ? `relic-slot-base relic-slot-filled${sellable ? ' relic-slot-sellable' : ''}`
+                    : 'relic-slot-base relic-slot-empty';
+                slot.innerText = relic?.icon || '+';
+
+                if (relic && sellable) {
+                    const price = Math.floor(relic.price / 2);
+                    slot.title = `${relic.name}: ${relic.desc} (продать за ${price}$)`;
+                    slot.onclick = () => sellRelic(i);
+                } else if (relic) {
+                    const highlighted = relicHighlightUntil[relic.id] > Date.now();
+                    const ready = ACTIVE_RELIC_IDS.includes(relic.id) && RELIC_EFFECTS[relic.id].isReady();
+                    slot.className += (highlighted ? ' relic-highlight' : '') + (ready ? ' relic-ready-glow' : '');
+                    slot.onclick = () => showRelicPopover(relic.id);
                 }
+                bar.appendChild(slot);
             }
+        }
+
+        function renderShopRelicSlots() {
+            renderRelicSlots('shop-relic-slots', { sellable: true });
             setElText('shop-relic-count', `${run.relics.length}/${MAX_RELICS}`);
         }
 
@@ -2908,26 +2923,25 @@
 
         // Whose turn it is, as a coloured banner above the table.
         function renderTurnBanner() {
-            const banner = document.getElementById('turn-banner');
-            if (banner) {
-                if (battle.defender === 'enemy') {
-                    banner.innerText = battle.cardsToTake ? "Соперник забирает карты! (Жмите БИТО)" : "Ваш ход: Атака";
-                    banner.className = "turn-banner-base turn-banner-amber";
-                } else {
-                    if (battle.isTransferActive) {
-                        banner.innerText = "Выберите карту для Перевода!";
-                        banner.className = "turn-banner-base turn-banner-indigo";
-                    } else {
-                        banner.innerText = "Ход соперника: Защищайтесь!";
-                        banner.className = "turn-banner-base turn-banner-rose";
-                    }
+            const banner = getEl('turn-banner');
+            if (!banner) return;
+
+            const state = battle.defender === 'enemy'
+                ? {
+                    text: battle.cardsToTake ? "Соперник забирает карты! (Жмите БИТО)" : "Ваш ход: Атака",
+                    color: 'amber'
                 }
-            }
+                : battle.isTransferActive
+                    ? { text: "Выберите карту для Перевода!", color: 'indigo' }
+                    : { text: "Ход соперника: Защищайтесь!", color: 'rose' };
+
+            banner.innerText = state.text;
+            banner.className = `turn-banner-base turn-banner-${state.color}`;
         }
 
         // The enemy's hand: card backs, plus the one face-up card cheat_eye reveals; and the card count.
         function renderEnemyHand() {
-            const enemyHandVis = document.getElementById('enemy-hand-visual');
+            const enemyHandVis = getEl('enemy-hand-visual');
             if (enemyHandVis) {
                 enemyHandVis.innerHTML = '';
 
@@ -2959,7 +2973,7 @@
 
         // Draw deck with the trump card showing, or just the trump suit once the deck is empty.
         function renderDeck() {
-            const deckContainer = document.getElementById('deck-container');
+            const deckContainer = getEl('deck-container');
             if (deckContainer) {
                 if (battle.drawDeck.length > 0) {
                     deckContainer.innerHTML = `
@@ -2986,33 +3000,13 @@
 
         // The relic slots: filled/empty, highlight flash, 'ready to tap' glow for active relics.
         function renderRelicsBar() {
-            const relicsBar = document.getElementById('relics-bar');
-            if (relicsBar) {
-                relicsBar.innerHTML = '';
-                for (let i = 0; i < MAX_RELICS; i++) {
-                    const slot = document.createElement('div');
-                    if (run.relics[i]) {
-                        const r = run.relics[i];
-                        const isHighlighted = relicHighlightUntil[r.id] && Date.now() < relicHighlightUntil[r.id];
-                        const isReadyToActivate = ACTIVE_RELIC_IDS.includes(r.id) && RELIC_EFFECTS[r.id].isReady();
-                        slot.className = "relic-slot-base relic-slot-filled"
-                            + (isHighlighted ? " relic-highlight" : "")
-                            + (isReadyToActivate ? " relic-ready-glow" : "");
-                        slot.innerText = r.icon;
-                        slot.onclick = () => showRelicPopover(r.id);
-                    } else {
-                        slot.className = "relic-slot-base relic-slot-empty";
-                        slot.innerText = "+";
-                    }
-                    relicsBar.appendChild(slot);
-                }
-            }
+            renderRelicSlots('relics-bar');
             setElText('relic-count', `${run.relics.length}/${MAX_RELICS}`);
         }
 
         // The attack/defence pairs lying on the table.
         function renderTable() {
-            const tablePairsEl = document.getElementById('table-pairs');
+            const tablePairsEl = getEl('table-pairs');
             if (tablePairsEl) {
                 tablePairsEl.innerHTML = '';
                 battle.table.forEach((pair) => {
@@ -3032,7 +3026,7 @@
 
         // The player's hand, with the cards a transfer would accept lifted and ringed.
         function renderPlayerHand() {
-            const handEl = document.getElementById('player-hand');
+            const handEl = getEl('player-hand');
             if (handEl) {
                 handEl.innerHTML = '';
                 const requiredRank = (battle.defender === 'player' && battle.table.length > 0) ? battle.table[0].attack.value : null;
@@ -3055,9 +3049,9 @@
 
         // БИТО / ВЗЯТЬ / ПЕРЕВОД: label and enabled state for the current phase.
         function renderActionButtons() {
-            const btnAction = document.getElementById('btn-action');
-            const btnTake = document.getElementById('btn-take');
-            const btnTransfer = document.getElementById('btn-transfer');
+            const btnAction = getEl('btn-action');
+            const btnTake = getEl('btn-take');
+            const btnTransfer = getEl('btn-transfer');
 
             if (btnAction && btnTake && btnTransfer) {
                 if (battle.defender === 'enemy') {
@@ -3192,7 +3186,7 @@
         //                    refreshRelicPopoverIfOpen); anything else clears the mark
         function openModal({ title, text, confirmLabel = "ПОНЯТНО", onConfirm = null,
                              confirm = null, cancel = null, onBackdrop = null, relicId = null }) {
-            const modal = document.getElementById('msg-box');
+            const modal = getEl('msg-box');
             if (!modal) return;
             openRelicPopoverId = relicId;
             modal.onclick = onBackdrop
@@ -3201,19 +3195,14 @@
             setElText('msg-title', title);
             setElText('msg-body', text);
 
-            const cancelBtn = document.getElementById('msg-btn-cancel');
+            const cancelBtn = getEl('msg-btn-cancel');
             if (cancelBtn) {
-                if (cancel) {
-                    cancelBtn.classList.remove('hidden');
-                    cancelBtn.innerText = cancel.label;
-                    cancelBtn.onclick = cancel.onClick;
-                } else {
-                    cancelBtn.classList.add('hidden');
-                    cancelBtn.onclick = null;
-                }
+                setVisible(cancelBtn, !!cancel);
+                cancelBtn.innerText = cancel?.label || '';
+                cancelBtn.onclick = cancel?.onClick || null;
             }
 
-            const confirmBtn = document.getElementById('msg-btn');
+            const confirmBtn = getEl('msg-btn');
             if (confirmBtn) {
                 const disabled = !!(confirm && confirm.disabled);
                 confirmBtn.innerText = confirm ? confirm.label : confirmLabel;
@@ -3227,16 +3216,14 @@
                     };
             }
 
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
+            setVisible(modal, true, 'flex');
         }
 
         // Hides the dialog and drops its backdrop handler and relic-popover mark.
         function closeModal() {
-            const modal = document.getElementById('msg-box');
+            const modal = getEl('msg-box');
             if (modal) {
-                modal.classList.add('hidden');
-                modal.classList.remove('flex');
+                setVisible(modal, false, 'flex');
                 modal.onclick = null;
             }
             openRelicPopoverId = null;
@@ -3287,11 +3274,8 @@
         });
 
         bindClick('btn-next-floor', () => {
-            const shopModal = document.getElementById('shop-modal');
-            if (shopModal) {
-                shopModal.classList.add('hidden');
-                shopModal.classList.remove('flex');
-            }
+            const shopModal = getEl('shop-modal');
+            setVisible(shopModal, false, 'flex');
 
             run.floor++;
             if (run.floor > ENEMIES.length) {
@@ -3311,7 +3295,7 @@
 
         bindClick('btn-toggle-audio', () => {
             audio.isMuted = !audio.isMuted;
-            const icon = document.getElementById('audio-icon');
+            const icon = getEl('audio-icon');
             if (audio.isMuted) {
                 if (icon) icon.innerText = '🔇';
                 audio.stopMusic();
@@ -3324,8 +3308,7 @@
         bindClick('btn-start-game', () => {
             audio.init();
             audio.startMusic(false);
-            const splash = document.getElementById('splash-screen');
-            if (splash) splash.classList.add('hidden');
+            setVisible(getEl('splash-screen'), false);
             if (!loadGameState()) {
                 initNewRun();
             } else {
@@ -3338,8 +3321,7 @@
             audio.startMusic(false);
             clearLocalSave();
             initNewRun();
-            const splash = document.getElementById('splash-screen');
-            if (splash) splash.classList.add('hidden');
+            setVisible(getEl('splash-screen'), false);
         });
 
         const assert = {
@@ -3532,6 +3514,13 @@
         // run, and nothing else re-arms it. These two bracket a whole test run:
         // capture what the real game was doing, then put it back afterward, so
         // running the tests mid-battle can never freeze the game on "Ход соперника".
+        // Closes UI that tests may have opened, without duplicating DOM cleanup.
+        function closeTestUI() {
+            closeModal();
+            const shop = getEl('shop-modal');
+            if (shop) setVisible(shop, false, 'flex');
+        }
+
         function captureRealBattleForTests() {
             return {
                 battle,
@@ -3910,10 +3899,10 @@
                             const result = checkRoundEnd();
                             assert.isTrue(result, 'checkRoundEnd() должен сообщить, что раунд завершился');
                             assert.equal(battle.phase, BATTLE_PHASES.ROUND_OVER);
-                            assert.equal(document.getElementById('msg-title').innerText, 'Раунд Проигран!');
+                            assert.equal(getEl('msg-title').innerText, 'Раунд Проигран!');
                             // 2 карты на руках → урон 6 + 2*4 = 14, с 30 HP игрок выживает.
                             assert.equal(run.playerHP, 16);
-                            const msgBox = document.getElementById('msg-box');
+                            const msgBox = getEl('msg-box');
                             closeModal();
                         }
                     );
@@ -3931,10 +3920,10 @@
                             const result = checkRoundEnd();
                             assert.isTrue(result);
                             assert.equal(battle.phase, BATTLE_PHASES.ROUND_OVER);
-                            assert.equal(document.getElementById('msg-title').innerText, 'Поражение!');
+                            assert.equal(getEl('msg-title').innerText, 'Поражение!');
                             // 1 карта на руке → урон 6 + 1*4 = 10, с 5 HP это смертельно.
                             assert.equal(run.playerHP, 0);
-                            const msgBox = document.getElementById('msg-box');
+                            const msgBox = getEl('msg-box');
                             closeModal();
                         }
                     );
@@ -3951,9 +3940,9 @@
                             const result = checkRoundEnd();
                             assert.isTrue(result);
                             assert.equal(battle.phase, BATTLE_PHASES.ROUND_OVER);
-                            assert.equal(document.getElementById('msg-title').innerText, 'Ничья в кону');
+                            assert.equal(getEl('msg-title').innerText, 'Ничья в кону');
                             assert.equal(run.playerHP, 20, 'ничья не должна наносить урон');
-                            const msgBox = document.getElementById('msg-box');
+                            const msgBox = getEl('msg-box');
                             closeModal();
                         }
                     );
@@ -4777,12 +4766,7 @@
                     enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }], trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
                     enemyHP: 5 }, overrides);
                 const makeFixtureRun = (overrides = {}) => makeTestRun({ gold: 15, ...overrides });
-                const closeUi = () => {
-                    const modal = document.getElementById('msg-box');
-                    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
-                    const shop = document.getElementById('shop-modal');
-                    if (shop) { shop.classList.add('hidden'); shop.classList.remove('flex'); }
-                };
+                const closeUi = closeTestUI;
 
                 it('Смертельный урон переводит бой в BATTLE_OVER и сохраняет уже выданную награду', () => {
                     withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => {
@@ -4819,9 +4803,9 @@
                                 resumeFromSave();
                                 assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER);
                                 assert.equal(run.gold, 15, 'награда не должна выдаваться повторно');
-                                assert.equal(document.getElementById('msg-title').innerText, 'Победа в Бою!');
-                                document.getElementById('msg-btn').click();
-                                const shop = document.getElementById('shop-modal');
+                                assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
+                                getEl('msg-btn').click();
+                                const shop = getEl('shop-modal');
                                 assert.isFalse(shop.classList.contains('hidden'), 'магазин должен открыться');
                             } finally { closeUi(); clearLocalSave(); }
                         });
@@ -4834,7 +4818,7 @@
                             clearLocalSave();
                             resumeFromSave();
                             assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
-                            const shop = document.getElementById('shop-modal');
+                            const shop = getEl('shop-modal');
                             assert.isTrue(shop.classList.contains('hidden'), 'магазин открываться не должен');
                         } finally { closeUi(); clearLocalSave(); }
                     });
@@ -5403,7 +5387,7 @@
                     inGame({}, { playerHand: [] }, () => {
                         assert.isTrue(checkRoundEnd());
                         assert.equal(battle.phase, BATTLE_PHASES.ROUND_OVER);
-                        const box = document.getElementById('msg-box');
+                        const box = getEl('msg-box');
                         assert.isTrue(box && !box.classList.contains('hidden'), 'модалка раунда должна быть показана');
                     });
                 });
@@ -5803,7 +5787,7 @@
                         assert.equal(battle.table.length, 2);
                         assert.equal(battle.enemyHand.length, 1);
                         assert.equal(battle.phase, BATTLE_PHASES.PLAYER_DEFENSE);
-                        const box = document.getElementById('msg-box');
+                        const box = getEl('msg-box');
                         assert.isTrue(box && !box.classList.contains('hidden'));
                     });
                 });
@@ -5881,7 +5865,7 @@
                 const inGame = (runOv, battleOv, fn) => withIsolatedGameState(makeFixtureRun(runOv), makeFixtureBattle(battleOv), () => {
                     try { fn(); } finally { closeModal(); }
                 });
-                const text = (id) => document.getElementById(id).innerText;
+                const text = (id) => getEl(id).innerText;
 
                 // ---- rendering ----
                 it('renderAll() — только порядок частей: вызывает каждый renderX() и обновление попапа релики, ничего больше', () => {
@@ -5907,26 +5891,26 @@
                     inGame({}, { defender: 'enemy' }, () => {
                         renderTurnBanner();
                         assert.equal(text('turn-banner'), 'Ваш ход: Атака');
-                        assert.isTrue(document.getElementById('turn-banner').className.includes('turn-banner-amber'));
+                        assert.isTrue(getEl('turn-banner').className.includes('turn-banner-amber'));
                         battle.cardsToTake = true; renderTurnBanner();
                         assert.isTrue(text('turn-banner').includes('забирает'));
                         battle.defender = 'player'; battle.cardsToTake = false; renderTurnBanner();
-                        assert.isTrue(document.getElementById('turn-banner').className.includes('turn-banner-rose'));
+                        assert.isTrue(getEl('turn-banner').className.includes('turn-banner-rose'));
                         battle.isTransferActive = true; renderTurnBanner();
-                        assert.isTrue(document.getElementById('turn-banner').className.includes('turn-banner-indigo'));
+                        assert.isTrue(getEl('turn-banner').className.includes('turn-banner-indigo'));
                     });
                 });
 
                 it('renderEnemyHand(): рубашки по числу карт; cheat_eye открывает ровно одну — слабейшую', () => {
                     inGame({ relics: [] }, {}, () => {
                         renderEnemyHand();
-                        assert.equal(document.getElementById('enemy-hand-visual').children.length, 3);
+                        assert.equal(getEl('enemy-hand-visual').children.length, 3);
                         assert.equal(text('enemy-card-count'), '3');
                         assert.equal(document.querySelectorAll('#enemy-hand-visual .bg-amber-50').length, 0, 'без cheat_eye открытых карт нет');
                     });
                     inGame({ relics: [relicOf('cheat_eye')] }, {}, () => {
                         renderEnemyHand();
-                        assert.equal(document.getElementById('enemy-hand-visual').children.length, 3);
+                        assert.equal(getEl('enemy-hand-visual').children.length, 3);
                         assert.equal(document.querySelectorAll('#enemy-hand-visual .bg-amber-50').length, 1);
                     });
                 });
@@ -5934,52 +5918,52 @@
                 it('renderDeck(): колода с козырем; пустая колода — подпись «Козырь»', () => {
                     inGame({}, {}, () => {
                         renderDeck();
-                        assert.isTrue(document.getElementById('deck-container').innerHTML.includes('2 шт'));
+                        assert.isTrue(getEl('deck-container').innerHTML.includes('2 шт'));
                         battle.drawDeck = [];
                         renderDeck();
-                        assert.isTrue(document.getElementById('deck-container').innerHTML.includes('Козырь:'));
+                        assert.isTrue(getEl('deck-container').innerHTML.includes('Козырь:'));
                     });
                 });
 
                 it('renderRelicsBar(): MAX_RELICS слотов, занятые и пустые; счётчик; готовая активная реликвия светится', () => {
                     inGame({ relics: [relicOf('pocket_discard')] }, { playerHand: [C('p1', 'Hearts', 6)], defender: 'enemy' }, () => {
                         renderRelicsBar();
-                        const slots = document.getElementById('relics-bar').children;
+                        const slots = getEl('relics-bar').children;
                         assert.equal(slots.length, MAX_RELICS);
                         assert.isTrue(slots[0].className.includes('relic-slot-filled') && slots[1].className.includes('relic-slot-empty'));
                         assert.equal(text('relic-count'), '1/' + MAX_RELICS);
                         assert.isTrue(slots[0].className.includes('relic-ready-glow'), 'есть шестёрка в руке — релика готова');
                         battle.playerHand = [C('p1', 'Hearts', 9)];
                         renderRelicsBar();
-                        assert.isFalse(document.getElementById('relics-bar').children[0].className.includes('relic-ready-glow'));
+                        assert.isFalse(getEl('relics-bar').children[0].className.includes('relic-ready-glow'));
                     });
                 });
 
                 it('renderTable() / renderPlayerHand(): пары на столе и рука игрока', () => {
                     inGame({}, { table: [{ attack: C('a1', 'Pikes', 7), defend: C('b1', 'Pikes', 10) }, { attack: C('a2', 'Hearts', 8), defend: null }] }, () => {
                         renderTable();
-                        assert.equal(document.getElementById('table-pairs').children.length, 2);
+                        assert.equal(getEl('table-pairs').children.length, 2);
                         renderPlayerHand();
-                        assert.equal(document.getElementById('player-hand').children.length, 2);
+                        assert.equal(getEl('player-hand').children.length, 2);
                     });
                 });
 
                 it('renderActionButtons(): БИТО/ВЗЯТЬ/ПЕРЕВОД включаются по фазе и столу', () => {
                     inGame({}, { defender: 'enemy', phase: BATTLE_PHASES.PLAYER_ATTACK, table: [] }, () => {
                         renderActionButtons();
-                        assert.isTrue(document.getElementById('btn-action').disabled, 'нечем бито при пустом столе');
-                        assert.isTrue(document.getElementById('btn-take').disabled);
+                        assert.isTrue(getEl('btn-action').disabled, 'нечем бито при пустом столе');
+                        assert.isTrue(getEl('btn-take').disabled);
                         battle.table = [{ attack: C('a1', 'Pikes', 7), defend: null }];
                         renderActionButtons();
-                        assert.isFalse(document.getElementById('btn-action').disabled);
+                        assert.isFalse(getEl('btn-action').disabled);
                         battle.phase = BATTLE_PHASES.AI_WAITING;
                         renderActionButtons();
-                        assert.isTrue(document.getElementById('btn-action').disabled, 'пока ходит ИИ, БИТО недоступно');
+                        assert.isTrue(getEl('btn-action').disabled, 'пока ходит ИИ, БИТО недоступно');
                         battle.phase = BATTLE_PHASES.PLAYER_ATTACK;
                         battle.defender = 'player'; battle.phase = BATTLE_PHASES.PLAYER_DEFENSE;
                         renderActionButtons();
-                        assert.isFalse(document.getElementById('btn-take').disabled, 'защитник может взять');
-                        assert.isTrue(document.getElementById('btn-action').disabled, 'есть непобитая атака — бито нельзя');
+                        assert.isFalse(getEl('btn-take').disabled, 'защитник может взять');
+                        assert.isTrue(getEl('btn-action').disabled, 'есть непобитая атака — бито нельзя');
                     });
                 });
 
@@ -5988,13 +5972,13 @@
                     inGame({}, {}, () => {
                         let confirmed = 0;
                         openModal({ title: 'Заголовок', text: 'Текст', confirmLabel: 'ДА', onConfirm: () => confirmed++ });
-                        const box = document.getElementById('msg-box');
+                        const box = getEl('msg-box');
                         assert.isTrue(!box.classList.contains('hidden') && box.classList.contains('flex'));
                         assert.equal(text('msg-title'), 'Заголовок');
                         assert.equal(text('msg-body'), 'Текст');
-                        assert.equal(document.getElementById('msg-btn').innerText, 'ДА');
-                        assert.isTrue(document.getElementById('msg-btn-cancel').classList.contains('hidden'), 'без cancel кнопка отмены скрыта');
-                        document.getElementById('msg-btn').click();
+                        assert.equal(getEl('msg-btn').innerText, 'ДА');
+                        assert.isTrue(getEl('msg-btn-cancel').classList.contains('hidden'), 'без cancel кнопка отмены скрыта');
+                        getEl('msg-btn').click();
                         assert.equal(confirmed, 1);
                         assert.isTrue(box.classList.contains('hidden'));
                     });
@@ -6003,14 +5987,14 @@
                 it('openModal(): состояние прошлого окна не утекает — отмена, disabled, обработчик фона, метка релики', () => {
                     inGame({ relics: [relicOf('pocket_discard')] }, {}, () => {
                         showRelicPopover('pocket_discard'); // отключённая/активная кнопка, ЗАКРЫТЬ, обработчик фона, метка релики
-                        const box = document.getElementById('msg-box');
-                        assert.isTrue(!!box.onclick && !document.getElementById('msg-btn-cancel').classList.contains('hidden'));
+                        const box = getEl('msg-box');
+                        assert.isTrue(!!box.onclick && !getEl('msg-btn-cancel').classList.contains('hidden'));
                         showModal('Обычное', 'окно');
                         assert.isTrue(box.onclick === null, 'обработчик фона должен сброситься');
-                        assert.isTrue(document.getElementById('msg-btn-cancel').classList.contains('hidden'));
-                        assert.isFalse(document.getElementById('msg-btn').disabled);
-                        assert.isFalse(document.getElementById('msg-btn').classList.contains('opacity-40'));
-                        assert.equal(document.getElementById('msg-btn').innerText, 'ПОНЯТНО');
+                        assert.isTrue(getEl('msg-btn-cancel').classList.contains('hidden'));
+                        assert.isFalse(getEl('msg-btn').disabled);
+                        assert.isFalse(getEl('msg-btn').classList.contains('opacity-40'));
+                        assert.equal(getEl('msg-btn').innerText, 'ПОНЯТНО');
                         assert.isTrue(openRelicPopoverId === null, 'метка попапа релики должна сброситься');
                     });
                 });
@@ -6019,13 +6003,13 @@
                     inGame({}, {}, () => {
                         let sold = 0;
                         showConfirm('Продать?', 'точно', () => sold++);
-                        assert.equal(document.getElementById('msg-btn').innerText, 'ПРОДАТЬ');
-                        assert.equal(document.getElementById('msg-btn-cancel').innerText, 'ОТМЕНА');
-                        document.getElementById('msg-btn-cancel').click();
+                        assert.equal(getEl('msg-btn').innerText, 'ПРОДАТЬ');
+                        assert.equal(getEl('msg-btn-cancel').innerText, 'ОТМЕНА');
+                        getEl('msg-btn-cancel').click();
                         assert.equal(sold, 0);
-                        assert.isTrue(document.getElementById('msg-box').classList.contains('hidden'));
+                        assert.isTrue(getEl('msg-box').classList.contains('hidden'));
                         showConfirm('Продать?', 'точно', () => sold++);
-                        document.getElementById('msg-btn').click();
+                        getEl('msg-btn').click();
                         assert.equal(sold, 1);
                     });
                 });
@@ -6035,8 +6019,8 @@
                         showRelicPopover('pocket_discard');
                         assert.equal(openRelicPopoverId, 'pocket_discard');
                         closeModal();
-                        assert.isTrue(document.getElementById('msg-box').classList.contains('hidden'));
-                        assert.isTrue(document.getElementById('msg-box').onclick === null);
+                        assert.isTrue(getEl('msg-box').classList.contains('hidden'));
+                        assert.isTrue(getEl('msg-box').onclick === null);
                         assert.isTrue(openRelicPopoverId === null);
                     });
                 });
@@ -6044,15 +6028,15 @@
                 it('Попап релики: активная — две кнопки, «активировать» недоступна пока релика не готова; обычная — одна ПОНЯТНО', () => {
                     inGame({ relics: [relicOf('pocket_discard'), relicOf('cheat_eye')] }, { playerHand: [C('p1', 'Hearts', 9)] }, () => {
                         showRelicPopover('pocket_discard');
-                        assert.isTrue(document.getElementById('msg-btn').disabled, 'нет 6/7 в руке');
-                        assert.isTrue(document.getElementById('msg-btn').classList.contains('opacity-40'));
-                        assert.equal(document.getElementById('msg-btn-cancel').innerText, 'ЗАКРЫТЬ');
+                        assert.isTrue(getEl('msg-btn').disabled, 'нет 6/7 в руке');
+                        assert.isTrue(getEl('msg-btn').classList.contains('opacity-40'));
+                        assert.equal(getEl('msg-btn-cancel').innerText, 'ЗАКРЫТЬ');
                         battle.playerHand = [C('p1', 'Hearts', 6)];
                         refreshRelicPopoverIfOpen();
-                        assert.isFalse(document.getElementById('msg-btn').disabled, 'попап обновляется вслед за состоянием игры');
+                        assert.isFalse(getEl('msg-btn').disabled, 'попап обновляется вслед за состоянием игры');
                         showRelicPopover('cheat_eye');
-                        assert.equal(document.getElementById('msg-btn').innerText, 'ПОНЯТНО');
-                        assert.isTrue(document.getElementById('msg-btn-cancel').classList.contains('hidden'));
+                        assert.equal(getEl('msg-btn').innerText, 'ПОНЯТНО');
+                        assert.isTrue(getEl('msg-btn-cancel').classList.contains('hidden'));
                     });
                 });
 
@@ -6061,16 +6045,18 @@
                         showRelicPopover('pocket_discard');
                         run.relics = [];
                         refreshRelicPopoverIfOpen();
-                        assert.isTrue(document.getElementById('msg-box').classList.contains('hidden'));
+                        assert.isTrue(getEl('msg-box').classList.contains('hidden'));
                         assert.isTrue(openRelicPopoverId === null);
                     });
                 });
 
-                it('Нет ручного скрытия #msg-box вне closeModal(): классы hidden/flex модалки меняют только openModal/closeModal', () => {
+                it('Нет ручного управления видимостью #msg-box вне openModal()/closeModal()', () => {
                     const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
                     const prod = fullSource.slice(0, fullSource.indexOf('class TinyTestRunner'));
-                    const hides = prod.match(/modal\.classList\.add\('hidden'\)/g) || [];
-                    assert.equal(hides.length, 1, 'ожидается ровно одно место, где окно скрывается (closeModal): ' + hides.length);
+                    const directClassChanges = prod.match(/modal\.classList\.(?:add|remove|toggle)\(/g) || [];
+                    const modalVisibilityCalls = prod.match(/setVisible\(modal, (?:true|false), 'flex'\)/g) || [];
+                    assert.equal(directClassChanges.length, 0, 'прямое изменение классов модалки: ' + directClassChanges.length);
+                    assert.equal(modalVisibilityCalls.length, 2, 'ожидаются ровно два вызова setVisible для модалки: ' + modalVisibilityCalls.length);
                 });
 
                 // ---- audio ----
@@ -6242,10 +6228,9 @@
                 it('Магазин показывает цену и лечение из констант (HEAL_COST / HEAL_AMOUNT)', () => {
                     withTestGame(makeTestRun({ gold: 50 }), makeTestBattle(), () => {
                         openShop();
-                        const html = document.getElementById('shop-heal-list').innerHTML;
+                        const html = getEl('shop-heal-list').innerHTML;
                         assert.isTrue(html.includes('+' + HEAL_AMOUNT + ' HP') && html.includes(HEAL_COST + '$'));
-                        const shop = document.getElementById('shop-modal');
-                        if (shop) { shop.classList.add('hidden'); shop.classList.remove('flex'); }
+                        closeTestUI();
                     });
                 });
 
@@ -6326,7 +6311,7 @@
                             showModal('t', 'b');
                         });
                         assert.isFalse(battleInvariantChecksEnabled, 'флаг должен вернуться к прежнему значению');
-                        assert.isTrue(document.getElementById('msg-box').classList.contains('hidden'), 'модалка закрыта');
+                        assert.isTrue(getEl('msg-box').classList.contains('hidden'), 'модалка закрыта');
                         assert.equal(localStorage.getItem(SAVE_KEY), marker, 'реальный сейв восстановлен');
                     } finally {
                         battleInvariantChecksEnabled = wasEnabled;
@@ -6342,8 +6327,8 @@
                         run.maxHP = 30;
                         run.gold = 25;
                         openShop();
-                        const hpEl = document.getElementById('shop-hp-display');
-                        const goldEl = document.getElementById('shop-gold-display');
+                        const hpEl = getEl('shop-hp-display');
+                        const goldEl = getEl('shop-gold-display');
                         assert.equal(hpEl ? hpEl.innerText : '', '18/30');
                         assert.equal(goldEl ? goldEl.innerText : '', '25$');
                     });
@@ -6355,7 +6340,7 @@
                         buyHeal();
                         assert.equal(run.playerHP, 25);
                         assert.equal(run.gold, 10);
-                        const hpEl = document.getElementById('shop-hp-display');
+                        const hpEl = getEl('shop-hp-display');
                         assert.equal(hpEl ? hpEl.innerText : '', '25/30');
                     });
 
@@ -6366,16 +6351,11 @@
                         buyHeal();
                         assert.equal(run.playerHP, 30);
                         assert.equal(run.gold, 10);
-                        const hpEl = document.getElementById('shop-hp-display');
+                        const hpEl = getEl('shop-hp-display');
                         assert.equal(hpEl ? hpEl.innerText : '', '30/30');
                     });
                 });
-
-                const shopModal = document.getElementById('shop-modal');
-                if (shopModal) {
-                    shopModal.classList.add('hidden');
-                    shopModal.classList.remove('flex');
-                }
+                closeTestUI();
             });
 
             runner.describe('9b. Слоты артефактов в магазине (покупка/продажа)', (it, assert) => {
@@ -6393,8 +6373,8 @@
                 it('renderShopRelicSlots отображает заполненные и пустые слоты', () => {
                     run.relics = [{ id: 'ace_sleeve', name: 'Туз в рукаве', icon: '🃏', desc: 'x', price: 12 }];
                     renderShopRelicSlots();
-                    const slotsBar = document.getElementById('shop-relic-slots');
-                    const countEl = document.getElementById('shop-relic-count');
+                    const slotsBar = getEl('shop-relic-slots');
+                    const countEl = getEl('shop-relic-count');
                     assert.equal(slotsBar.children.length, MAX_RELICS, 'Должно быть отрисовано MAX_RELICS слотов');
                     assert.isTrue(slotsBar.children[0].className.includes('relic-slot-filled'), 'Слот 0 должен быть заполнен');
                     assert.isTrue(slotsBar.children[1].className.includes('relic-slot-empty'), 'Слот 1 должен быть пустым');
@@ -6409,7 +6389,7 @@
                     run.gold = 5;
                     sellRelic(0);
                     // showConfirm requires explicit confirmation; simulate the click.
-                    const confirmBtn = document.getElementById('msg-btn');
+                    const confirmBtn = getEl('msg-btn');
                     confirmBtn.onclick();
                     assert.equal(run.gold, 5 + 7, 'floor(15/2) = 7 золота должно быть возвращено');
                     assert.equal(run.relics.length, 1, 'Проданный артефакт должен быть удалён из массива');
@@ -6420,23 +6400,13 @@
                     run.relics = [{ id: 'cheat_eye', name: 'Шулерский глаз', icon: '👁️', desc: 'x', price: 8 }];
                     run.gold = 3;
                     sellRelic(0);
-                    const cancelBtn = document.getElementById('msg-btn-cancel');
+                    const cancelBtn = getEl('msg-btn-cancel');
                     cancelBtn.onclick();
                     assert.equal(run.gold, 3, 'Золото не должно измениться при отмене');
                     assert.equal(run.relics.length, 1, 'Артефакт не должен быть удалён при отмене');
                 });
               });
-
-                const shopModal2 = document.getElementById('shop-modal');
-                if (shopModal2) {
-                    shopModal2.classList.add('hidden');
-                    shopModal2.classList.remove('flex');
-                }
-                const msgBox = document.getElementById('msg-box');
-                if (msgBox) {
-                    msgBox.classList.add('hidden');
-                    msgBox.classList.remove('flex');
-                }
+                closeTestUI();
             });
 
             runner.describe('10. Уровень соперника, урон при взятии и бонус HP за босса', (it, assert) => {
@@ -6515,11 +6485,7 @@
                         assert.equal(run.maxHP, 35);
                         assert.equal(run.playerHP, 25);
                     });
-                    const msgBox = document.getElementById('msg-box');
-                    if (msgBox) {
-                        msgBox.classList.add('hidden');
-                        msgBox.classList.remove('flex');
-                    }
+                    closeTestUI();
                 });
 
                 it('Победа над рядовым противником НЕ увеличивает maxHP', () => {
@@ -6532,11 +6498,7 @@
 
                         assert.equal(run.maxHP, 30);
                     });
-                    const msgBox = document.getElementById('msg-box');
-                    if (msgBox) {
-                        msgBox.classList.add('hidden');
-                        msgBox.classList.remove('flex');
-                    }
+                    closeTestUI();
                 });
             });
 
@@ -6607,7 +6569,7 @@
                             assert.isFalse(hasRelic('safety_rope'));
 
                             openShop();
-                            const shopList = document.getElementById('shop-relics-list');
+                            const shopList = getEl('shop-relics-list');
                             const offersSafetyRope = Array.from(shopList.children)
                                 .some(item => item.textContent.includes('Страховочный трос'));
                             assert.isTrue(offersSafetyRope, 'После срабатывания трос должен снова появиться в списке покупки — это осознанное поведение, подтверждённое пользователем');
@@ -6615,9 +6577,7 @@
                             buyRelic('safety_rope');
                             assert.isTrue(hasRelic('safety_rope'), 'Повторная покупка должна вернуть артефакт в инвентарь');
                             assert.equal(run.gold, 100 - 18, 'Цена (18$) должна списаться при повторной покупке');
-
-                            const shopModal = document.getElementById('shop-modal');
-                            if (shopModal) { shopModal.classList.add('hidden'); shopModal.classList.remove('flex'); }
+                            closeTestUI();
                         }
                     );
                 });
@@ -6631,7 +6591,7 @@
                         }),
                         () => {
                             renderAll();
-                            const relicsBar = document.getElementById('relics-bar');
+                            const relicsBar = getEl('relics-bar');
                             assert.isTrue(relicsBar.children[0].className.includes('relic-slot-filled'), 'До срабатывания слот 0 должен быть занят');
 
                             applyPlayerDamage(100);
@@ -7011,11 +6971,11 @@
                             // 2 карты × 2 × 2 = 8 ≥ 4 HP врага
                             assert.equal(battle.enemyHP, 0);
                             assert.equal(run.gold, WIN_GOLD_BASE + 1 * WIN_GOLD_PER_FLOOR, 'Награда за победу должна выдаться ровно один раз');
-                            assert.equal(document.getElementById('msg-title').innerText, 'Победа в Бою!');
+                            assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
                             // Победа приоритетнее: бой закончился раньше, чем урон от взятия карт был применён
                             assert.equal(run.playerHP, 100, 'Урон по игроку от этого взятия не применяется, если враг уже добит');
 
-                            const msgBox = document.getElementById('msg-box');
+                            const msgBox = getEl('msg-box');
                             closeModal();
                         }
                     );
@@ -7039,7 +6999,7 @@
                             assert.equal(battle.enemyHP, 0);
                             assert.equal(battle.aiTimer, null, 'ИИ не должен ходить за мёртвого врага под модалкой победы');
                             assert.isTrue(battle.phase !== BATTLE_PHASES.AI_WAITING, 'Фаза не должна переходить в AI_WAITING после победы');
-                            const msgBox = document.getElementById('msg-box');
+                            const msgBox = getEl('msg-box');
                             closeModal();
                         }
                     );
@@ -7061,10 +7021,10 @@
                         () => {
                             handlePlayerTake();
                             assert.equal(battle.enemyHP, 0);
-                            assert.equal(document.getElementById('msg-title').innerText, 'Победа в Бою!', 'Модалка поражения не должна перекрывать победу');
+                            assert.equal(getEl('msg-title').innerText, 'Победа в Бою!', 'Модалка поражения не должна перекрывать победу');
                             assert.equal(run.playerHP, 1);
                             assert.equal(run.gold, WIN_GOLD_BASE + 1 * WIN_GOLD_PER_FLOOR, 'Награда выдаётся один раз');
-                            const msgBox = document.getElementById('msg-box');
+                            const msgBox = getEl('msg-box');
                             closeModal();
                         }
                     );
@@ -7085,9 +7045,9 @@
                         }),
                         () => {
                             handlePlayerTake();
-                            assert.equal(document.getElementById('msg-title').innerText, 'Победа в Бою!');
+                            assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
                             assert.isTrue(hasRelic('safety_rope'), 'Трос не должен расходоваться: смертельный урон не применялся');
-                            const msgBox = document.getElementById('msg-box');
+                            const msgBox = getEl('msg-box');
                             closeModal();
                         }
                     );
@@ -7128,10 +7088,10 @@
                             assert.equal(battle.enemyHP, 0);
                             // Колода пуста, стол пуст и рука игрока пуста: без гарда checkRoundEnd()
                             // показал бы «Раунд Выигран!» поверх победной модалки и потерял бы её openShop().
-                            assert.equal(document.getElementById('msg-title').innerText, 'Победа в Бою!');
+                            assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
                             // Победа фиксируется фазой BATTLE_OVER; PLAYER_ATTACK означал бы, что enterPlayerPhase() всё же вызвали.
                             assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER, 'enterPlayerPhase() не должен вызываться после победы');
-                            const msgBox = document.getElementById('msg-box');
+                            const msgBox = getEl('msg-box');
                             closeModal();
                         }
                     );
@@ -7228,7 +7188,7 @@
                             assert.equal(battle.enemyHP, 0);
                             assert.equal(battle.discardPile.filter(c => c.id === 'p1' || c.id === 'p2').length, 0, 'Сброс балласта не должен срабатывать после победы');
 
-                            const msgBox = document.getElementById('msg-box');
+                            const msgBox = getEl('msg-box');
                             closeModal();
                         }
                     );
@@ -7330,9 +7290,9 @@
                         }),
                         () => {
                             showRelicPopover('pocket_discard');
-                            const modal = document.getElementById('msg-box');
-                            const confirmBtn = document.getElementById('msg-btn');
-                            const cancelBtn = document.getElementById('msg-btn-cancel');
+                            const modal = getEl('msg-box');
+                            const confirmBtn = getEl('msg-btn');
+                            const cancelBtn = getEl('msg-btn-cancel');
                             assert.isFalse(modal.classList.contains('hidden'), 'попап должен открыться');
                             assert.equal(confirmBtn.innerText, RELIC_EFFECTS.pocket_discard.label, 'кнопка должна называться как способность');
                             assert.isFalse(confirmBtn.disabled, 'способность доступна — кнопка активна');
@@ -7382,7 +7342,7 @@
                         }),
                         () => {
                             showRelicPopover('pocket_discard');
-                            const modal = document.getElementById('msg-box');
+                            const modal = getEl('msg-box');
                             assert.isFalse(modal.classList.contains('hidden'));
 
                             // Клик прямо на затемнённом фоне (сам #msg-box), а не на
@@ -7401,11 +7361,11 @@
                         makeTestBattle(),
                         () => {
                             showRelicPopover('ace_sleeve');
-                            const modal = document.getElementById('msg-box');
-                            const confirmBtn = document.getElementById('msg-btn');
-                            const cancelBtn = document.getElementById('msg-btn-cancel');
+                            const modal = getEl('msg-box');
+                            const confirmBtn = getEl('msg-btn');
+                            const cancelBtn = getEl('msg-btn-cancel');
                             assert.isFalse(modal.classList.contains('hidden'), 'попап должен открыться');
-                            assert.equal(document.getElementById('msg-body').innerText, 'Тестовое описание');
+                            assert.equal(getEl('msg-body').innerText, 'Тестовое описание');
                             assert.equal(confirmBtn.innerText, 'ПОНЯТНО', 'для пассивного артефакта — только кнопка закрытия');
                             assert.isTrue(cancelBtn.classList.contains('hidden'));
                             confirmBtn.click();
@@ -7423,7 +7383,7 @@
                         }),
                         () => {
                             renderAll();
-                            const relicsBar = document.getElementById('relics-bar');
+                            const relicsBar = getEl('relics-bar');
                             assert.isTrue(relicsBar.children[0].className.includes('relic-ready-glow'), 'способность доступна — слот должен подсвечиваться кольцом');
 
                             battle.pocketDiscardUsedThisRound = true;
@@ -7448,7 +7408,7 @@
                             // battle тут не настроен под бой) — isReady() === false,
                             // кнопка активации в попапе будет задизейблена.
                             showRelicPopover('pocket_discard');
-                            const confirmBtn = document.getElementById('msg-btn');
+                            const confirmBtn = getEl('msg-btn');
                             assert.isTrue(confirmBtn.disabled, 'предусловие: кнопка активации должна быть задизейблена');
                             assert.isTrue(confirmBtn.classList.contains('opacity-40'), 'предусловие: должен быть класс opacity-40');
 
@@ -7546,8 +7506,8 @@
                             // игра зависала на "Ваш ход: Атака" без карт и без доступных
                             // действий (баг из отчёта пользователя).
                             assert.equal(battle.phase, BATTLE_PHASES.ROUND_OVER, 'checkRoundEnd() должен был сработать и завершить раунд');
-                            assert.equal(document.getElementById('msg-title').innerText, 'Раунд Выигран!');
-                            const msgBox = document.getElementById('msg-box');
+                            assert.equal(getEl('msg-title').innerText, 'Раунд Выигран!');
+                            const msgBox = getEl('msg-box');
                             closeModal();
                         }
                     );
@@ -7784,13 +7744,13 @@
                     const expected = getCurrentEnemy();
                     setElText('enemy-name', '__СТАРОЕ_ИМЯ__');
                     setElText('enemy-level', '999');
-                    const avatarEl = document.getElementById('enemy-avatar');
+                    const avatarEl = getEl('enemy-avatar');
                     if (avatarEl) avatarEl.innerText = '__X__';
 
                     renderAll();
 
-                    assert.equal(document.getElementById('enemy-name').innerText, expected.name);
-                    assert.equal(document.getElementById('enemy-level').innerText, String(expected.level));
+                    assert.equal(getEl('enemy-name').innerText, expected.name);
+                    assert.equal(getEl('enemy-level').innerText, String(expected.level));
                     if (avatarEl) assert.equal(avatarEl.innerText, expected.avatar);
                 });
 
@@ -7801,11 +7761,11 @@
                         makeTestBattle(),
                         () => {
                             startFloorBattle(); // paints the fixture floor's enemy into the DOM
-                            assert.equal(document.getElementById('enemy-name').innerText, ENEMIES[ENEMIES.length - 1].name);
+                            assert.equal(getEl('enemy-name').innerText, ENEMIES[ENEMIES.length - 1].name);
                         }
                     );
                     renderAll();
-                    assert.equal(document.getElementById('enemy-name').innerText, realName);
+                    assert.equal(getEl('enemy-name').innerText, realName);
                 });
             });
 
@@ -7891,7 +7851,7 @@
                         () => {
                             relicHighlightUntil['safety_rope'] = Date.now() + 5000;
                             renderAll();
-                            const relicsBar = document.getElementById('relics-bar');
+                            const relicsBar = getEl('relics-bar');
                             assert.isTrue(relicsBar.children[0].className.includes('relic-highlight'), 'В пределах окна подсветки слот должен иметь класс relic-highlight');
 
                             relicHighlightUntil['safety_rope'] = Date.now() - 1000; // окно уже истекло
@@ -8054,14 +8014,10 @@
             try {
                 return preserveLocalSaveAround(() => runner.run());
             } finally {
-                const msgBox = document.getElementById('msg-box');
-                if (msgBox) {
-                    msgBox.classList.add('hidden');
-                    msgBox.classList.remove('flex');
-                }
-                const confirmBtn = document.getElementById('msg-btn');
+                closeTestUI();
+                const confirmBtn = getEl('msg-btn');
                 if (confirmBtn) confirmBtn.onclick = null;
-                const cancelBtn = document.getElementById('msg-btn-cancel');
+                const cancelBtn = getEl('msg-btn-cancel');
                 if (cancelBtn) cancelBtn.onclick = null;
 
                 clearAITimer();
@@ -8085,9 +8041,9 @@
         }
 
         function renderTestResultsUI(results) {
-            const modal = document.getElementById('unit-test-modal');
+            const modal = getEl('unit-test-modal');
             if (!modal) return;
-            const closeBtn = document.getElementById('btn-close-tests');
+            const closeBtn = getEl('btn-close-tests');
             if (closeBtn) {
                 closeBtn.onclick = () => {
                     modal.classList.add('hidden');
@@ -8099,7 +8055,7 @@
             setElText('test-stat-passed', results.passed);
             setElText('test-stat-failed', results.failed);
 
-            const suitesList = document.getElementById('test-suites-list');
+            const suitesList = getEl('test-suites-list');
             if (suitesList) {
                 suitesList.innerHTML = '';
 
@@ -8143,8 +8099,7 @@
                 });
             }
 
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
+            setVisible(modal, true, 'flex');
         }
 
         function initUnitTestsUI() {
@@ -8153,10 +8108,10 @@
                 renderTestResultsUI(runGameUnitTests());
             };
 
-            const btnHeaderTests = document.getElementById('btn-run-tests');
+            const btnHeaderTests = getEl('btn-run-tests');
             if (btnHeaderTests) btnHeaderTests.onclick = runTestsAction;
 
-            const btnSplashTests = document.getElementById('btn-splash-tests');
+            const btnSplashTests = getEl('btn-splash-tests');
             if (btnSplashTests) btnSplashTests.onclick = runTestsAction;
 
             function revealAndRunTests() {
@@ -8214,8 +8169,8 @@
          * "ПРОДОЛЖИТЬ ИГРУ" and the reset button reappears as the way to abandon it.
          */
         function updateStartButtonForSavedRun() {
-            const btnStart = document.getElementById('btn-start-game');
-            const btnNewRun = document.getElementById('btn-new-run');
+            const btnStart = getEl('btn-start-game');
+            const btnNewRun = getEl('btn-new-run');
             if (!btnStart) return;
             const span = btnStart.querySelector('span');
             if (hasSavedGame()) {
@@ -8232,7 +8187,7 @@
          * place, so no call site can forget to sync it (see updateStartButtonForSavedRun).
          */
         function showSplashScreen() {
-            const splash = document.getElementById('splash-screen');
+            const splash = getEl('splash-screen');
             if (splash) splash.classList.remove('hidden');
             updateStartButtonForSavedRun();
         }
