@@ -2912,13 +2912,15 @@
             // Enemy header (name, level, avatar, ability) is a pure projection of
             // run.floor, so it is repainted here together with everything else.
             syncEnemyDisplay();
-            setElText('player-hp-display', `${run.playerHP}/${run.maxHP}`);
-            setElText('player-gold-display', `${run.gold}$`);
-            setElText('shop-hp-display', `${run.playerHP}/${run.maxHP}`);
-            setElText('shop-gold-display', `${run.gold}$`);
-            setElText('floor-display', run.floor);
-            setElText('floor-total', ENEMIES.length);
-            setElText('enemy-hp', battle.enemyHP);
+            [
+                ['player-hp-display', `${run.playerHP}/${run.maxHP}`],
+                ['player-gold-display', `${run.gold}$`],
+                ['shop-hp-display', `${run.playerHP}/${run.maxHP}`],
+                ['shop-gold-display', `${run.gold}$`],
+                ['floor-display', run.floor],
+                ['floor-total', ENEMIES.length],
+                ['enemy-hp', battle.enemyHP]
+            ].forEach(([id, value]) => setElText(id, value));
         }
 
         // Whose turn it is, as a coloured banner above the table.
@@ -2947,8 +2949,7 @@
 
                 const lowestEnemyCard = queryRelicHook('getRevealedEnemyCard');
 
-                for (let i = 0; i < battle.enemyHand.length; i++) {
-                    const card = battle.enemyHand[i];
+                for (const card of battle.enemyHand) {
                     if (lowestEnemyCard && card.id === lowestEnemyCard.id) {
                         const color = SUIT_COLORS[card.suit];
                         const isTrump = card.suit === battle.trumpSuit;
@@ -3049,10 +3050,7 @@
 
         // БИТО / ВЗЯТЬ / ПЕРЕВОД: label and enabled state for the current phase.
         function renderActionButtons() {
-            const btnAction = getEl('btn-action');
-            const btnTake = getEl('btn-take');
-            const btnTransfer = getEl('btn-transfer');
-
+            const [btnAction, btnTake, btnTransfer] = ['btn-action', 'btn-take', 'btn-transfer'].map(getEl);
             if (btnAction && btnTake && btnTransfer) {
                 if (battle.defender === 'enemy') {
                     btnAction.innerText = battle.cardsToTake ? "БИТО (Враг взял)" : "БИТО";
