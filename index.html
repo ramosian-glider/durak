@@ -3419,6 +3419,13 @@
             return Object.assign({ floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() }, overrides);
         }
 
+        function makeTestFixtures(battleDefaults = {}, runDefaults = {}) {
+            return {
+                makeFixtureBattle: (overrides = {}) => makeTestBattle(structuredClone(battleDefaults), overrides),
+                makeFixtureRun: (overrides = {}) => makeTestRun({ ...runDefaults, ...overrides })
+            };
+        }
+
         function testCard(id, suit, value) {
             return { id, suit, value };
         }
@@ -3436,6 +3443,14 @@
                         clearAITimer(); clearLocalSave(); closeModal();
                     }
                 }));
+        }
+
+        function withCleanup(fn, ...cleanup) {
+            try {
+                return fn();
+            } finally {
+                cleanup.forEach(cleanupFn => cleanupFn());
+            }
         }
 
         function preserveLocalSaveAround(fn) {
@@ -4440,14 +4455,14 @@
             });
 
             runner.describe('8e. Централизация переходов фазы (setBattlePhase — единственный писатель battle.phase)', (it, assert) => {
-                const makeFixtureBattle = (overrides = {}) => makeTestBattle({
+                const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
                     drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                     playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
                     enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
                     table: [{ attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: null }],
                     trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
-                    defender: 'player', phase: BATTLE_PHASES.PLAYER_DEFENSE }, overrides);
-                const makeFixtureRun = (overrides = {}) => makeTestRun(overrides);
+                    defender: 'player', phase: BATTLE_PHASES.PLAYER_DEFENSE
+                });
 
                 // Static guard: production code (everything before the test runner) must
                 // never assign battle.phase outside setBattlePhase(). Tests may still
@@ -4686,13 +4701,13 @@
             });
 
             runner.describe('8g. enterAIWaitingPhase (единственная точка перехода хода к ИИ)', (it, assert) => {
-                const makeFixtureBattle = (overrides = {}) => makeTestBattle({
+                const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
                     drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                     playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
                     enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
                     table: [{ attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: null }],
-                    trumpCard: { id: 't1', suit: 'Hearts', value: 6 } }, overrides);
-                const makeFixtureRun = (overrides = {}) => makeTestRun(overrides);
+                    trumpCard: { id: 't1', suit: 'Hearts', value: 6 }
+                });
 
                 // Runs fn with setTimeout/clearTimeout replaced by recorders, restoring them afterwards.
                 function withFakeTimers(fn) {
@@ -4760,77 +4775,69 @@
             });
 
             runner.describe('8h. Победа над соперником и продолжение игры (враг с 0 HP)', (it, assert) => {
-                const makeFixtureBattle = (overrides = {}) => makeTestBattle({
+                const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
                     drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
                     playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
                     enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }], trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
-                    enemyHP: 5 }, overrides);
-                const makeFixtureRun = (overrides = {}) => makeTestRun({ gold: 15, ...overrides });
+                    enemyHP: 5
+                }, { gold: 15 });
                 const closeUi = closeTestUI;
 
                 it('Смертельный урон переводит бой в BATTLE_OVER и сохраняет уже выданную награду', () => {
-                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => {
-                        try {
-                            clearLocalSave();
-                            damageEnemyHP(999);
-                            assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER);
-                            const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
-                            assert.equal(saved.battle.enemyHP, 0);
-                            assert.equal(saved.battle.phase, BATTLE_PHASES.BATTLE_OVER);
-                            assert.equal(saved.run.gold, 15 + WIN_GOLD_BASE + WIN_GOLD_PER_FLOOR, 'награда должна быть уже в сейве');
-                            assert.isTrue(validateSaveData(saved), 'сейв победы должен быть валиден');
-                        } finally { closeUi(); clearLocalSave(); }
-                    });
+                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => withCleanup(() => {
+                        clearLocalSave();
+                        damageEnemyHP(999);
+                        assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER);
+                        const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
+                        assert.equal(saved.battle.enemyHP, 0);
+                        assert.equal(saved.battle.phase, BATTLE_PHASES.BATTLE_OVER);
+                        assert.equal(saved.run.gold, 15 + WIN_GOLD_BASE + WIN_GOLD_PER_FLOOR, 'награда должна быть уже в сейве');
+                        assert.isTrue(validateSaveData(saved), 'сейв победы должен быть валиден');
+                    }, closeUi, clearLocalSave));
                 });
 
                 it('Нелетальный урон фазу не меняет', () => {
-                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => {
-                        try {
-                            damageEnemyHP(2);
-                            assert.equal(battle.enemyHP, 3);
-                            assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
-                        } finally { closeUi(); clearLocalSave(); }
-                    });
+                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => withCleanup(() => {
+                        damageEnemyHP(2);
+                        assert.equal(battle.enemyHP, 3);
+                        assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
+                    }, closeUi, clearLocalSave));
                 });
 
                 // Both a fresh BATTLE_OVER save and a legacy save (active phase + 0 HP,
                 // exactly what the reported screenshot showed) must resume at the shop.
                 [BATTLE_PHASES.BATTLE_OVER, BATTLE_PHASES.RESOLVING, BATTLE_PHASES.PLAYER_ATTACK].forEach((phase) => {
                     it('resumeFromSave(): враг с 0 HP и фазой "' + phase + '" ведёт в магазин без повторной награды', () => {
-                        withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({ enemyHP: 0, phase }), () => {
-                            try {
-                                clearLocalSave();
-                                resumeFromSave();
-                                assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER);
-                                assert.equal(run.gold, 15, 'награда не должна выдаваться повторно');
-                                assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
-                                getEl('msg-btn').click();
-                                const shop = getEl('shop-modal');
-                                assert.isFalse(shop.classList.contains('hidden'), 'магазин должен открыться');
-                            } finally { closeUi(); clearLocalSave(); }
-                        });
+                        withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({ enemyHP: 0, phase }), () => withCleanup(() => {
+                            clearLocalSave();
+                            resumeFromSave();
+                            assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER);
+                            assert.equal(run.gold, 15, 'награда не должна выдаваться повторно');
+                            assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
+                            getEl('msg-btn').click();
+                            const shop = getEl('shop-modal');
+                            assert.isFalse(shop.classList.contains('hidden'), 'магазин должен открыться');
+                        }, closeUi, clearLocalSave));
                     });
                 });
 
                 it('resumeFromSave(): живой враг — поведение прежнее (ход возвращается игроку)', () => {
-                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({ enemyHP: 5, phase: BATTLE_PHASES.RESOLVING }), () => {
-                        try {
-                            clearLocalSave();
-                            resumeFromSave();
-                            assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
-                            const shop = getEl('shop-modal');
-                            assert.isTrue(shop.classList.contains('hidden'), 'магазин открываться не должен');
-                        } finally { closeUi(); clearLocalSave(); }
-                    });
+                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({ enemyHP: 5, phase: BATTLE_PHASES.RESOLVING }), () => withCleanup(() => {
+                        clearLocalSave();
+                        resumeFromSave();
+                        assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
+                        const shop = getEl('shop-modal');
+                        assert.isTrue(shop.classList.contains('hidden'), 'магазин открываться не должен');
+                    }, closeUi, clearLocalSave));
                 });
             });
 
             runner.describe('8i. Этап 1 рефакторинга: дисциплина состояния (проверки до смены фазы, единый commit, allow-list сохранения, инварианты)', (it, assert) => {
-                const makeFixtureBattle = (overrides = {}) => makeTestBattle({
+                const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
                     drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }, { id: 'd2', suit: 'Hearts', value: 8 }],
                     playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
-                    enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }], trumpCard: { id: 'd1', suit: 'Hearts', value: 6 } }, overrides);
-                const makeFixtureRun = (overrides = {}) => makeTestRun(overrides);
+                    enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }], trumpCard: { id: 'd1', suit: 'Hearts', value: 6 }
+                });
                 const closeUi = closeModal;
                 const openAttack = () => [{ attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: null }];
                 // The exact pair the original bug needed: a handler entered with a valid phase
@@ -4864,15 +4871,13 @@
                     preserveLocalSaveAround(() => {
                         withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({
                             phase: BATTLE_PHASES.AI_WAITING, defender: 'enemy', cardsToTake: true, table: openAttack()
-                        }), () => {
-                            try {
-                                handleBito(true);
-                                assert.isTrue(battle.phase !== BATTLE_PHASES.RESOLVING, 'игра застряла в RESOLVING');
-                                assert.equal(battle.table.length, 0, 'стол должен быть забран врагом');
-                                assert.isTrue(battle.enemyHand.some(c => c.id === 'a1'), 'атакующая карта должна уйти врагу');
-                                assert.equal(battle.cardsToTake, false);
-                            } finally { closeUi(); clearAITimer(); clearLocalSave(); }
-                        });
+                        }), () => withCleanup(() => {
+                            handleBito(true);
+                            assert.isTrue(battle.phase !== BATTLE_PHASES.RESOLVING, 'игра застряла в RESOLVING');
+                            assert.equal(battle.table.length, 0, 'стол должен быть забран врагом');
+                            assert.isTrue(battle.enemyHand.some(c => c.id === 'a1'), 'атакующая карта должна уйти врагу');
+                            assert.equal(battle.cardsToTake, false);
+                        }, closeUi, clearAITimer, clearLocalSave));
                     });
                 });
 
@@ -5055,11 +5060,11 @@
 
             runner.describe('8j. Этап 2 рефакторинга: примитивы карт и стола (moveCard, removeCard, dealCard, API стола)', (it, assert) => {
                 const C = testCard;
-                const makeFixtureBattle = (overrides = {}) => makeTestBattle({
+                const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
                     drawDeck: [C('d1', 'Hearts', 6), C('d2', 'Hearts', 8), C('d3', 'Pikes', 9)],
                     playerHand: [C('p1', 'Hearts', 6), C('p2', 'Pikes', 9)],
-                    enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 9)], trumpCard: C('d1', 'Hearts', 6) }, overrides);
-                const makeFixtureRun = (overrides = {}) => makeTestRun(overrides);
+                    enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 9)], trumpCard: C('d1', 'Hearts', 6)
+                });
                 const inGame = (overrides, fn) => withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(overrides), fn);
                 const allIds = () => [...battle.drawDeck, ...battle.discardPile, ...battle.playerHand, ...battle.enemyHand, ...getTableCards()].map(c => c.id).sort();
 
@@ -5255,12 +5260,12 @@
                             drawDeck: [], phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy',
                             table: [{ attack: C('a1', 'Pikes', 7), defend: C('b1', 'Pikes', 10) }]
                         }, () => {
-                            try {
+                            withCleanup(() => {
                                 handleBito();
                                 assert.equal(battle.discardPile.map(c => c.id).sort().join(), 'a1,b1');
                                 battle.playerHand.push(C('a1', 'Pikes', 7)); // тот же id уже в сбросе
                                 assert.isTrue(getBattleInvariantViolations(battle).length > 0, 'дубликат в сбросе должен ловиться');
-                            } finally { clearAITimer(); clearLocalSave(); closeModal(); }
+                            }, clearAITimer, clearLocalSave, closeModal);
                         });
                     });
                 });
@@ -5274,7 +5279,7 @@
                             enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Hearts', 9), C('e3', 'Hearts', 14)],
                             table: [{ attack: C('a1', 'Pikes', 7), defend: null }, { attack: C('a2', 'Hearts', 9), defend: null }]
                         }, () => {
-                            try {
+                            withCleanup(() => {
                                 const before = allIds();
                                 handlePlayerTake();
                                 // номинал 9 есть на столе: e1 и e2 подкинуты, e3 (туз) нет
@@ -5282,7 +5287,7 @@
                                 assert.equal(battle.table.length, 0);
                                 assert.equal(battle.playerHand.length, 4 + 4);
                                 assert.equal(allIds().join(), before.join());
-                            } finally { clearAITimer(); clearLocalSave(); closeModal(); }
+                            }, clearAITimer, clearLocalSave, closeModal);
                         });
                     });
                 });
@@ -5304,10 +5309,10 @@
 
             runner.describe('8k. Этап 3 рефакторинга: конец раунда (decide/apply/present), взятие, победа в бою', (it, assert) => {
                 const C = testCard;
-                const makeFixtureBattle = (overrides = {}) => makeTestBattle({
+                const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
                     playerHand: [C('p1', 'Hearts', 6)],
-                    enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 9)], trumpCard: C('t1', 'Hearts', 6) }, overrides);
-                const makeFixtureRun = (overrides = {}) => makeTestRun(overrides);
+                    enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 9)], trumpCard: C('t1', 'Hearts', 6)
+                });
                 const inGame = (runOv, battleOv, fn) => withTestGame(makeFixtureRun(runOv), makeFixtureBattle(battleOv), fn);
                 const snapshot = () => JSON.stringify({ b: serializeGameState().battle, hp: run.playerHP, gold: run.gold, relics: run.relics });
 
@@ -5581,11 +5586,11 @@
 
             runner.describe('8l. Этап 4 рефакторинга: ИИ (chooseEnemyAction / executeEnemyAction) и единый обход хуков relics', (it, assert) => {
                 const C = testCard;
-                const makeFixtureBattle = (overrides = {}) => makeTestBattle({
+                const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
                     playerHand: [C('p1', 'Hearts', 6), C('p2', 'Hearts', 7)],
                     enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Pikes', 12), C('e3', 'Hearts', 8)], trumpCard: C('t1', 'Hearts', 6),
-                    defender: 'player', phase: BATTLE_PHASES.RESOLVING }, overrides);
-                const makeFixtureRun = (overrides = {}) => makeTestRun(overrides);
+                    defender: 'player', phase: BATTLE_PHASES.RESOLVING
+                });
                 const inGame = (runOv, battleOv, fn) => withTestGame(makeFixtureRun(runOv), makeFixtureBattle(battleOv), fn);
                 const pair = (atk, def = null) => ({ attack: atk, defend: def });
                 const snapshot = () => JSON.stringify({ b: serializeGameState().battle, hp: run.playerHP, gold: run.gold });
@@ -5856,11 +5861,11 @@
 
             runner.describe('8m. Этап 5 рефакторинга: рендер по частям, единый API модалок, playTone', (it, assert) => {
                 const C = testCard;
-                const makeFixtureBattle = (overrides = {}) => makeTestBattle({
+                const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
                     drawDeck: [C('d1', 'Hearts', 6), C('d2', 'Pikes', 8)],
                     playerHand: [C('p1', 'Hearts', 7), C('p2', 'Pikes', 9)],
-                    enemyHand: [C('e1', 'Pikes', 10), C('e2', 'Hearts', 8), C('e3', 'Clubs', 6)], trumpCard: C('d1', 'Hearts', 6) }, overrides);
-                const makeFixtureRun = (overrides = {}) => makeTestRun({ gold: 7, ...overrides });
+                    enemyHand: [C('e1', 'Pikes', 10), C('e2', 'Hearts', 8), C('e3', 'Clubs', 6)], trumpCard: C('d1', 'Hearts', 6)
+                }, { gold: 7 });
                 const relicOf = (id) => Object.assign({}, ALL_RELICS.find(r => r.id === id));
                 const inGame = (runOv, battleOv, fn) => withIsolatedGameState(makeFixtureRun(runOv), makeFixtureBattle(battleOv), () => {
                     try { fn(); } finally { closeModal(); }
