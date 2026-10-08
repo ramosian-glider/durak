@@ -2559,87 +2559,59 @@
             }, RELIC_HIGHLIGHT_DURATION_MS + RELIC_HIGHLIGHT_REPAINT_PAD_MS);
         }
 
-        // The one place that walks the owned relics: calls `visit(relic, handler)` for
-        // every owned relic, in slot order, whose registry entry defines `hookName`.
-        // `visit` returns true to stop the walk. fireHook / fireAllHooks /
-        // fireHookSum / queryRelicHook below differ only in what they do with each
-        // handler's result.
+        // Visits owned relic handlers in slot order; returning true stops the walk.
+        // Kept as a small public helper for tests and custom hook consumers.
         function forEachRelicHandler(hookName, visit) {
             for (const relic of run.relics) {
-                const effect = RELIC_EFFECTS[relic.id];
-                if (effect && typeof effect[hookName] === 'function') {
-                    if (visit(relic, effect[hookName]) === true) return;
-                }
+                const handler = RELIC_EFFECTS[relic.id]?.[hookName];
+                if (typeof handler === 'function' && visit(relic, handler) === true) return;
             }
         }
 
-        // Fires `hookName` on every owned relic that defines it, in slot order,
-        // stopping at (and returning) the first truthy result. Use this for
-        // *intercepting* hooks — where at most one relic should act, and later
-        // handlers firing after one already "used" the hook would be wrong (e.g.
-        // a one-shot life-save: once playerHP is restored, a second handler
-        // shouldn't also fire against the same lethal hit).
-        function fireHook(hookName, ctx) {
-            let found = null;
-            forEachRelicHandler(hookName, (relic, handler) => {
-                const result = handler(ctx);
-                if (!result) return false;
-                highlightRelic(relic.id);
-                found = result;
-                return true;
-            });
-            return found;
-        }
+        // Runs a relic hook in one of three modes: first truthy result, all
+        // handlers, or sum of numeric results. `highlight` is disabled for
+        // read-only queries used during rendering.
+        function runRelicHooks(hookName, ctx, mode = 'first') {
+            let result = mode === 'sum' ? 0 : null;
+            for (const relic of run.relics) {
+                const effect = RELIC_EFFECTS[relic.id];
+                const handler = effect?.[hookName];
+                if (typeof handler !== 'function') continue;
 
-        // Fires `hookName` on every owned relic that defines it, in slot order,
-        // with no early-exit. Use this for *additive/notification* hooks — where
-        // every relic that cares about the event should act independently (e.g.
-        // gold-on-card-played: two such relics, if they existed, should both pay
-        // out, not just the first). Handlers dispatched this way signal whether
-        // they actually did something by returning a truthy value (see each
-        // RELIC_EFFECTS entry) — fireAllHooks itself doesn't use that value for
-        // anything but deciding whether to flash the relic.
-        function fireAllHooks(hookName, ctx) {
-            forEachRelicHandler(hookName, (relic, handler) => {
-                if (handler(ctx)) highlightRelic(relic.id);
-            });
-        }
-
-        // Fires `hookName` on every owned relic that defines it and sums the
-        // numeric values each handler returns. Use this for *additive damage/gold
-        // modifier* hooks that must be folded into a single call site's own number
-        // before that call site does its one, single side-effecting call (e.g.
-        // damageEnemyHP) — unlike fireAllHooks, whose handlers each cause their own
-        // side effects independently. Splitting a modifier like salted_wound into
-        // its own damageEnemyHP call instead would risk a second "enemy defeated"
-        // trigger firing off an already-dead enemy. A relic only flashes if its
-        // own contribution was actually positive (a salted_wound with zero excess
-        // cards contributed nothing this time, so it shouldn't flash).
-        function fireHookSum(hookName, ctx) {
-            let total = 0;
-            forEachRelicHandler(hookName, (relic, handler) => {
-                const result = handler(ctx);
-                if (typeof result === 'number' && result !== 0) {
-                    total += result;
-                    highlightRelic(relic.id);
+                const value = handler(ctx);
+                if (mode === 'sum') {
+                    if (typeof value === 'number' && value !== 0) {
+                        result += value;
+                        highlightRelic(relic.id);
+                    }
+                } else if (value) {
+                    if (mode !== 'query') highlightRelic(relic.id);
+                    result = value;
+                    if (mode === 'first' || mode === 'query') break;
                 }
-            });
-            return total;
+            }
+            return result;
         }
 
-        // Read-only counterpart of fireHook(): the first truthy result of `hookName`,
-        // WITHOUT flashing the relic. For passive relics that are consulted while
-        // rendering (cheat_eye) — a flash would schedule another render and loop —
-        // and so for handlers that must not change state.
+        // Intercepting hook: stop after the first relic that actually acts.
+        function fireHook(hookName, ctx) {
+            return runRelicHooks(hookName, ctx);
+        }
+
+        // Additive/notification hook: every matching relic gets a turn.
+        function fireAllHooks(hookName, ctx) {
+            runRelicHooks(hookName, ctx, 'all');
+        }
+
+        // Additive numeric modifier: combine all contributions before the caller
+        // performs its single side effect.
+        function fireHookSum(hookName, ctx) {
+            return runRelicHooks(hookName, ctx, 'sum');
+        }
+
+        // Read-only hook used during rendering; it never highlights a relic.
         function queryRelicHook(hookName, ctx) {
-            let found = null;
-            forEachRelicHandler(hookName, (relic, handler) => {
-                const result = handler(ctx);
-                if (!result) return false;
-                found = result;
-                return true;
-            });
-            return found;
+            return runRelicHooks(hookName, ctx, 'query');
         }
 
         // pocket_discard: a card the player may drop (a 6 or a 7).
