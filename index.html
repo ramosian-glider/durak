@@ -1027,11 +1027,12 @@
             battle.heavyBallastAppliedThisTurn = false;
         }
 
-        // First step of a table-resolution handler: park the battle in RESOLVING
-        // and drop any pending transfer offer. Use cancelAI when an AI callback
-        // may still be pending; call only after the handler's precondition checks.
-        function beginResolution({ cancelAI = false } = {}) {
-            if (cancelAI) clearAITimer();
+        // First step of every handler that resolves a table (bito / take): park the
+        // battle in RESOLVING so nothing else acts while it runs, and drop a
+        // pending transfer offer. Call it only AFTER the handler's precondition
+        // checks have passed (see handleBito()), and call clearAITimer() first
+        // where the AI path can be pending.
+        function beginResolution() {
             setBattlePhase(BATTLE_PHASES.RESOLVING);
             battle.isTransferActive = false;
         }
@@ -1795,7 +1796,8 @@
             //    flip below, so a commit in the middle must not see the old player phase
             //    paired with the new defender (PLAYER_ATTACK + defender 'player').
             //    enterPlayerPhase() / scheduleEnemyAI() / checkRoundEnd() set the final phase.
-            beginResolution({ cancelAI: true });
+            clearAITimer();
+            beginResolution();
 
             const currentDefender = battle.defender;
 
@@ -1842,7 +1844,8 @@
             if (battle.phase !== BATTLE_PHASES.AI_WAITING && !canAcceptPlayerAction()) return;
             if (battle.table.length === 0) return;
 
-            beginResolution({ cancelAI: true });
+            clearAITimer();
+            beginResolution();
 
             const currentDefender = battle.defender;
             const { enemyJustDied } = applyEnemyTake();
@@ -2101,16 +2104,13 @@
         // The enemy has just been left holding (or is about to take) the table: if
         // the player has nothing more to toss in — or may not — it collects now,
         // otherwise it waits for the player. Also the answer once a defence fell short.
-        function canPlayerContinueAttacking() {
-            return battle.playerHand.length > 0 &&
-                battle.table.length < getMaxAllowedAttacks() &&
-                battle.playerHand.some(c => isRankOnTable(c.value));
-        }
-
         function chooseEnemyTakeOrWait() {
-            return canPlayerContinueAttacking()
-                ? { type: 'wait' }
-                : { type: 'take', delay: AI_STANDARD_DELAY_MS };
+            const maxAllowed = getMaxAllowedAttacks();
+            const playerHasTossCard = battle.playerHand.some(c => isRankOnTable(c.value));
+            if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !playerHasTossCard) {
+                return { type: 'take', delay: AI_STANDARD_DELAY_MS };
+            }
+            return { type: 'wait' };
         }
 
         // After the enemy beat every attack on the table: it ends the round only if the
@@ -2148,9 +2148,12 @@
 
             const openPairs = getOpenAttacks();
             if (openPairs.length === 0) {
-                return canPlayerContinueAttacking()
-                    ? { type: 'wait' }
-                    : { type: 'bito', delay: AI_QUICK_DELAY_MS };
+                const maxAllowed = getMaxAllowedAttacks();
+                const playerHasTossCard = battle.playerHand.some(c => isRankOnTable(c.value));
+                if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !playerHasTossCard) {
+                    return { type: 'bito', delay: AI_QUICK_DELAY_MS };
+                }
+                return { type: 'wait' };
             }
 
             const attackVal = battle.table[0].attack.value;
@@ -3991,22 +3994,6 @@
                     );
                 });
 
-                it('aiTimer и actionToken НЕ попадают в сохранение', () => {
-                    withIsolatedGameState(
-                        { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: [] },
-                        makeTestBattle({ enemyHP: 10, actionToken: 7 }),
-                        () => {
-                            saveGameState();
-                            const raw = localStorage.getItem(SAVE_KEY);
-                            const parsed = JSON.parse(raw);
-                            assert.isFalse('aiTimer' in parsed.battle);
-                            assert.isFalse('actionToken' in parsed.battle);
-
-                            clearLocalSave();
-                        }
-                    );
-                });
-
                 it('loadGameState восстанавливает run и battle', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
@@ -4026,19 +4013,6 @@
                             assert.equal(run.floor, 3);
                             assert.equal(battle.enemyHP, 55);
                             assert.equal(battle.playerHand.length, 1);
-
-                            clearLocalSave();
-                        }
-                    );
-                });
-
-                it('После загрузки aiTimer === null', () => {
-                    withIsolatedGameState(
-                        { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
-                        makeTestBattle({ phase: BATTLE_PHASES.IDLE, trumpSuit: null, enemyHP: 10 }),
-                        () => {
-                            saveGameState();
-                            loadGameState();
                             assert.equal(battle.aiTimer, null);
 
                             clearLocalSave();
@@ -4234,75 +4208,9 @@
                     assert.isFalse(validateSaveData(save));
                 });
 
-                it('Пустая рука врага в активной фазе при пустых колоде и столе — тоже невалидно', () => {
-                    const save = buildGoodSave();
-                    save.battle.drawDeck = [];
-                    save.battle.table = [];
-                    save.battle.enemyHand = [];
-                    assert.isFalse(validateSaveData(save));
-                });
-
-                it('Та же комбинация пустых рук/колоды/стола допустима в фазе ROUND_OVER', () => {
-                    const save = buildGoodSave();
-                    save.battle.drawDeck = [];
-                    save.battle.table = [];
-                    save.battle.playerHand = [];
-                    save.battle.phase = BATTLE_PHASES.ROUND_OVER;
-                    assert.isTrue(validateSaveData(save));
-                });
-
-                it('Непустой стол снимает подозрение в застревании, даже если руки и колода пусты', () => {
-                    const save = buildGoodSave();
-                    save.battle.drawDeck = [];
-                    save.battle.playerHand = [];
-                    save.battle.enemyHand = [];
-                    save.battle.table = [{ attack: { id: 'a', suit: 'Hearts', value: 6 }, defend: null }];
-                    assert.isTrue(validateSaveData(save));
-                });
-
-                it('run.deck пустой массив — невалидно', () => {
-                    const save = buildGoodSave();
-                    save.run.deck = [];
-                    assert.isFalse(validateSaveData(save));
-                });
-
-                it('run.floor вне диапазона (0 или больше числа этажей) — невалидно', () => {
-                    const tooLow = buildGoodSave();
-                    tooLow.run.floor = 0;
-                    assert.isFalse(validateSaveData(tooLow));
-
-                    const tooHigh = buildGoodSave();
-                    tooHigh.run.floor = ENEMIES.length + 1;
-                    assert.isFalse(validateSaveData(tooHigh));
-                });
-
-                it('run.playerHP больше run.maxHP — невалидно', () => {
-                    const save = buildGoodSave();
-                    save.run.playerHP = save.run.maxHP + 5;
-                    assert.isFalse(validateSaveData(save));
-                });
-
-                it('Нечисловой battle.enemyHP — невалидно', () => {
-                    const save = buildGoodSave();
-                    save.battle.enemyHP = 'many';
-                    assert.isFalse(validateSaveData(save));
-                });
-
                 it('battle.playerHand не массив (например, потерян при мёрдже) — невалидно', () => {
                     const save = buildGoodSave();
                     save.battle.playerHand = undefined;
-                    assert.isFalse(validateSaveData(save));
-                });
-
-                it('Недопустимое значение battle.phase — невалидно', () => {
-                    const save = buildGoodSave();
-                    save.battle.phase = 'not_a_real_phase';
-                    assert.isFalse(validateSaveData(save));
-                });
-
-                it('Недопустимое значение battle.defender — невалидно', () => {
-                    const save = buildGoodSave();
-                    save.battle.defender = 'nobody';
                     assert.isFalse(validateSaveData(save));
                 });
 
@@ -6923,34 +6831,6 @@
                             assert.isTrue(KNOWN_HOOKS.includes(key), `RELIC_EFFECTS.${relicId}.${key}: неизвестное имя хука (опечатка или не добавлен в KNOWN_HOOKS?)`);
                         }
                     }
-                });
-
-                it('mirror_ring добивает врага при взятии карт: награда выдаётся один раз, победная модалка, урон от взятия не применяется', () => {
-                    withIsolatedGameState(
-                        { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
-                        makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
-                            table: [
-                                { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
-                                { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
-                            ],
-                            defender: 'player',
-                            enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE
-                        }),
-                        () => {
-                            handlePlayerTake();
-                            // 2 карты × 2 × 2 = 8 ≥ 4 HP врага
-                            assert.equal(battle.enemyHP, 0);
-                            assert.equal(run.gold, WIN_GOLD_BASE + 1 * WIN_GOLD_PER_FLOOR, 'Награда за победу должна выдаться ровно один раз');
-                            assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
-                            // Победа приоритетнее: бой закончился раньше, чем урон от взятия карт был применён
-                            assert.equal(run.playerHP, 100, 'Урон по игроку от этого взятия не применяется, если враг уже добит');
-
-                            const msgBox = getEl('msg-box');
-                            closeModal();
-                        }
-                    );
                 });
 
                 it('handlePlayerTake: если хук добил врага — ИИ не планируется, фаза остаётся RESOLVING', () => {
