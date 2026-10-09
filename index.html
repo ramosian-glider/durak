@@ -1027,12 +1027,11 @@
             battle.heavyBallastAppliedThisTurn = false;
         }
 
-        // First step of every handler that resolves a table (bito / take): park the
-        // battle in RESOLVING so nothing else acts while it runs, and drop a
-        // pending transfer offer. Call it only AFTER the handler's precondition
-        // checks have passed (see handleBito()), and call clearAITimer() first
-        // where the AI path can be pending.
-        function beginResolution() {
+        // First step of a table-resolution handler: park the battle in RESOLVING
+        // and drop any pending transfer offer. Use cancelAI when an AI callback
+        // may still be pending; call only after the handler's precondition checks.
+        function beginResolution({ cancelAI = false } = {}) {
+            if (cancelAI) clearAITimer();
             setBattlePhase(BATTLE_PHASES.RESOLVING);
             battle.isTransferActive = false;
         }
@@ -1796,8 +1795,7 @@
             //    flip below, so a commit in the middle must not see the old player phase
             //    paired with the new defender (PLAYER_ATTACK + defender 'player').
             //    enterPlayerPhase() / scheduleEnemyAI() / checkRoundEnd() set the final phase.
-            clearAITimer();
-            beginResolution();
+            beginResolution({ cancelAI: true });
 
             const currentDefender = battle.defender;
 
@@ -1844,8 +1842,7 @@
             if (battle.phase !== BATTLE_PHASES.AI_WAITING && !canAcceptPlayerAction()) return;
             if (battle.table.length === 0) return;
 
-            clearAITimer();
-            beginResolution();
+            beginResolution({ cancelAI: true });
 
             const currentDefender = battle.defender;
             const { enemyJustDied } = applyEnemyTake();
