@@ -1647,9 +1647,7 @@
             // aggressive_throw governs how many cards the BOSS itself throws at the
             // player — battle.defender === 'player' (player defends). It must not
             // touch the player's own throw limit against that boss (defender ===
-            // 'enemy') — bug fixed 2026-09-22, previously this ran unconditionally
-            // and inflated the player's own limit to 8 (even above the base 6) on
-            // that boss's floor.
+            // 'enemy').
             if (enemyData.abilityId === 'aggressive_throw' && battle.defender === 'player') {
                 baseLimit = AGGRESSIVE_THROW_BOSS_LIMIT;
             }
@@ -2288,21 +2286,16 @@
         }
 
         // --- Relic effect registry (pilot) --------------------------------------
-        // Most relics are still wired as scattered hasRelic('id') checks at their
-        // call sites (see ways-of-working notes on this). This registry is a pilot
-        // for migrating relics toward named hooks instead: each relic can define a
-        // handler per hook name, and game code calls fireHook()/fireAllHooks() at
-        // one canonical point rather than every call site re-checking hasRelic()
-        // individually. All relics are registered here. Migrated so far: cheat_eye (passive), safety_rope, coin_magnet, sharp_suit,
-        // cascade_transfer, heavy_ballast, salted_wound, ace_sleeve, mirror_ring, midas_touch, ballast_drop, spam_mail, pocket_discard, jester_discard, sleight_of_hand.
+        // Each relic defines a handler per hook name, and game code calls
+        // fireHook()/fireAllHooks()/fireHookSum() at one canonical point rather than
+        // re-checking hasRelic() at every call site. All relics are registered here.
         //
         // pocket_discard, jester_discard, and sleight_of_hand are *active*
         // (button-triggered) relics — see isReady/onUse below. These don't fire
         // off a game event the way the hooks above do, so they aren't dispatched
         // via fireHook(); instead showRelicPopover() and the relic's own
-        // use*() function both call isReady() directly, which is the point of
-        // the migration: the availability condition used to be duplicated
-        // between those two call sites and is now defined once.
+        // use*() function both call isReady() directly, so the availability
+        // condition is defined once.
         const RELIC_EFFECTS = {
             cheat_eye: {
                 // Passive: consulted by renderAll() via queryRelicHook() (no flash), never
@@ -2461,8 +2454,8 @@
                 // take's own consequences). Deliberately a separate hook from
                 // onPlayerTookCards: that one fires BEFORE the enemy-death check, so
                 // a discard there would hit the hand of a player who already won.
-                // Fires before applyPlayerDamage(), same order as the old inline
-                // check. Dispatched via fireAllHooks: a pure side effect on the
+                // Fires before applyPlayerDamage().
+                // Dispatched via fireAllHooks: a pure side effect on the
                 // hand, nothing to intercept or sum.
                 onPlayerTakePenalty() {
                     discardLowestNonTrumpCards(battle.playerHand, BALLAST_DROP_DISCARD_COUNT);
@@ -2496,11 +2489,10 @@
                 // cards. Same active-ability shape as pocket_discard above.
                 //
                 // Requires the draw deck to hold at least a full hand's worth of
-                // cards: a partial redraw used to be allowed and could leave the
-                // player with fewer cards than they discarded (or, with an empty
-                // deck, no cards at all) — a real downgrade dressed up as a
-                // reshuffle, reported as the game getting stuck. Below this
-                // threshold the ability just isn't offered.
+                // cards: a partial redraw could leave the player with fewer cards than
+                // they discarded (or, with an empty deck, none at all) — a downgrade
+                // dressed up as a reshuffle. Below this threshold the ability just isn't
+                // offered.
                 isReady() {
                     return !battle.jesterDiscardUsedThisBattle && canAcceptPlayerAction()
                         && battle.defender === 'enemy' && battle.table.length === 0
@@ -3080,11 +3072,10 @@
 
         // Opens the shared #msg-box modal as a relic info popover: icon, name
         // and description always; for an active-ability relic (ACTIVE_RELIC_IDS),
-        // also an activate button using that relic's own label/isReady/onUse —
-        // replacing the old always-on relic-actions button row below the hand,
-        // which used to pop in and out on every turn change. The button stays
-        // present but disabled while the ability isn't currently usable, so
-        // tapping the relic always shows *something*, not just a blank card.
+        // also an activate button using that relic's own label/isReady/onUse.
+        // The button stays present but disabled while the ability isn't currently
+        // usable, so tapping the relic always shows *something*, not just a blank
+        // card.
         function showRelicPopover(relicId) {
             const relic = run.relics.find(r => r.id === relicId);
             if (!relic) return;
@@ -3360,14 +3351,6 @@
         // source never see them.
         // ============================================================
 
-        /**
-         * Runs fn() while guaranteeing that whatever real save currently sits in
-         * localStorage is restored exactly afterwards, even if fn() (or something it
-         * calls) writes to or clears SAVE_KEY as a side effect. This protects the
-         * player's real save from being clobbered by, e.g., unit tests that call
-         * game functions with fake fixtures (some game functions autosave
-         * internally, such as handlePlayerTake() calling saveGameState()).
-         */
         // ---- Shared fixtures ----------------------------------------------------
         // Every suite that needs a battle/run builds it from these. The base only
         // holds the plumbing fields that never differ (flags, timers, counters); a
@@ -3423,6 +3406,14 @@
             }
         }
 
+        /**
+         * Runs fn() while guaranteeing that whatever real save currently sits in
+         * localStorage is restored exactly afterwards, even if fn() (or something it
+         * calls) writes to or clears SAVE_KEY as a side effect. This protects the
+         * player's real save from being clobbered by, e.g., unit tests that call
+         * game functions with fake fixtures (some game functions autosave
+         * internally, such as handlePlayerTake() calling saveGameState()).
+         */
         function preserveLocalSaveAround(fn) {
             let preRaw;
             try {
@@ -3696,10 +3687,9 @@
                     });
 
                     it('aggressive_throw НЕ влияет на собственную подкидку игрока: на этаже этого босса лимит игрока остаётся базовым (6), а не 8', () => {
-                        // Regression test for the 2026-09-22 fix: aggressive_throw used to
-                        // run unconditionally (no battle.defender check), so it silently
-                        // raised the player's own throw limit above BASE_THROW_LIMIT just
-                        // by being on that boss's floor.
+                        // aggressive_throw applies only when the boss throws (defender ===
+                        // 'player'); it must not raise the player's own throw limit above
+                        // BASE_THROW_LIMIT just because they are on that boss's floor.
                         const bossFloorIdx = ENEMIES.findIndex(e => e.abilityId === 'aggressive_throw');
                         run.floor = bossFloorIdx + 1;
                         battle.defender = 'enemy'; // player is attacking, enemy defends
@@ -3867,11 +3857,9 @@
                     });
                 });
 
-                // checkRoundEnd() itself only had indirect coverage (via the
-                // pocket_discard/jester_discard round-end regressions, which only
-                // ever exercise the "playerEmpty" branch). The other two branches —
-                // "враг остался без карт" and "оба игрока остались без карт" — had
-                // no test anywhere, despite being core win/loss/draw logic.
+                // checkRoundEnd() end to end for the "враг остался без карт" and "оба игрока
+                // остались без карт" branches (the "playerEmpty" branch is also exercised
+                // via the pocket_discard/jester_discard round-end regressions).
                 it('checkRoundEnd(): враг первым остался без карт — раунд проигран, игрок выживает', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
@@ -4046,9 +4034,9 @@
                 });
 
                 it('РЕГРЕССИЯ: initNewRun() сохраняет уже инициализированный бой, а не пустой battle', () => {
-                    // Bug: saveGameState() used to be called BEFORE startFloorBattle(), so
-                    // localStorage ended up with the default battle (enemyHP: 0, hands not
-                    // dealt, phase: 'idle'). If the tab was closed right after starting a new
+                    // saveGameState() must run AFTER startFloorBattle(): otherwise
+                    // localStorage holds the default battle (enemyHP: 0, hands not dealt,
+                    // phase: 'idle'), and if the tab is closed right after starting a new
                     // game, "Continue game" would show an empty table.
                     //
                     // This test needs initNewRun() (which reassigns run) and
@@ -4085,13 +4073,11 @@
                 });
 
                 it('РЕГРЕССИЯ: переход на следующий этаж сохраняет бой после его инициализации', () => {
-                    // The same bug was duplicated in the btn-next-floor handler:
-                    // saveGameState() used to be called before startFloorBattle().
-                    // Same withIsolatedGameState reasoning as the test above — this one
-                    // additionally used to leave the *real* battle's table/enemyHand/
-                    // trumpCard/phase/etc. overwritten with a floor-2 fresh-battle fixture,
-                    // and "Уличный Мошенник" (floor 2's filler) stuck in the #enemy-name DOM
-                    // element for the rest of the play session.
+                    // The same ordering rule applies in the btn-next-floor handler.
+                    // Same withIsolatedGameState reasoning as the test above: without it the
+                    // floor-2 fixture would overwrite the *real* battle's table/enemyHand/
+                    // trumpCard/phase/etc. and leave "Уличный Мошенник" (floor 2's filler) in
+                    // the #enemy-name DOM element for the rest of the play session.
                     withIsolatedGameState(
                         { floor: 2, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
                         makeTestBattle(),
@@ -4432,9 +4418,9 @@
                     );
                 });
 
-                // Previously startNewRound() flipped the phase at the top and never saved;
-                // routing it through setBattlePhase() at the end means the round start is
-                // persisted too, and only once the round is fully rebuilt.
+                // startNewRound() routes the phase change through setBattlePhase() at the
+                // end, so the round start is persisted too, and only once the round is
+                // fully rebuilt.
                 it('startNewRound() сохраняет полностью собранный раунд', () => {
                     withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({ phase: BATTLE_PHASES.ROUND_OVER, table: [] }), () => {
                         clearLocalSave();
@@ -4451,9 +4437,9 @@
                     });
                 });
 
-                // scheduleEnemyAI/Action now capture actionToken AFTER setBattlePhase()
-                // bumps it. Drive the captured timer callback by hand to prove the
-                // staleness check still works in both directions.
+                // scheduleEnemyAI/Action capture actionToken AFTER setBattlePhase() bumps
+                // it. Drive the captured timer callback by hand to prove the staleness
+                // check works in both directions.
                 it('scheduleEnemyAction(): отложенное действие выполняется, если токен не менялся, и отбрасывается, если фаза сменилась', () => {
                     withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({ phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy' }), () => {
                         const realSetTimeout = window.setTimeout;
@@ -4529,8 +4515,8 @@
                     assert.isTrue(validateBattleState(over), 'в неактивной фазе то же состояние допустимо');
                 });
 
-                // The invariant has its own name now, so it is tested on its own — the
-                // validator test above only proves the two are wired together.
+                // The invariant is tested on its own; the validator test above only
+                // proves the two are wired together.
                 it('isImpossibleActiveBattleState(): активная фаза + пустые колода и стол + пустая рука = невозможно', () => {
                     const layout = (over) => Object.assign(goodBattle(), { drawDeck: [], table: [] }, over);
                     const activePhases = [BATTLE_PHASES.PLAYER_ATTACK, BATTLE_PHASES.PLAYER_DEFENSE, BATTLE_PHASES.AI_WAITING, BATTLE_PHASES.RESOLVING];
@@ -4707,7 +4693,7 @@
                 });
             });
 
-            runner.describe('8i. Этап 1 рефакторинга: дисциплина состояния (проверки до смены фазы, единый commit, allow-list сохранения, инварианты)', (it, assert) => {
+            runner.describe('8i. Дисциплина состояния (проверки до смены фазы, единый commit, allow-list сохранения, инварианты)', (it, assert) => {
                 const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
                     drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }, { id: 'd2', suit: 'Hearts', value: 8 }],
                     playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
@@ -4728,7 +4714,7 @@
                     });
                 };
 
-                // ---- 1.2: no state change before the checks pass ----
+                // ---- No state change before the checks pass ----
                 it('handleBito(true) при пустом столе не зависает в RESOLVING', () => {
                     assertNoStrandedPhase(() => handleBito(true), BATTLE_PHASES.AI_WAITING, { defender: 'player' });
                 });
@@ -4756,7 +4742,7 @@
                     });
                 });
 
-                // ---- 1.1: one commit, not save+render by hand ----
+                // ---- One commit, not save+render by hand ----
                 it('В боевом коде нет ручной пары saveGameState(); renderAll(); — только commitBattleState()', () => {
                     const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
                     const productionSource = fullSource.slice(0, fullSource.indexOf('class TinyTestRunner'));
@@ -4780,7 +4766,7 @@
                     });
                 });
 
-                // ---- 1.3: invariants ----
+                // ---- Invariants ----
                 const goodBattle = () => ({
                     drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [{ id: 'x1', suit: 'Pikes', value: 6 }],
                     playerHand: [{ id: 'p1', suit: 'Hearts', value: 7 }],
@@ -4887,7 +4873,7 @@
                     });
                 });
 
-                // ---- 1.4/1.5: explicit persistence ----
+                // ---- Explicit persistence ----
                 it('BATTLE_SAVED_FIELDS и BATTLE_RUNTIME_FIELDS не пересекаются и вместе покрывают все поля battle', () => {
                     for (const key of BATTLE_SAVED_FIELDS) {
                         assert.isFalse(BATTLE_RUNTIME_FIELDS.includes(key), 'поле и сохраняемое, и runtime: ' + key);
@@ -4933,7 +4919,7 @@
                 });
             });
 
-            runner.describe('8j. Этап 2 рефакторинга: примитивы карт и стола (moveCard, removeCard, dealCard, API стола)', (it, assert) => {
+            runner.describe('8j. Примитивы карт и стола (moveCard, removeCard, dealCard, API стола)', (it, assert) => {
                 const C = testCard;
                 const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
                     drawDeck: [C('d1', 'Hearts', 6), C('d2', 'Hearts', 8), C('d3', 'Pikes', 9)],
@@ -5182,7 +5168,7 @@
                 });
             });
 
-            runner.describe('8k. Этап 3 рефакторинга: конец раунда (decide/apply/present), взятие, победа в бою', (it, assert) => {
+            runner.describe('8k. Конец раунда (decide/apply/present), взятие, победа в бою', (it, assert) => {
                 const C = testCard;
                 const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
                     playerHand: [C('p1', 'Hearts', 6)],
@@ -5459,7 +5445,7 @@
                 });
             });
 
-            runner.describe('8l. Этап 4 рефакторинга: ИИ (chooseEnemyAction / executeEnemyAction) и единый обход хуков relics', (it, assert) => {
+            runner.describe('8l. ИИ (chooseEnemyAction / executeEnemyAction) и единый обход хуков relics', (it, assert) => {
                 const C = testCard;
                 const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
                     playerHand: [C('p1', 'Hearts', 6), C('p2', 'Hearts', 7)],
@@ -5734,7 +5720,7 @@
                 });
             });
 
-            runner.describe('8m. Этап 5 рефакторинга: рендер по частям, единый API модалок, playTone', (it, assert) => {
+            runner.describe('8m. Рендер по частям, единый API модалок, playTone', (it, assert) => {
                 const C = testCard;
                 const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
                     drawDeck: [C('d1', 'Hearts', 6), C('d2', 'Pikes', 8)],
@@ -6037,7 +6023,7 @@
                 });
             });
 
-            runner.describe('8n. Этап 6 рефакторинга: константы, отсутствие legacy-обёрток, структура файла, общие тестовые фикстуры', (it, assert) => {
+            runner.describe('8n. Константы, отсутствие legacy-обёрток, структура файла, общие тестовые фикстуры', (it, assert) => {
                 const productionSource = () => {
                     const full = [...document.scripts].map(sc => sc.textContent).join('\n');
                     return full.slice(0, full.indexOf('const assert = {'));
@@ -7766,7 +7752,7 @@
                             const snapshot = captureRealStateForTests();
                             const tokenBefore = battle.actionToken;
 
-                            // Everything the leaking tests used to do, and more.
+                            // Mutate everything a leaking test could touch.
                             battle.phase = BATTLE_PHASES.BATTLE_OVER;
                             battle.defender = 'player';
                             battle.table.push({ attack: card('a2', 8), defend: null });
