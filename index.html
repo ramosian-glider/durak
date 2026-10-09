@@ -2104,13 +2104,16 @@
         // The enemy has just been left holding (or is about to take) the table: if
         // the player has nothing more to toss in — or may not — it collects now,
         // otherwise it waits for the player. Also the answer once a defence fell short.
+        function canPlayerContinueAttacking() {
+            return battle.playerHand.length > 0 &&
+                battle.table.length < getMaxAllowedAttacks() &&
+                battle.playerHand.some(c => isRankOnTable(c.value));
+        }
+
         function chooseEnemyTakeOrWait() {
-            const maxAllowed = getMaxAllowedAttacks();
-            const playerHasTossCard = battle.playerHand.some(c => isRankOnTable(c.value));
-            if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !playerHasTossCard) {
-                return { type: 'take', delay: AI_STANDARD_DELAY_MS };
-            }
-            return { type: 'wait' };
+            return canPlayerContinueAttacking()
+                ? { type: 'wait' }
+                : { type: 'take', delay: AI_STANDARD_DELAY_MS };
         }
 
         // After the enemy beat every attack on the table: it ends the round only if the
@@ -2148,12 +2151,9 @@
 
             const openPairs = getOpenAttacks();
             if (openPairs.length === 0) {
-                const maxAllowed = getMaxAllowedAttacks();
-                const playerHasTossCard = battle.playerHand.some(c => isRankOnTable(c.value));
-                if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !playerHasTossCard) {
-                    return { type: 'bito', delay: AI_QUICK_DELAY_MS };
-                }
-                return { type: 'wait' };
+                return canPlayerContinueAttacking()
+                    ? { type: 'wait' }
+                    : { type: 'bito', delay: AI_QUICK_DELAY_MS };
             }
 
             const attackVal = battle.table[0].attack.value;
