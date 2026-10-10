@@ -3751,8 +3751,8 @@
                         battle.defender = 'enemy';
                         battle.phase = BATTLE_PHASES.PLAYER_ATTACK;
                         battle.table = [];
-                        battle.playerHand = [{ id: 'test_attack', suit: 'Pikes', value: 6 }];
-                        battle.enemyHand = [{ id: 'test_defend', suit: 'Pikes', value: 10 }];
+                        battle.playerHand = [testCard('test_attack', 'Pikes', 6)];
+                        battle.enemyHand = [testCard('test_defend', 'Pikes', 10)];
 
                         window.onPlayerCardClick(0);
 
@@ -3769,15 +3769,15 @@
                         battle.defender = 'enemy';
                         battle.phase = BATTLE_PHASES.AI_WAITING;
                         battle.table = [
-                            { attack: { id: 'test_attack_1', suit: 'Pikes', value: 6 }, defend: { id: 'test_defend', suit: 'Pikes', value: 10 } },
-                            { attack: { id: 'test_throw', suit: 'Hearts', value: 8 }, defend: null }
+                            { attack: testCard('test_attack_1', 'Pikes', 6), defend: testCard('test_defend', 'Pikes', 10) },
+                            { attack: testCard('test_throw', 'Hearts', 8), defend: null }
                         ];
                         battle.playerHand = [
-                            { id: 'test_more_throw', suit: 'Tiles', value: 8 }
+                            testCard('test_more_throw', 'Tiles', 8)
                         ];
                         battle.enemyHand = [
-                            { id: 'test_low', suit: 'Clovers', value: 7 },
-                            { id: 'test_low_2', suit: 'Clovers', value: 9 }
+                            testCard('test_low', 'Clovers', 7),
+                            testCard('test_low_2', 'Clovers', 9)
                         ];
                         battle.trumpSuit = 'Hearts';
                         battle.cardsToTake = false;
@@ -3794,15 +3794,15 @@
                         battle.defender = 'enemy';
                         battle.phase = BATTLE_PHASES.AI_WAITING;
                         battle.table = [
-                            { attack: { id: 'test_attack_1', suit: 'Pikes', value: 6 }, defend: { id: 'test_defend', suit: 'Pikes', value: 10 } },
-                            { attack: { id: 'test_throw', suit: 'Hearts', value: 8 }, defend: null }
+                            { attack: testCard('test_attack_1', 'Pikes', 6), defend: testCard('test_defend', 'Pikes', 10) },
+                            { attack: testCard('test_throw', 'Hearts', 8), defend: null }
                         ];
                         battle.playerHand = [
-                            { id: 'test_no_throw', suit: 'Tiles', value: 9 }
+                            testCard('test_no_throw', 'Tiles', 9)
                         ];
                         battle.enemyHand = [
-                            { id: 'test_low', suit: 'Clovers', value: 7 },
-                            { id: 'test_low_2', suit: 'Clovers', value: 12 }
+                            testCard('test_low', 'Clovers', 7),
+                            testCard('test_low_2', 'Clovers', 12)
                         ];
                         battle.trumpSuit = 'Hearts';
                         battle.cardsToTake = false;
@@ -3820,13 +3820,13 @@
                         battle.defender = 'enemy';
                         battle.phase = BATTLE_PHASES.AI_WAITING;
                         battle.table = [{
-                            attack: { id: 'test_attack', suit: 'Pikes', value: 6 },
+                            attack: testCard('test_attack', 'Pikes', 6),
                             defend: null
                         }];
-                        battle.playerHand = [{ id: 'test_player', suit: 'Tiles', value: 7 }];
+                        battle.playerHand = [testCard('test_player', 'Tiles', 7)];
                         battle.enemyHand = [
-                            { id: 'test_defend', suit: 'Pikes', value: 10 },
-                            { id: 'test_reserve', suit: 'Tiles', value: 8 }
+                            testCard('test_defend', 'Pikes', 10),
+                            testCard('test_reserve', 'Tiles', 8)
                         ];
                         battle.trumpSuit = 'Hearts';
                         battle.cardsToTake = false;
@@ -3844,11 +3844,11 @@
                         battle.defender = 'player';
                         battle.phase = BATTLE_PHASES.AI_WAITING;
                         battle.table = [{
-                            attack: { id: 'test_attack', suit: 'Pikes', value: 6 },
-                            defend: { id: 'test_defend', suit: 'Pikes', value: 10 }
+                            attack: testCard('test_attack', 'Pikes', 6),
+                            defend: testCard('test_defend', 'Pikes', 10)
                         }];
-                        battle.playerHand = [{ id: 'test_player', suit: 'Tiles', value: 7 }];
-                        battle.enemyHand = [{ id: 'test_other', suit: 'Clovers', value: 9 }];
+                        battle.playerHand = [testCard('test_player', 'Tiles', 7)];
+                        battle.enemyHand = [testCard('test_other', 'Clovers', 9)];
 
                         executeEnemyAI();
 
@@ -3864,8 +3864,8 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
                         makeTestBattle({
-                            playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }, { id: 'p2', suit: 'Pikes', value: 7 }],
-                            trumpCard: { id: 't1', suit: 'Pikes', value: 6 }, trumpSuit: 'Pikes',
+                            playerHand: [testCard('p1', 'Hearts', 6), testCard('p2', 'Pikes', 7)],
+                            trumpCard: testCard('t1', 'Pikes', 6), trumpSuit: 'Pikes',
                             enemyHP: 50
                         }),
                         () => {
@@ -3885,8 +3885,8 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 5, maxHP: 30, gold: 0, relics: [], deck: [] },
                         makeTestBattle({
-                            playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
-                            trumpCard: { id: 't1', suit: 'Pikes', value: 6 }, trumpSuit: 'Pikes',
+                            playerHand: [testCard('p1', 'Hearts', 6)],
+                            trumpCard: testCard('t1', 'Pikes', 6), trumpSuit: 'Pikes',
                             enemyHP: 50
                         }),
                         () => {
@@ -3906,7 +3906,7 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 20, maxHP: 30, gold: 0, relics: [], deck: [] },
                         makeTestBattle({
-                            trumpCard: { id: 't1', suit: 'Pikes', value: 6 }, trumpSuit: 'Pikes',
+                            trumpCard: testCard('t1', 'Pikes', 6), trumpSuit: 'Pikes',
                             enemyHP: 50
                         }),
                         () => {
@@ -3925,8 +3925,8 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 20, maxHP: 30, gold: 0, relics: [], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            trumpCard: { id: 't1', suit: 'Pikes', value: 6 }, trumpSuit: 'Pikes',
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
+                            trumpCard: testCard('t1', 'Pikes', 6), trumpSuit: 'Pikes',
                             enemyHP: 50
                         }),
                         () => {
@@ -3935,7 +3935,7 @@
                             assert.isFalse(checkRoundEnd(), 'колода не пуста — рано завершать раунд');
 
                             battle.drawDeck = [];
-                            battle.table = [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: null }];
+                            battle.table = [{ attack: testCard('a1', 'Pikes', 6), defend: null }];
                             assert.isFalse(checkRoundEnd(), 'на столе есть неразобранные карты — рано завершать раунд');
                         }
                     );
@@ -3966,7 +3966,7 @@
                             run.floor = 4;
                             run.gold = 77;
                             battle.enemyHP = 42;
-                            battle.playerHand = [{ id: 'test_save_card', suit: 'Hearts', value: 9 }];
+                            battle.playerHand = [testCard('test_save_card', 'Hearts', 9)];
                             saveGameState();
 
                             const raw = localStorage.getItem(SAVE_KEY);
@@ -3989,7 +3989,7 @@
                         () => {
                             run.floor = 3;
                             battle.enemyHP = 55;
-                            battle.playerHand = [{ id: 'restore_card', suit: 'Pikes', value: 11 }];
+                            battle.playerHand = [testCard('restore_card', 'Pikes', 11)];
                             saveGameState();
 
                             run.floor = 1;
@@ -4166,10 +4166,10 @@
                         version: SAVE_VERSION,
                         run: { floor: 2, playerHP: 20, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
                         battle: {
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
                             discardPile: [],
-                            playerHand: [{ id: 'p1', suit: 'Hearts', value: 7 }],
-                            enemyHand: [{ id: 'e1', suit: 'Hearts', value: 8 }],
+                            playerHand: [testCard('p1', 'Hearts', 7)],
+                            enemyHand: [testCard('e1', 'Hearts', 8)],
                             table: [],
                             defender: 'enemy',
                             phase: BATTLE_PHASES.PLAYER_ATTACK,
@@ -4239,11 +4239,11 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
-                            enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
-                            table: [{ attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: null }],
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
+                            playerHand: [testCard('p1', 'Hearts', 6)],
+                            enemyHand: [testCard('e1', 'Hearts', 7)],
+                            table: [{ attack: testCard('a1', 'Hearts', 9), defend: null }],
+                            trumpCard: testCard('t1', 'Hearts', 6),
                             defender: 'player', phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
@@ -4264,11 +4264,11 @@
                     withIsolatedGameState(
                         { floor: 2, playerHP: 25, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() },
                         makeTestBattle({
-                            playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
-                            enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
+                            playerHand: [testCard('p1', 'Hearts', 6)],
+                            enemyHand: [testCard('e1', 'Hearts', 7)],
                             table: [
-                                { attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: { id: 'd1', suit: 'Hearts', value: 10 } },
-                                { attack: { id: 'a2', suit: 'Hearts', value: 8 }, defend: null }
+                                { attack: testCard('a1', 'Hearts', 9), defend: testCard('d1', 'Hearts', 10) },
+                                { attack: testCard('a2', 'Hearts', 8), defend: null }
                             ], trumpSuit: 'Spades',
                             enemyHP: 20, actionToken: 5
                         }),
@@ -4291,10 +4291,10 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Spades', value: 6 }],
-                            playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }, { id: 'p2', suit: 'Hearts', value: 7 }],
-                            enemyHand: [{ id: 'e1', suit: 'Hearts', value: 9 }],
-                            trumpCard: { id: 't1', suit: 'Spades', value: 6 }, trumpSuit: 'Spades'
+                            drawDeck: [testCard('d1', 'Spades', 6)],
+                            playerHand: [testCard('p1', 'Hearts', 6), testCard('p2', 'Hearts', 7)],
+                            enemyHand: [testCard('e1', 'Hearts', 9)],
+                            trumpCard: testCard('t1', 'Spades', 6), trumpSuit: 'Spades'
                         }),
                         () => {
                             clearLocalSave();
@@ -4317,11 +4317,11 @@
 
             runner.describe('8e. Централизация переходов фазы (setBattlePhase — единственный писатель battle.phase)', (it, assert) => {
                 const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
-                    drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                    playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
-                    enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
-                    table: [{ attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: null }],
-                    trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                    drawDeck: [testCard('d1', 'Hearts', 6)],
+                    playerHand: [testCard('p1', 'Hearts', 6)],
+                    enemyHand: [testCard('e1', 'Hearts', 7)],
+                    table: [{ attack: testCard('a1', 'Hearts', 9), defend: null }],
+                    trumpCard: testCard('t1', 'Hearts', 6),
                     defender: 'player', phase: BATTLE_PHASES.PLAYER_DEFENSE
                 });
 
@@ -4469,9 +4469,9 @@
             runner.describe('8f. validateRunState / validateBattleState (раздельная валидация)', (it, assert) => {
                 const goodRun = () => ({ floor: 2, playerHP: 20, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() });
                 const goodBattle = () => ({
-                    drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [],
-                    playerHand: [{ id: 'p1', suit: 'Hearts', value: 7 }],
-                    enemyHand: [{ id: 'e1', suit: 'Hearts', value: 8 }],
+                    drawDeck: [testCard('d1', 'Hearts', 6)], discardPile: [],
+                    playerHand: [testCard('p1', 'Hearts', 7)],
+                    enemyHand: [testCard('e1', 'Hearts', 8)],
                     table: [], defender: 'enemy', phase: BATTLE_PHASES.PLAYER_ATTACK, enemyHP: 30
                 });
 
@@ -4528,7 +4528,7 @@
 
                 it('isImpossibleActiveBattleState(): любая непустая колода/стол или обе непустые руки делают состояние возможным', () => {
                     const active = BATTLE_PHASES.PLAYER_ATTACK;
-                    const card = { id: 'x', suit: 'Hearts', value: 6 };
+                    const card = testCard('x', 'Hearts', 6);
                     assert.isFalse(isImpossibleActiveBattleState(Object.assign(goodBattle(), { phase: active, drawDeck: [], table: [] })), 'обе руки непусты');
                     assert.isFalse(isImpossibleActiveBattleState(Object.assign(goodBattle(), { phase: active, drawDeck: [card], table: [], playerHand: [] })), 'колода не пуста');
                     assert.isFalse(isImpossibleActiveBattleState(Object.assign(goodBattle(), { phase: active, drawDeck: [], table: [{ attack: card, defend: null }], playerHand: [] })), 'на столе есть карты');
@@ -4563,11 +4563,11 @@
 
             runner.describe('8g. enterAIWaitingPhase (единственная точка перехода хода к ИИ)', (it, assert) => {
                 const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
-                    drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                    playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
-                    enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }],
-                    table: [{ attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: null }],
-                    trumpCard: { id: 't1', suit: 'Hearts', value: 6 }
+                    drawDeck: [testCard('d1', 'Hearts', 6)],
+                    playerHand: [testCard('p1', 'Hearts', 6)],
+                    enemyHand: [testCard('e1', 'Hearts', 7)],
+                    table: [{ attack: testCard('a1', 'Hearts', 9), defend: null }],
+                    trumpCard: testCard('t1', 'Hearts', 6)
                 });
 
                 // Runs fn with setTimeout/clearTimeout replaced by recorders, restoring them afterwards.
@@ -4637,9 +4637,9 @@
 
             runner.describe('8h. Победа над соперником и продолжение игры (враг с 0 HP)', (it, assert) => {
                 const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
-                    drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                    playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
-                    enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }], trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                    drawDeck: [testCard('d1', 'Hearts', 6)],
+                    playerHand: [testCard('p1', 'Hearts', 6)],
+                    enemyHand: [testCard('e1', 'Hearts', 7)], trumpCard: testCard('t1', 'Hearts', 6),
                     enemyHP: 5
                 }, { gold: 15 });
                 const closeUi = closeTestUI;
@@ -4695,12 +4695,12 @@
 
             runner.describe('8i. Дисциплина состояния (проверки до смены фазы, единый commit, allow-list сохранения, инварианты)', (it, assert) => {
                 const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
-                    drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }, { id: 'd2', suit: 'Hearts', value: 8 }],
-                    playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
-                    enemyHand: [{ id: 'e1', suit: 'Hearts', value: 7 }], trumpCard: { id: 'd1', suit: 'Hearts', value: 6 }
+                    drawDeck: [testCard('d1', 'Hearts', 6), testCard('d2', 'Hearts', 8)],
+                    playerHand: [testCard('p1', 'Hearts', 6)],
+                    enemyHand: [testCard('e1', 'Hearts', 7)], trumpCard: testCard('d1', 'Hearts', 6)
                 });
                 const closeUi = closeModal;
-                const openAttack = () => [{ attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: null }];
+                const openAttack = () => [{ attack: testCard('a1', 'Hearts', 9), defend: null }];
                 // The exact pair the original bug needed: a handler entered with a valid phase
                 // but nothing on the table used to set RESOLVING and then bail out.
                 const assertNoStrandedPhase = (fn, phase, overrides) => {
@@ -4768,11 +4768,11 @@
 
                 // ---- Invariants ----
                 const goodBattle = () => ({
-                    drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }], discardPile: [{ id: 'x1', suit: 'Pikes', value: 6 }],
-                    playerHand: [{ id: 'p1', suit: 'Hearts', value: 7 }],
-                    enemyHand: [{ id: 'e1', suit: 'Hearts', value: 8 }],
-                    table: [{ attack: { id: 'a1', suit: 'Pikes', value: 9 }, defend: { id: 'a2', suit: 'Pikes', value: 10 } }],
-                    trumpCard: { id: 'd1', suit: 'Hearts', value: 6 }, // same card as drawDeck[0]: not a duplicate
+                    drawDeck: [testCard('d1', 'Hearts', 6)], discardPile: [testCard('x1', 'Pikes', 6)],
+                    playerHand: [testCard('p1', 'Hearts', 7)],
+                    enemyHand: [testCard('e1', 'Hearts', 8)],
+                    table: [{ attack: testCard('a1', 'Pikes', 9), defend: testCard('a2', 'Pikes', 10) }],
+                    trumpCard: testCard('d1', 'Hearts', 6), // same card as drawDeck[0]: not a duplicate
                     defender: 'enemy', phase: BATTLE_PHASES.PLAYER_ATTACK, enemyHP: 30
                 });
 
@@ -4781,11 +4781,11 @@
                 });
 
                 it('Инвариант карт: одна карта в двух зонах — нарушение', () => {
-                    const inHandAndTable = goodBattle(); inHandAndTable.playerHand.push({ id: 'a1', suit: 'Pikes', value: 9 });
+                    const inHandAndTable = goodBattle(); inHandAndTable.playerHand.push(testCard('a1', 'Pikes', 9));
                     assert.isTrue(getBattleInvariantViolations(inHandAndTable).length > 0, 'рука + стол');
-                    const inDeckAndDiscard = goodBattle(); inDeckAndDiscard.discardPile.push({ id: 'd1', suit: 'Hearts', value: 6 });
+                    const inDeckAndDiscard = goodBattle(); inDeckAndDiscard.discardPile.push(testCard('d1', 'Hearts', 6));
                     assert.isTrue(getBattleInvariantViolations(inDeckAndDiscard).length > 0, 'колода + сброс');
-                    const twoHands = goodBattle(); twoHands.enemyHand.push({ id: 'p1', suit: 'Hearts', value: 7 });
+                    const twoHands = goodBattle(); twoHands.enemyHand.push(testCard('p1', 'Hearts', 7));
                     assert.isTrue(getBattleInvariantViolations(twoHands).length > 0, 'две руки');
                 });
 
@@ -4808,7 +4808,7 @@
                 it('Инварианты стола и HP врага: битая пара и отрицательное/нечисловое HP — нарушения', () => {
                     const noAttack = goodBattle(); noAttack.table = [{ attack: null, defend: null }];
                     assert.isTrue(getBattleInvariantViolations(noAttack).length > 0, 'пара без атаки');
-                    const badDefend = goodBattle(); badDefend.table = [{ attack: { id: 'a1', suit: 'Pikes', value: 9 }, defend: 5 }];
+                    const badDefend = goodBattle(); badDefend.table = [{ attack: testCard('a1', 'Pikes', 9), defend: 5 }];
                     assert.isTrue(getBattleInvariantViolations(badDefend).length > 0, 'defend не карта');
                     const negHP = goodBattle(); negHP.enemyHP = -1;
                     assert.isTrue(getBattleInvariantViolations(negHP).length > 0, 'HP < 0');
@@ -4818,7 +4818,7 @@
 
                 it('validateBattleState() отвергает сохранение с дубликатом карты или рассогласованием фаза↔защитник', () => {
                     assert.isTrue(validateBattleState(goodBattle()));
-                    const dup = goodBattle(); dup.playerHand.push({ id: 'a1', suit: 'Pikes', value: 9 });
+                    const dup = goodBattle(); dup.playerHand.push(testCard('a1', 'Pikes', 9));
                     assert.isFalse(validateBattleState(dup), 'дубликат карты');
                     const mismatch = goodBattle(); mismatch.defender = 'player';
                     assert.isFalse(validateBattleState(mismatch), 'PLAYER_ATTACK при защитнике player');
@@ -4860,7 +4860,7 @@
                             });
                             withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({
                                 phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy',
-                                table: [{ attack: { id: 'a1', suit: 'Hearts', value: 9 }, defend: { id: 'a2', suit: 'Hearts', value: 10 } }]
+                                table: [{ attack: testCard('a1', 'Hearts', 9), defend: testCard('a2', 'Hearts', 10) }]
                             }), () => {
                                 try { handleBito(); } finally { closeUi(); clearAITimer(); }
                             });
@@ -6162,7 +6162,7 @@
                     const r = makeTestRun({ gold: 4 });
                     assert.equal(r.gold, 4); assert.equal(r.playerHP, 30); assert.equal(r.floor, 1);
                     assert.equal(r.deck.length, 36);
-                    assert.equal(JSON.stringify(testCard('a', 'Pikes', 9)), JSON.stringify({ id: 'a', suit: 'Pikes', value: 9 }));
+                    assert.equal(JSON.stringify(testCard('a', 'Pikes', 9)), JSON.stringify(testCard('a', 'Pikes', 9)));
                 });
 
                 it('withTestGame(): включает инварианты на время теста, потом восстанавливает флаг, закрывает модалку и чистит сейв; реальный сейв сохраняется', () => {
@@ -6299,12 +6299,12 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
+                            enemyHand: [testCard('e1', 'Pikes', 9)],
                             table: [
-                                { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
-                                { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
-                                { attack: { id: 'x3', suit: 'Hearts', value: 8 }, defend: null },
+                                { attack: testCard('x1', 'Hearts', 6), defend: null },
+                                { attack: testCard('x2', 'Hearts', 7), defend: null },
+                                { attack: testCard('x3', 'Hearts', 8), defend: null },
                             ],
                             defender: 'player',
                             enemyHP: 10,
@@ -6321,12 +6321,12 @@
                     withIsolatedGameState(
                         { floor: 12, playerHP: 100, maxHP: 100, gold: 0, relics: [], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
+                            enemyHand: [testCard('e1', 'Pikes', 9)],
                             table: [
-                                { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
-                                { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
-                                { attack: { id: 'x3', suit: 'Hearts', value: 8 }, defend: null },
+                                { attack: testCard('x1', 'Hearts', 6), defend: null },
+                                { attack: testCard('x2', 'Hearts', 7), defend: null },
+                                { attack: testCard('x3', 'Hearts', 8), defend: null },
                             ],
                             defender: 'player',
                             enemyHP: 10,
@@ -6381,12 +6381,12 @@
                     withIsolatedGameState(
                         { floor: 12, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
+                            enemyHand: [testCard('e1', 'Pikes', 9)],
                             table: [
-                                { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
-                                { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
-                                { attack: { id: 'x3', suit: 'Hearts', value: 8 }, defend: null },
+                                { attack: testCard('x1', 'Hearts', 6), defend: null },
+                                { attack: testCard('x2', 'Hearts', 7), defend: null },
+                                { attack: testCard('x3', 'Hearts', 8), defend: null },
                             ],
                             defender: 'player',
                             enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
@@ -6405,7 +6405,7 @@
                 it('safety_rope: спасает от смертельного урона один раз за забег, очищает стол и исчезает из инвентаря', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 5, maxHP: 30, gold: 0, relics: [{ id: 'safety_rope' }], deck: [] },
-                        makeTestBattle({ table: [{ attack: { id: 'a', suit: 'Hearts', value: 6 }, defend: null }] }),
+                        makeTestBattle({ table: [{ attack: testCard('a', 'Hearts', 6), defend: null }] }),
                         () => {
                             const first = applyPlayerDamage(100);
                             assert.isTrue(first.savedBySafetyRope);
@@ -6521,11 +6521,11 @@
                         { floor: transferFloorIndex + 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'cascade_transfer' }], deck: [] },
                         makeTestBattle({
                             playerHand: [
-                                { id: 'p1', suit: 'Pikes', value: 10 },
-                                { id: 'p2', suit: 'Pikes', value: 11 }
+                                testCard('p1', 'Pikes', 10),
+                                testCard('p2', 'Pikes', 11)
                             ],
-                            enemyHand: [{ id: 'e1', suit: 'Clubs', value: 8 }],
-                            table: [{ attack: { id: 'a1', suit: 'Clubs', value: 8 }, defend: null }], phase: BATTLE_PHASES.AI_WAITING
+                            enemyHand: [testCard('e1', 'Clubs', 8)],
+                            table: [{ attack: testCard('a1', 'Clubs', 8), defend: null }], phase: BATTLE_PHASES.AI_WAITING
                         }),
                         () => {
                             executeEnemyAI();
@@ -6541,9 +6541,9 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'heavy_ballast' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
                             enemyHand: bigEnemyHand,
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                            trumpCard: testCard('t1', 'Hearts', 6),
                             defender: 'player',
                             enemyHP: 50, phase: BATTLE_PHASES.AI_WAITING
                         }),
@@ -6568,9 +6568,9 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'heavy_ballast' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
                             enemyHand: bigEnemyHand,
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                            trumpCard: testCard('t1', 'Hearts', 6),
                             defender: 'player',
                             enemyHP: 2, phase: BATTLE_PHASES.AI_WAITING
                         }),
@@ -6591,8 +6591,8 @@
                     // reasons — exactly what broke the "AI закончил подкидывать" test.
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
-                        makeTestBattle({ playerHand: [{ id: 'p1', suit: 'Hearts', value: 9 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 6 }],
+                        makeTestBattle({ playerHand: [testCard('p1', 'Hearts', 9)],
+                            enemyHand: [testCard('e1', 'Pikes', 6)],
                             defender: 'player',
                             enemyHP: 0, phase: BATTLE_PHASES.AI_WAITING
                         }),
@@ -6609,10 +6609,10 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'spam_mail' }, { id: 'salted_wound' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
+                            playerHand: [testCard('p1', 'Pikes', 8)],
                             enemyHand,
-                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }], cardsToTake: true,
+                            table: [{ attack: testCard('x1', 'Hearts', 7), defend: null }], cardsToTake: true,
                             enemyHP: 50
                         }),
                         () => {
@@ -6632,11 +6632,11 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'spam_mail' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd_bottom', suit: 'Hearts', value: 6 }, { id: 'd_mid', suit: 'Hearts', value: 8 }, { id: 'd_top', suit: 'Hearts', value: 7 }],
+                            drawDeck: [testCard('d_bottom', 'Hearts', 6), testCard('d_mid', 'Hearts', 8), testCard('d_top', 'Hearts', 7)],
                             playerHand: fullHand('p', 'Pikes'),
                             enemyHand: fullHand('e', 'Pikes'),
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
-                            table: [{ attack: { id: 'x1', suit: 'Clubs', value: 7 }, defend: null }], cardsToTake: true,
+                            trumpCard: testCard('t1', 'Hearts', 6),
+                            table: [{ attack: testCard('x1', 'Clubs', 7), defend: null }], cardsToTake: true,
                             enemyHP: 50
                         }),
                         () => {
@@ -6662,10 +6662,10 @@
                         withIsolatedGameState(
                             { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'spam_mail' }, { id: '__test_order' }], deck: [] },
                             makeTestBattle({
-                                drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                                playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
-                                enemyHand: [{ id: 'e1', suit: 'Pikes', value: 6 }],
-                                table: [{ attack: { id: 'x1', suit: 'Clubs', value: 7 }, defend: null }], cardsToTake: true,
+                                drawDeck: [testCard('d1', 'Hearts', 6)],
+                                playerHand: [testCard('p1', 'Pikes', 8)],
+                                enemyHand: [testCard('e1', 'Pikes', 6)],
+                                table: [{ attack: testCard('x1', 'Clubs', 7), defend: null }], cardsToTake: true,
                                 enemyHP: 50
                             }),
                             () => {
@@ -6682,7 +6682,7 @@
                 it('spam_mail: если в колоде осталась одна (козырная) карта — враг забирает её, а козырная масть остаётся', () => {
                     // Asserts outcomes only, not which end of drawDeck the card is taken
                     // from: with a single card, any way of taking it gives the same result.
-                    const trump = { id: 't1', suit: 'Hearts', value: 6 };
+                    const trump = testCard('t1', 'Hearts', 6);
                     const fullHand = (prefix, suit) => Array.from({ length: HAND_SIZE }, (_, i) => ({ id: `${prefix}${i}`, suit, value: 6 + (i % 5) }));
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'spam_mail' }], deck: [] },
@@ -6691,7 +6691,7 @@
                             playerHand: fullHand('p', 'Pikes'),
                             enemyHand: fullHand('e', 'Pikes'),
                             trumpCard: trump,
-                            table: [{ attack: { id: 'x1', suit: 'Clubs', value: 7 }, defend: null }], cardsToTake: true,
+                            table: [{ attack: testCard('x1', 'Clubs', 7), defend: null }], cardsToTake: true,
                             enemyHP: 50
                         }),
                         () => {
@@ -6708,9 +6708,9 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'spam_mail' }], deck: [] },
                         makeTestBattle({
-                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 6 }],
-                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }], cardsToTake: true,
+                            playerHand: [testCard('p1', 'Pikes', 8)],
+                            enemyHand: [testCard('e1', 'Pikes', 6)],
+                            table: [{ attack: testCard('x1', 'Hearts', 7), defend: null }], cardsToTake: true,
                             enemyHP: 50
                         }),
                         () => {
@@ -6734,9 +6734,9 @@
                     try {
                         withIsolatedGameState(
                             { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'salted_wound' }, { id: '__test_take' }], deck: [] },
-                            makeTestBattle({ playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
+                            makeTestBattle({ playerHand: [testCard('p1', 'Pikes', 8)],
                                 enemyHand: Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, suit: 'Pikes', value: 6 })),
-                                table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }], cardsToTake: true,
+                                table: [{ attack: testCard('x1', 'Hearts', 7), defend: null }], cardsToTake: true,
                                 enemyHP: 50
                             }),
                             () => {
@@ -6765,11 +6765,11 @@
                         withIsolatedGameState(
                             { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: '__test_player_take' }, { id: 'mirror_ring' }], deck: [] },
                             makeTestBattle({
-                                drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                                enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                                drawDeck: [testCard('d1', 'Hearts', 6)],
+                                enemyHand: [testCard('e1', 'Pikes', 9)],
                                 table: [
-                                    { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
-                                    { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
+                                    { attack: testCard('x1', 'Hearts', 6), defend: null },
+                                    { attack: testCard('x2', 'Hearts', 7), defend: null },
                                 ],
                                 defender: 'player',
                                 enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
@@ -6823,11 +6823,11 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
+                            enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Clubs', 10)],
                             table: [
-                                { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
-                                { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
+                                { attack: testCard('x1', 'Hearts', 6), defend: null },
+                                { attack: testCard('x2', 'Hearts', 7), defend: null },
                             ],
                             defender: 'player',
                             enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE
@@ -6847,11 +6847,11 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 1, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
+                            enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Clubs', 10)],
                             table: [
-                                { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
-                                { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
+                                { attack: testCard('x1', 'Hearts', 6), defend: null },
+                                { attack: testCard('x2', 'Hearts', 7), defend: null },
                             ],
                             defender: 'player',
                             enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE
@@ -6872,11 +6872,11 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 1, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }, { id: 'safety_rope' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
+                            enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Clubs', 10)],
                             table: [
-                                { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
-                                { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
+                                { attack: testCard('x1', 'Hearts', 6), defend: null },
+                                { attack: testCard('x2', 'Hearts', 7), defend: null },
                             ],
                             defender: 'player',
                             enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE
@@ -6895,11 +6895,11 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Clubs', value: 10 }],
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
+                            enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Clubs', 10)],
                             table: [
-                                { attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null },
-                                { attack: { id: 'x2', suit: 'Hearts', value: 7 }, defend: null },
+                                { attack: testCard('x1', 'Hearts', 6), defend: null },
+                                { attack: testCard('x2', 'Hearts', 7), defend: null },
                             ],
                             defender: 'player',
                             enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
@@ -6917,8 +6917,8 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
                         makeTestBattle({
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }], cardsToTake: true,
+                            enemyHand: [testCard('e1', 'Pikes', 9)],
+                            table: [{ attack: testCard('x1', 'Hearts', 7), defend: null }], cardsToTake: true,
                             enemyHP: TAKE_DAMAGE_PER_CARD, phase: BATTLE_PHASES.AI_WAITING
                         }),
                         () => {
@@ -6938,9 +6938,9 @@
                 it('ace_sleeve: при взятии карт врагом добавляет +ACE_SLEEVE_BONUS_DAMAGE к урону (через хук onEnemyTookCards)', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'ace_sleeve' }], deck: [] },
-                        makeTestBattle({ playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }], cardsToTake: true,
+                        makeTestBattle({ playerHand: [testCard('p1', 'Pikes', 8)],
+                            enemyHand: [testCard('e1', 'Pikes', 9)],
+                            table: [{ attack: testCard('x1', 'Hearts', 7), defend: null }], cardsToTake: true,
                             enemyHP: 50
                         }),
                         () => {
@@ -6954,9 +6954,9 @@
                 it('ace_sleeve + salted_wound: оба бонуса onEnemyTookCards складываются в один урон', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'ace_sleeve' }, { id: 'salted_wound' }], deck: [] },
-                        makeTestBattle({ playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
+                        makeTestBattle({ playerHand: [testCard('p1', 'Pikes', 8)],
                             enemyHand: Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, suit: 'Pikes', value: 6 })),
-                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }], cardsToTake: true,
+                            table: [{ attack: testCard('x1', 'Hearts', 7), defend: null }], cardsToTake: true,
                             enemyHP: 50
                         }),
                         () => {
@@ -6971,9 +6971,9 @@
                 it('ace_sleeve: без артефакта бонус не применяется', () => {
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
-                        makeTestBattle({ playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 7 }, defend: null }], cardsToTake: true,
+                        makeTestBattle({ playerHand: [testCard('p1', 'Pikes', 8)],
+                            enemyHand: [testCard('e1', 'Pikes', 9)],
+                            table: [{ attack: testCard('x1', 'Hearts', 7), defend: null }], cardsToTake: true,
                             enemyHP: 50
                         }),
                         () => {
@@ -6987,13 +6987,13 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'ballast_drop' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
                             playerHand: [
-                                { id: 'p1', suit: 'Pikes', value: 7 },
-                                { id: 'p2', suit: 'Pikes', value: 6 },
+                                testCard('p1', 'Pikes', 7),
+                                testCard('p2', 'Pikes', 6),
                             ],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null }],
+                            enemyHand: [testCard('e1', 'Pikes', 9)],
+                            table: [{ attack: testCard('x1', 'Hearts', 6), defend: null }],
                             defender: 'player',
                             enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
@@ -7011,13 +7011,13 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 100, maxHP: 100, gold: 0, relics: [{ id: 'mirror_ring' }, { id: 'ballast_drop' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
                             playerHand: [
-                                { id: 'p1', suit: 'Pikes', value: 7 },
-                                { id: 'p2', suit: 'Pikes', value: 6 },
+                                testCard('p1', 'Pikes', 7),
+                                testCard('p2', 'Pikes', 6),
                             ],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            table: [{ attack: { id: 'x1', suit: 'Hearts', value: 6 }, defend: null }],
+                            enemyHand: [testCard('e1', 'Pikes', 9)],
+                            table: [{ attack: testCard('x1', 'Hearts', 6), defend: null }],
                             defender: 'player',
                             enemyHP: 1, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
@@ -7041,8 +7041,8 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'coin_magnet' }], deck: [] },
                         makeTestBattle({
-                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
+                            playerHand: [testCard('p1', 'Pikes', 6)],
+                            enemyHand: [testCard('e1', 'Pikes', 9)],
                             enemyHP: 50
                         }),
                         () => {
@@ -7085,8 +7085,8 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'sharp_suit' }], deck: [] },
                         makeTestBattle({
-                            playerHand: [{ id: 'p1', suit: 'Hearts', value: 9 }],
-                            table: [{ attack: { id: 'a1', suit: 'Pikes', value: 8 }, defend: null }],
+                            playerHand: [testCard('p1', 'Hearts', 9)],
+                            table: [{ attack: testCard('a1', 'Pikes', 8), defend: null }],
                             defender: 'player',
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
@@ -7101,8 +7101,8 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'sharp_suit' }], deck: [] },
                         makeTestBattle({
-                            playerHand: [{ id: 'p1', suit: 'Hearts', value: 9 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 6 }],
+                            playerHand: [testCard('p1', 'Hearts', 9)],
+                            enemyHand: [testCard('e1', 'Pikes', 6)],
                             enemyHP: 50
                         }),
                         () => {
@@ -7120,10 +7120,10 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }, { id: 'jester_discard' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }, { id: 'd2', suit: 'Hearts', value: 7 }],
-                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }, { id: 'p2', suit: 'Hearts', value: 10 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                            drawDeck: [testCard('d1', 'Hearts', 6), testCard('d2', 'Hearts', 7)],
+                            playerHand: [testCard('p1', 'Pikes', 6), testCard('p2', 'Hearts', 10)],
+                            enemyHand: [testCard('e1', 'Pikes', 9)],
+                            trumpCard: testCard('t1', 'Hearts', 6),
                             enemyHP: 50
                         }),
                         () => {
@@ -7172,10 +7172,10 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }, { id: 'p2', suit: 'Hearts', value: 10 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
+                            playerHand: [testCard('p1', 'Pikes', 6), testCard('p2', 'Hearts', 10)],
+                            enemyHand: [testCard('e1', 'Pikes', 9)],
+                            trumpCard: testCard('t1', 'Hearts', 6),
                             enemyHP: 50
                         }),
                         () => {
@@ -7216,7 +7216,7 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }], deck: [] },
                         makeTestBattle({
-                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }],
+                            playerHand: [testCard('p1', 'Pikes', 6)],
                             enemyHP: 50
                         }),
                         () => {
@@ -7274,10 +7274,10 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }, { id: 'p2', suit: 'Hearts', value: 10 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
+                            playerHand: [testCard('p1', 'Pikes', 6), testCard('p2', 'Hearts', 10)],
+                            enemyHand: [testCard('e1', 'Pikes', 9)],
+                            trumpCard: testCard('t1', 'Hearts', 6),
                             enemyHP: 50
                         }),
                         () => {
@@ -7298,16 +7298,16 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'pocket_discard' }], deck: [] },
                         makeTestBattle({
-                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }, { id: 'p2', suit: 'Hearts', value: 10 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                            playerHand: [testCard('p1', 'Pikes', 8), testCard('p2', 'Hearts', 10)],
+                            enemyHand: [testCard('e1', 'Pikes', 9)],
+                            trumpCard: testCard('t1', 'Hearts', 6),
                             enemyHP: 50
                         }),
                         () => {
                             // No 6/7 in hand: not ready.
                             assert.isFalse(RELIC_EFFECTS.pocket_discard.isReady(), 'без 6/7 в руке способность недоступна');
 
-                            battle.playerHand.push({ id: 'p3', suit: 'Pikes', value: 6 });
+                            battle.playerHand.push(testCard('p3', 'Pikes', 6));
                             assert.isTrue(RELIC_EFFECTS.pocket_discard.isReady(), 'с 6/7 в руке и неиспользованным зарядом способность доступна');
 
                             battle.pocketDiscardUsedThisRound = true;
@@ -7331,9 +7331,9 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 23, maxHP: 30, gold: 16, relics: [{ id: 'pocket_discard' }], deck: [] },
                         makeTestBattle({
-                            playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Hearts', value: 10 }],
-                            trumpCard: { id: 't1', suit: 'Pikes', value: 6 }, trumpSuit: 'Pikes',
+                            playerHand: [testCard('p1', 'Hearts', 6)],
+                            enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Hearts', 10)],
+                            trumpCard: testCard('t1', 'Pikes', 6), trumpSuit: 'Pikes',
                             enemyHP: 6
                         }),
                         () => {
@@ -7358,9 +7358,9 @@
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'jester_discard' }], deck: [] },
                         makeTestBattle({
                             drawDeck,
-                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 6 }, { id: 'p2', suit: 'Pikes', value: 7 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                            playerHand: [testCard('p1', 'Pikes', 6), testCard('p2', 'Pikes', 7)],
+                            enemyHand: [testCard('e1', 'Pikes', 9)],
+                            trumpCard: testCard('t1', 'Hearts', 6),
                             enemyHP: 50
                         }),
                         () => {
@@ -7377,16 +7377,16 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'jester_discard' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
+                            playerHand: [testCard('p1', 'Pikes', 8)],
+                            enemyHand: [testCard('e1', 'Pikes', 9)],
+                            trumpCard: testCard('t1', 'Hearts', 6),
                             enemyHP: 50
                         }),
                         () => {
                             assert.isTrue(RELIC_EFFECTS.jester_discard.isReady(), 'свой ход атаки, пустой стол, ещё не использовано — доступна');
 
-                            battle.table = [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: null }];
+                            battle.table = [{ attack: testCard('a1', 'Pikes', 6), defend: null }];
                             assert.isFalse(RELIC_EFFECTS.jester_discard.isReady(), 'на столе уже есть карты — недоступна');
                             battle.table = [];
 
@@ -7408,10 +7408,10 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 23, maxHP: 30, gold: 16, relics: [{ id: 'jester_discard' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Pikes', value: 6 }],
-                            playerHand: [{ id: 'p1', suit: 'Hearts', value: 6 }, { id: 'p2', suit: 'Pikes', value: 7 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }, { id: 'e2', suit: 'Hearts', value: 10 }],
-                            trumpCard: { id: 't1', suit: 'Pikes', value: 6 }, trumpSuit: 'Pikes',
+                            drawDeck: [testCard('d1', 'Pikes', 6)],
+                            playerHand: [testCard('p1', 'Hearts', 6), testCard('p2', 'Pikes', 7)],
+                            enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Hearts', 10)],
+                            trumpCard: testCard('t1', 'Pikes', 6), trumpSuit: 'Pikes',
                             enemyHP: 6
                         }),
                         () => {
@@ -7433,11 +7433,11 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'sleight_of_hand' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 12 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
-                            table: [{ attack: { id: 'a1', suit: 'Pikes', value: 14 }, defend: null }],
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
+                            playerHand: [testCard('p1', 'Pikes', 12)],
+                            enemyHand: [testCard('e1', 'Pikes', 9)],
+                            trumpCard: testCard('t1', 'Hearts', 6),
+                            table: [{ attack: testCard('a1', 'Pikes', 14), defend: null }],
                             defender: 'player',
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
@@ -7455,11 +7455,11 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'sleight_of_hand' }], deck: [] },
                         makeTestBattle({
-                            drawDeck: [{ id: 'd1', suit: 'Hearts', value: 6 }],
-                            playerHand: [{ id: 'p1', suit: 'Pikes', value: 8 }],
-                            enemyHand: [{ id: 'e1', suit: 'Pikes', value: 9 }],
-                            trumpCard: { id: 't1', suit: 'Hearts', value: 6 },
-                            table: [{ attack: { id: 'a1', suit: 'Pikes', value: 14 }, defend: null }],
+                            drawDeck: [testCard('d1', 'Hearts', 6)],
+                            playerHand: [testCard('p1', 'Pikes', 8)],
+                            enemyHand: [testCard('e1', 'Pikes', 9)],
+                            trumpCard: testCard('t1', 'Hearts', 6),
+                            table: [{ attack: testCard('a1', 'Pikes', 14), defend: null }],
                             defender: 'player',
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
@@ -7474,9 +7474,9 @@
                             assert.isFalse(RELIC_EFFECTS.sleight_of_hand.isReady(), 'нельзя использовать на своём ходу атаки');
                             battle.defender = 'player';
 
-                            battle.table = [{ attack: { id: 'a1', suit: 'Pikes', value: 14 }, defend: { id: 'd0', suit: 'Pikes', value: 8 } }];
+                            battle.table = [{ attack: testCard('a1', 'Pikes', 14), defend: testCard('d0', 'Pikes', 8) }];
                             assert.isFalse(RELIC_EFFECTS.sleight_of_hand.isReady(), 'все атаки на столе уже отбиты — нечего подменять');
-                            battle.table = [{ attack: { id: 'a1', suit: 'Pikes', value: 14 }, defend: null }];
+                            battle.table = [{ attack: testCard('a1', 'Pikes', 14), defend: null }];
 
                             battle.drawDeck = [];
                             assert.isFalse(RELIC_EFFECTS.sleight_of_hand.isReady(), 'в колоде нет карт для подмены — недоступна');
@@ -7488,8 +7488,8 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
                         makeTestBattle({
-                            playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
-                            table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: { id: 'd1', suit: 'Pikes', value: 7 } }, { attack: { id: 'a2', suit: 'Pikes', value: 10 }, defend: { id: 'd2', suit: 'Pikes', value: 11 } }],
+                            playerHand: [testCard('p9', 'Pikes', 8)],
+                            table: [{ attack: testCard('a1', 'Pikes', 6), defend: testCard('d1', 'Pikes', 7) }, { attack: testCard('a2', 'Pikes', 10), defend: testCard('d2', 'Pikes', 11) }],
                             defender: 'player',
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
@@ -7504,8 +7504,8 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
                         makeTestBattle({
-                            playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
-                            table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: { id: 'd1', suit: 'Pikes', value: 7 } }],
+                            playerHand: [testCard('p9', 'Pikes', 8)],
+                            table: [{ attack: testCard('a1', 'Pikes', 6), defend: testCard('d1', 'Pikes', 7) }],
                             defender: 'player',
                             enemyHP: 50, phase: BATTLE_PHASES.AI_WAITING
                         }),
@@ -7520,8 +7520,8 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: [] },
                         makeTestBattle({
-                            playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
-                            table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: { id: 'd1', suit: 'Pikes', value: 7 } }, { attack: { id: 'a2', suit: 'Pikes', value: 10 }, defend: { id: 'd2', suit: 'Pikes', value: 11 } }],
+                            playerHand: [testCard('p9', 'Pikes', 8)],
+                            table: [{ attack: testCard('a1', 'Pikes', 6), defend: testCard('d1', 'Pikes', 7) }, { attack: testCard('a2', 'Pikes', 10), defend: testCard('d2', 'Pikes', 11) }],
                             defender: 'player',
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
@@ -7536,8 +7536,8 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
                         makeTestBattle({
-                            playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
-                            table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: null }],
+                            playerHand: [testCard('p9', 'Pikes', 8)],
+                            table: [{ attack: testCard('a1', 'Pikes', 6), defend: null }],
                             defender: 'player',
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
@@ -7549,8 +7549,8 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
                         makeTestBattle({
-                            playerHand: [{ id: 'p9', suit: 'Pikes', value: 8 }],
-                            table: [{ attack: { id: 'a1', suit: 'Pikes', value: 6 }, defend: { id: 'd1', suit: 'Pikes', value: 7 } }],
+                            playerHand: [testCard('p9', 'Pikes', 8)],
+                            table: [{ attack: testCard('a1', 'Pikes', 6), defend: testCard('d1', 'Pikes', 7) }],
                             enemyHP: 50
                         }),
                         () => {
@@ -7564,8 +7564,8 @@
                     withIsolatedGameState(
                         { floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [{ id: 'midas_touch' }], deck: [] },
                         makeTestBattle({
-                            playerHand: [{ id: 'p9', suit: 'Pikes', value: 9 }],
-                            table: [{ attack: { id: 'a1', suit: 'Pikes', value: 8 }, defend: null }],
+                            playerHand: [testCard('p9', 'Pikes', 9)],
+                            table: [{ attack: testCard('a1', 'Pikes', 8), defend: null }],
                             defender: 'player',
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
@@ -7706,10 +7706,10 @@
                 function aiWaitingFixture() {
                     return {
                         drawDeck: [], discardPile: [],
-                        playerHand: [{ id: 'p1', suit: 'Pikes', value: 10 }],
-                        enemyHand: [{ id: 'e1', suit: 'Clubs', value: 8 }],
+                        playerHand: [testCard('p1', 'Pikes', 10)],
+                        enemyHand: [testCard('e1', 'Clubs', 8)],
                         trumpCard: null, trumpSuit: 'Hearts',
-                        table: [{ attack: { id: 'a1', suit: 'Clubs', value: 8 }, defend: null }],
+                        table: [{ attack: testCard('a1', 'Clubs', 8), defend: null }],
                         defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
                         enemyHP: 40, phase: BATTLE_PHASES.AI_WAITING, aiTimer: null, actionToken: 0,
                         cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
