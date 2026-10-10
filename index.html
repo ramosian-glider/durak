@@ -997,6 +997,11 @@
         // any later phase change (player click, round end, another transition)
         // makes the pending action stale and it silently does nothing.
         function enterAIWaitingPhase(action, delay = AI_STANDARD_DELAY_MS) {
+            // A won battle never hands the turn to the AI. A relic hook can kill the
+            // enemy in the middle of a player action (cascade_transfer, sharp_suit):
+            // winBattle() has already moved us to BATTLE_OVER and shown the victory
+            // modal, and the caller carrying on to "now the AI moves" must not undo it.
+            if (battle.phase === BATTLE_PHASES.BATTLE_OVER) return;
             clearAITimer();
             setBattlePhase(BATTLE_PHASES.AI_WAITING);
             commitBattleState();
@@ -2213,14 +2218,20 @@
                     scheduleEnemyAction(() => handleBito(true), action.delay);
                     break;
 
-                case 'transfer':
+                case 'transfer': {
+                    const enemyHPBeforeTransfer = battle.enemyHP;
                     playAttackCard(battle.enemyHand, action.card);
                     battle.defender = 'player';
                     triggerCascadeTransfer();
                     audio.playCardSound();
+                    // cascade_transfer may have just killed the enemy: the win modal is
+                    // already up (its close handler opens the shop). Don't cover it with
+                    // the transfer modal or hand the turn to the player.
+                    if (didEnemyJustDie(enemyHPBeforeTransfer)) break;
                     showModal("Враг Переводит!", `${getCurrentEnemy().name} переводит атаку обратно на вас!`);
                     finishAIPhase();
                     break;
+                }
 
                 case 'defend':
                     for (const { pair, card } of action.plays) {
@@ -4678,6 +4689,82 @@
                         damageEnemyHP(2);
                         assert.equal(battle.enemyHP, 3);
                         assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
+                    }, closeUi, clearLocalSave));
+                });
+
+                // cascade_transfer can deal the killing blow, and a transfer is not a
+                // terminal action: the code after the damage must notice the win instead of
+                // carrying on (the reported hang — enemy at 0 HP, win modal replaced by the
+                // "Враг Переводит!" one, no way forward).
+                it('Каскадный перевод: враг переводит атаку и гибнет от урона — победа, модалка победы не перекрыта', () => {
+                    inGame({
+                        phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', enemyHP: CASCADE_TRANSFER_DAMAGE,
+                        table: [testPair(testCard('a1', 'Clubs', 8))],
+                        enemyHand: [testCard('e1', 'Hearts', 8), testCard('e2', 'Pikes', 12)]
+                    }, () => withCleanup(() => {
+                        clearLocalSave();
+                        run.relics = [{ id: 'cascade_transfer' }];
+                        executeEnemyAction({ type: 'transfer', card: battle.enemyHand[0] });
+                        assert.equal(battle.enemyHP, 0);
+                        assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER, 'бой должен остаться в BATTLE_OVER, а не отдать ход игроку');
+                        assert.equal(getEl('msg-title').innerText, 'Победа в Бою!', 'модалка победы не должна замещаться модалкой перевода');
+                        assert.equal(run.gold, 15 + WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR, 'награда выдаётся ровно один раз');
+                        assert.equal(JSON.parse(localStorage.getItem(SAVE_KEY)).battle.phase, BATTLE_PHASES.BATTLE_OVER, 'в сейве — победа, а не живой раунд');
+                        getEl('msg-btn').click();
+                        assert.isFalse(getEl('shop-modal').classList.contains('hidden'), 'после победы должен открыться магазин');
+                    }, closeUi, clearLocalSave));
+                });
+
+                it('Каскадный перевод: игрок переводит атаку и добивает врага — победа, ход ИИ не запускается', () => {
+                    inGame({
+                        phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: true, enemyHP: CASCADE_TRANSFER_DAMAGE,
+                        table: [testPair(testCard('a1', 'Clubs', 8))],
+                        playerHand: [testCard('p1', 'Hearts', 8), testCard('p2', 'Pikes', 12)],
+                        enemyHand: [testCard('e1', 'Hearts', 7), testCard('e2', 'Pikes', 12)]
+                    }, () => withCleanup(() => {
+                        clearLocalSave();
+                        run.relics = [{ id: 'cascade_transfer' }];
+                        window.onPlayerCardClick(0);
+                        assert.equal(battle.enemyHP, 0);
+                        assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER, 'победа не должна перезаписываться фазой AI_WAITING');
+                        assert.isTrue(battle.aiTimer === null, 'после победы ход ИИ планироваться не должен');
+                        assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
+                        assert.equal(run.gold, 15 + WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR, 'награда выдаётся ровно один раз');
+                        assert.equal(JSON.parse(localStorage.getItem(SAVE_KEY)).battle.phase, BATTLE_PHASES.BATTLE_OVER);
+                    }, closeUi, clearLocalSave));
+                });
+
+                // Same root cause on the defend path: sharp_suit's hit lands inside
+                // onPlayerCardClick(), which then used to hand the turn to the AI anyway.
+                it('sharp_suit: враг гибнет от урона при защите козырем — победа, ход ИИ не запускается', () => {
+                    inGame({
+                        phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', enemyHP: SHARP_SUIT_DAMAGE,
+                        table: [testPair(testCard('a1', 'Pikes', 7))],
+                        playerHand: [testCard('p1', 'Hearts', 9)]
+                    }, () => withCleanup(() => {
+                        clearLocalSave();
+                        run.relics = [{ id: 'sharp_suit' }];
+                        window.onPlayerCardClick(0);
+                        assert.equal(battle.enemyHP, 0);
+                        assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER, 'победа не должна перезаписываться фазой AI_WAITING');
+                        assert.isTrue(battle.aiTimer === null, 'после победы ход ИИ планироваться не должен');
+                        assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
+                    }, closeUi, clearLocalSave));
+                });
+
+                it('Каскадный перевод: нелетальный урон — перевод проходит как обычно', () => {
+                    inGame({
+                        phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', enemyHP: CASCADE_TRANSFER_DAMAGE + 1,
+                        table: [testPair(testCard('a1', 'Clubs', 8))],
+                        enemyHand: [testCard('e1', 'Hearts', 8), testCard('e2', 'Pikes', 12)]
+                    }, () => withCleanup(() => {
+                        clearLocalSave();
+                        run.relics = [{ id: 'cascade_transfer' }];
+                        executeEnemyAction({ type: 'transfer', card: battle.enemyHand[0] });
+                        assert.equal(battle.enemyHP, 1);
+                        assert.equal(battle.phase, BATTLE_PHASES.PLAYER_DEFENSE);
+                        assert.equal(battle.defender, 'player');
+                        assert.equal(getEl('msg-title').innerText, 'Враг Переводит!');
                     }, closeUi, clearLocalSave));
                 });
 
