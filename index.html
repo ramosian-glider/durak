@@ -3398,6 +3398,16 @@
             return { attack, defend };
         }
 
+        // Production code only: everything before the test infrastructure, which
+        // starts at the `const assert` that opens it. Static guards scan this
+        // instead of the whole script, so test code — which legitimately breaks
+        // those rules to build fixtures — is never flagged. The marker must stay
+        // the first occurrence of that text in the file.
+        function getProductionSource() {
+            const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
+            return fullSource.slice(0, fullSource.indexOf('const assert = {'));
+        }
+
         // Runs fn against a throwaway run/battle under full test conditions: the
         // real save is preserved, battle invariants are enforced on every commit,
         // and afterwards the AI timer, the save and the modal are cleaned up.
@@ -4334,12 +4344,11 @@
                     defender: 'player', phase: BATTLE_PHASES.PLAYER_DEFENSE
                 });
 
-                // Static guard: production code (everything before the test runner) must
+                // Static guard: production code (everything before the test infrastructure) must
                 // never assign battle.phase outside setBattlePhase(). Tests may still
                 // assign it directly to build fixtures — they live after the marker.
                 it('В боевом коде нет прямых присваиваний battle.phase вне setBattlePhase()', () => {
-                    const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
-                    const productionSource = fullSource.slice(0, fullSource.indexOf('class TinyTestRunner'));
+                    const productionSource = getProductionSource();
                     assert.isTrue(productionSource.length > 1000, 'не удалось выделить боевой код для проверки');
                     const withoutSetter = productionSource.replace(/function setBattlePhase\(phase\) \{[\s\S]*?\n        \}\n/, '');
                     assert.isTrue(withoutSetter.length < productionSource.length, 'тело setBattlePhase() не найдено');
@@ -4361,8 +4370,7 @@
                 // setBattlePhase() is a pure state transition: no persistence, no paint.
                 // Static guard on its body + a behavioural check for a stable phase.
                 it('setBattlePhase() — чистый переход состояния: не сохраняет и не перерисовывает', () => {
-                    const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
-                    const body = (fullSource.match(/function setBattlePhase\(phase\) \{[\s\S]*?\n        \}\n/) || [''])[0];
+                    const body = (getProductionSource().match(/function setBattlePhase\(phase\) \{[\s\S]*?\n        \}\n/) || [''])[0];
                     assert.isTrue(body.length > 0, 'тело setBattlePhase() не найдено');
                     assert.isFalse(/saveGameState|saveGameState|renderAll|commitBattleState/.test(body), 'setBattlePhase() не должен сохранять или рисовать');
 
@@ -4589,8 +4597,7 @@
                 }
 
                 it('В боевом коде AI_WAITING выставляется только внутри enterAIWaitingPhase()', () => {
-                    const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
-                    const productionSource = fullSource.slice(0, fullSource.indexOf('class TinyTestRunner'));
+                    const productionSource = getProductionSource();
                     const withoutOwner = productionSource.replace(/function enterAIWaitingPhase\([\s\S]*?\n        \}\n/, '');
                     assert.isTrue(withoutOwner.length < productionSource.length, 'тело enterAIWaitingPhase() не найдено');
                     const offenders = withoutOwner.match(/setBattlePhase\(\s*BATTLE_PHASES\.AI_WAITING\s*\)/g) || [];
@@ -4749,8 +4756,7 @@
 
                 // ---- One commit, not save+render by hand ----
                 it('В боевом коде нет ручной пары saveGameState(); renderAll(); — только commitBattleState()', () => {
-                    const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
-                    const productionSource = fullSource.slice(0, fullSource.indexOf('class TinyTestRunner'));
+                    const productionSource = getProductionSource();
                     const offenders = productionSource.match(/saveGameState\(\);\s*renderAll\(\);/g) || [];
                     assert.equal(offenders.length, 0, 'найдена ручная пара save+render: ' + offenders.length);
                 });
@@ -5154,8 +5160,7 @@
 
                 // ---- static guard: no hand-rolled card moves outside the primitives ----
                 it('В боевом коде нет ручных splice/pop/push карт вне секции примитивов', () => {
-                    const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
-                    const productionSource = fullSource.slice(0, fullSource.indexOf('class TinyTestRunner'));
+                    const productionSource = getProductionSource();
                     const start = productionSource.indexOf('// CARD / TABLE PRIMITIVES');
                     const end = productionSource.indexOf('function sortPlayerHand') > start
                         ? productionSource.indexOf('// The defender\'s opponent (the attacker) refills first')
@@ -5916,8 +5921,7 @@
                 });
 
                 it('Нет ручного управления видимостью #msg-box вне openModal()/closeModal()', () => {
-                    const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
-                    const prod = fullSource.slice(0, fullSource.indexOf('class TinyTestRunner'));
+                    const prod = getProductionSource();
                     const directClassChanges = prod.match(/modal\.classList\.(?:add|remove|toggle)\(/g) || [];
                     const modalVisibilityCalls = prod.match(/setVisible\(modal, (?:true|false), 'flex'\)/g) || [];
                     assert.equal(directClassChanges.length, 0, 'прямое изменение классов модалки: ' + directClassChanges.length);
@@ -6015,19 +6019,13 @@
                 });
 
                 it('В SoundEngine createOscillator вызывается только из playTone()', () => {
-                    const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
-                    const prod = fullSource.slice(0, fullSource.indexOf('class TinyTestRunner'));
+                    const prod = getProductionSource();
                     const uses = prod.match(/createOscillator\(\)/g) || [];
                     assert.equal(uses.length, 1, 'осцилляторы создаются в одном месте: ' + uses.length);
                 });
             });
 
             runner.describe('8n. Константы, отсутствие legacy-обёрток, структура файла, общие тестовые фикстуры', (it, assert) => {
-                const productionSource = () => {
-                    const full = [...document.scripts].map(sc => sc.textContent).join('\n');
-                    return full.slice(0, full.indexOf('const assert = {'));
-                };
-
                 // ---- constants ----
                 it('Стартовые параметры забега берутся из START_PLAYER_HP / START_GOLD', () => {
                     const snapshot = captureRealStateForTests();
@@ -6104,12 +6102,12 @@
                     assert.equal(typeof window.saveRunToLocal, 'undefined');
                     assert.equal(typeof window.loadRunFromLocal, 'undefined');
                     assert.equal(typeof window.countTableCards, 'undefined');
-                    assert.isFalse(/saveRunToLocal|loadRunFromLocal/.test(productionSource().replace(/\/\/[^\n]*/g, '')), 'в коде не должно остаться упоминаний');
+                    assert.isFalse(/saveRunToLocal|loadRunFromLocal/.test(getProductionSource().replace(/\/\/[^\n]*/g, '')), 'в коде не должно остаться упоминаний');
                 });
 
                 it('Тестовые хелперы не входят в боевой код: withIsolatedGameState и др. определены после раннера', () => {
-                    const prod = productionSource();
-                    for (const name of ['withIsolatedGameState', 'withFieldSnapshot', 'captureRealStateForTests', 'preserveLocalSaveAround', 'makeTestBattle']) {
+                    const prod = getProductionSource();
+                    for (const name of ['withIsolatedGameState', 'withFieldSnapshot', 'captureRealStateForTests', 'preserveLocalSaveAround', 'makeTestBattle', 'getProductionSource']) {
                         assert.equal(typeof window[name], 'function', name + ' должен существовать');
                         assert.isFalse(new RegExp('function ' + name + '\\(').test(prod), name + ' не должен быть в боевой части файла');
                     }
@@ -6117,7 +6115,7 @@
 
                 // ---- file structure ----
                 it('Файл разбит на секции в документированном порядке, EVENT BINDINGS — последняя', () => {
-                    const prod = productionSource();
+                    const prod = getProductionSource();
                     const expected = ['CONSTANTS AND STATIC DATA', 'DOM HELPERS', 'AUDIO', 'GAME STATE', 'BATTLE INVARIANTS', 'PERSISTENCE',
                         'CARD / TABLE PRIMITIVES', 'RULES (PURE FUNCTIONS)', 'BATTLE STATE TRANSITIONS', 'ENEMY AI', 'RELICS', 'SHOP',
                         'RENDERING', 'MODALS AND POPOVERS', 'EVENT BINDINGS'];
@@ -6130,7 +6128,7 @@
                 });
 
                 it('Все вызовы bindClick() при загрузке собраны в секции EVENT BINDINGS (после всех определений)', () => {
-                    const prod = productionSource();
+                    const prod = getProductionSource();
                     const boot = prod.indexOf('        // EVENT BINDINGS\n');
                     assert.isTrue(boot > 0);
                     const before = prod.slice(0, boot).replace(/\/\/[^\n]*/g, '');
@@ -6140,7 +6138,7 @@
                 });
 
                 it('Секции данных не лезут в игровое состояние: CONSTANTS не читает run/battle на верхнем уровне', () => {
-                    const prod = productionSource();
+                    const prod = getProductionSource();
                     const a = prod.indexOf('        // CONSTANTS AND STATIC DATA\n');
                     const b = prod.indexOf('        // DOM HELPERS\n');
                     const topLevel = prod.slice(a, b).split('\n').filter(l => /^ {8}\S/.test(l) && !l.trim().startsWith('//')).join('\n');
