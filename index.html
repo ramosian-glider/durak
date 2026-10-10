@@ -3390,13 +3390,15 @@
                 makeFixtureBattle,
                 makeFixtureRun,
                 // Runs fn against a throwaway run + battle built from these fixtures.
-                inGame: (battleOverrides, fn) =>
-                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(battleOverrides), fn),
+                // `runOverrides` (optional, last so existing calls stay as they are)
+                // is applied over the suite's run defaults: inGame({}, fn, { relics: [...] }).
+                inGame: (battleOverrides, fn, runOverrides) =>
+                    withIsolatedGameState(makeFixtureRun(runOverrides), makeFixtureBattle(battleOverrides), fn),
                 // Same, and additionally keeps the player's real save intact (for
                 // tests that write or clear saves).
-                inGameSaved: (battleOverrides, fn) =>
+                inGameSaved: (battleOverrides, fn, runOverrides) =>
                     preserveLocalSaveAround(() =>
-                        withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(battleOverrides), fn))
+                        withIsolatedGameState(makeFixtureRun(runOverrides), makeFixtureBattle(battleOverrides), fn))
             };
         }
 
@@ -4670,6 +4672,8 @@
                     enemyHP: 5
                 }, { gold: 15 });
                 const closeUi = closeTestUI;
+                // Run overrides for a test that needs one relic (a fresh array every call).
+                const relicRun = (id) => ({ relics: [{ id }] });
 
                 it('Смертельный урон переводит бой в BATTLE_OVER и сохраняет уже выданную награду', () => {
                     inGame({}, () => withCleanup(() => {
@@ -4703,7 +4707,6 @@
                         enemyHand: [testCard('e1', 'Hearts', 8), testCard('e2', 'Pikes', 12)]
                     }, () => withCleanup(() => {
                         clearLocalSave();
-                        run.relics = [{ id: 'cascade_transfer' }];
                         executeEnemyAction({ type: 'transfer', card: battle.enemyHand[0] });
                         assert.equal(battle.enemyHP, 0);
                         assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER, 'бой должен остаться в BATTLE_OVER, а не отдать ход игроку');
@@ -4712,7 +4715,7 @@
                         assert.equal(JSON.parse(localStorage.getItem(SAVE_KEY)).battle.phase, BATTLE_PHASES.BATTLE_OVER, 'в сейве — победа, а не живой раунд');
                         getEl('msg-btn').click();
                         assert.isFalse(getEl('shop-modal').classList.contains('hidden'), 'после победы должен открыться магазин');
-                    }, closeUi, clearLocalSave));
+                    }, closeUi, clearLocalSave), relicRun('cascade_transfer'));
                 });
 
                 it('Каскадный перевод: игрок переводит атаку и добивает врага — победа, ход ИИ не запускается', () => {
@@ -4723,7 +4726,6 @@
                         enemyHand: [testCard('e1', 'Hearts', 7), testCard('e2', 'Pikes', 12)]
                     }, () => withCleanup(() => {
                         clearLocalSave();
-                        run.relics = [{ id: 'cascade_transfer' }];
                         window.onPlayerCardClick(0);
                         assert.equal(battle.enemyHP, 0);
                         assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER, 'победа не должна перезаписываться фазой AI_WAITING');
@@ -4731,7 +4733,7 @@
                         assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
                         assert.equal(run.gold, 15 + WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR, 'награда выдаётся ровно один раз');
                         assert.equal(JSON.parse(localStorage.getItem(SAVE_KEY)).battle.phase, BATTLE_PHASES.BATTLE_OVER);
-                    }, closeUi, clearLocalSave));
+                    }, closeUi, clearLocalSave), relicRun('cascade_transfer'));
                 });
 
                 // Same root cause on the defend path: sharp_suit's hit lands inside
@@ -4743,13 +4745,12 @@
                         playerHand: [testCard('p1', 'Hearts', 9)]
                     }, () => withCleanup(() => {
                         clearLocalSave();
-                        run.relics = [{ id: 'sharp_suit' }];
                         window.onPlayerCardClick(0);
                         assert.equal(battle.enemyHP, 0);
                         assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER, 'победа не должна перезаписываться фазой AI_WAITING');
                         assert.isTrue(battle.aiTimer === null, 'после победы ход ИИ планироваться не должен');
                         assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
-                    }, closeUi, clearLocalSave));
+                    }, closeUi, clearLocalSave), relicRun('sharp_suit'));
                 });
 
                 it('Каскадный перевод: нелетальный урон — перевод проходит как обычно', () => {
@@ -4759,13 +4760,12 @@
                         enemyHand: [testCard('e1', 'Hearts', 8), testCard('e2', 'Pikes', 12)]
                     }, () => withCleanup(() => {
                         clearLocalSave();
-                        run.relics = [{ id: 'cascade_transfer' }];
                         executeEnemyAction({ type: 'transfer', card: battle.enemyHand[0] });
                         assert.equal(battle.enemyHP, 1);
                         assert.equal(battle.phase, BATTLE_PHASES.PLAYER_DEFENSE);
                         assert.equal(battle.defender, 'player');
                         assert.equal(getEl('msg-title').innerText, 'Враг Переводит!');
-                    }, closeUi, clearLocalSave));
+                    }, closeUi, clearLocalSave), relicRun('cascade_transfer'));
                 });
 
                 // Both a fresh BATTLE_OVER save and a legacy save (active phase + 0 HP,
@@ -6247,6 +6247,38 @@
                     assert.equal(r.gold, 4); assert.equal(r.playerHP, 30); assert.equal(r.floor, 1);
                     assert.equal(r.deck.length, 36);
                     assert.equal(JSON.stringify(testCard('a', 'Pikes', 9)), JSON.stringify(testCard('a', 'Pikes', 9)));
+                });
+
+                it('makeTestFixtures(): inGame()/inGameSaved() накладывают overrides боя и run поверх defaults сюита и возвращают реальное состояние', () => {
+                    const { inGame, inGameSaved } = makeTestFixtures(
+                        { enemyHP: 7, playerHand: [testCard('p1', 'Pikes', 6)] },
+                        { gold: 15, playerHP: 20 }
+                    );
+                    const realRun = run, realBattle = battle;
+                    inGame({ enemyHP: 9 }, () => {
+                        assert.equal(battle.enemyHP, 9, 'overrides боя сильнее defaults');
+                        assert.equal(battle.playerHand.length, 1, 'defaults боя применяются');
+                        assert.equal(run.gold, 15, 'defaults run применяются без runOverrides');
+                        assert.equal(run.relics.length, 0);
+                    });
+                    inGame({}, () => {
+                        assert.equal(run.gold, 3, 'runOverrides сильнее defaults run');
+                        assert.equal(run.playerHP, 20, 'остальные defaults run сохраняются');
+                        assert.equal(run.relics[0].id, 'sharp_suit');
+                    }, { gold: 3, relics: [{ id: 'sharp_suit' }] });
+                    const preRaw = localStorage.getItem(SAVE_KEY);
+                    const marker = '{"marker":"real-save-sentinel"}';
+                    try {
+                        localStorage.setItem(SAVE_KEY, marker);
+                        inGameSaved({}, () => {
+                            localStorage.removeItem(SAVE_KEY);
+                            assert.equal(run.gold, 3, 'runOverrides работают и в inGameSaved');
+                        }, { gold: 3 });
+                        assert.equal(localStorage.getItem(SAVE_KEY), marker, 'реальный сейв восстановлен');
+                    } finally {
+                        if (preRaw === null) localStorage.removeItem(SAVE_KEY); else localStorage.setItem(SAVE_KEY, preRaw);
+                    }
+                    assert.isTrue(run === realRun && battle === realBattle, 'реальные run/battle возвращены');
                 });
 
                 it('withTestGame(): включает инварианты на время теста, потом восстанавливает флаг, закрывает модалку и чистит сейв; реальный сейв сохраняется', () => {
