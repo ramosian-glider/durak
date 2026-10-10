@@ -3373,9 +3373,19 @@
         }
 
         function makeTestFixtures(battleDefaults = {}, runDefaults = {}) {
+            const makeFixtureBattle = (overrides = {}) => makeTestBattle(structuredClone(battleDefaults), overrides);
+            const makeFixtureRun = (overrides = {}) => makeTestRun({ ...runDefaults, ...overrides });
             return {
-                makeFixtureBattle: (overrides = {}) => makeTestBattle(structuredClone(battleDefaults), overrides),
-                makeFixtureRun: (overrides = {}) => makeTestRun({ ...runDefaults, ...overrides })
+                makeFixtureBattle,
+                makeFixtureRun,
+                // Runs fn against a throwaway run + battle built from these fixtures.
+                inGame: (battleOverrides, fn) =>
+                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(battleOverrides), fn),
+                // Same, and additionally keeps the player's real save intact (for
+                // tests that write or clear saves).
+                inGameSaved: (battleOverrides, fn) =>
+                    preserveLocalSaveAround(() =>
+                        withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(battleOverrides), fn))
             };
         }
 
@@ -4315,7 +4325,7 @@
             });
 
             runner.describe('8e. Централизация переходов фазы (setBattlePhase — единственный писатель battle.phase)', (it, assert) => {
-                const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
+                const { makeFixtureBattle, makeFixtureRun, inGame } = makeTestFixtures({
                     drawDeck: [testCard('d1', 'Hearts', 6)],
                     playerHand: [testCard('p1', 'Hearts', 6)],
                     enemyHand: [testCard('e1', 'Hearts', 7)],
@@ -4338,7 +4348,7 @@
                 });
 
                 it('setBattlePhase(RESOLVING) — транзитная фаза: инвалидирует токен, но не пишет сейв', () => {
-                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => {
+                    inGame({}, () => {
                         clearLocalSave();
                         setBattlePhase(BATTLE_PHASES.RESOLVING);
                         assert.equal(battle.phase, BATTLE_PHASES.RESOLVING);
@@ -4356,7 +4366,7 @@
                     assert.isTrue(body.length > 0, 'тело setBattlePhase() не найдено');
                     assert.isFalse(/saveGameState|saveGameState|renderAll|commitBattleState/.test(body), 'setBattlePhase() не должен сохранять или рисовать');
 
-                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => {
+                    inGame({}, () => {
                         const realRenderAll = window.renderAll;
                         let renders = 0;
                         window.renderAll = () => { renders++; };
@@ -4375,7 +4385,7 @@
                 });
 
                 it('commitBattleState(): по умолчанию сохраняет и перерисовывает; { render: false } — только сохраняет', () => {
-                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => {
+                    inGame({}, () => {
                         const realRenderAll = window.renderAll;
                         let renders = 0;
                         window.renderAll = () => { renders++; };
@@ -4421,7 +4431,7 @@
                 // end, so the round start is persisted too, and only once the round is
                 // fully rebuilt.
                 it('startNewRound() сохраняет полностью собранный раунд', () => {
-                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({ phase: BATTLE_PHASES.ROUND_OVER, table: [] }), () => {
+                    inGame({ phase: BATTLE_PHASES.ROUND_OVER, table: [] }, () => {
                         clearLocalSave();
                         startNewRound();
                         clearAITimer();
@@ -4440,7 +4450,7 @@
                 // it. Drive the captured timer callback by hand to prove the staleness
                 // check works in both directions.
                 it('scheduleEnemyAction(): отложенное действие выполняется, если токен не менялся, и отбрасывается, если фаза сменилась', () => {
-                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({ phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy' }), () => {
+                    inGame({ phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy' }, () => {
                         const realSetTimeout = window.setTimeout;
                         const callbacks = [];
                         window.setTimeout = (fn) => { callbacks.push(fn); return 1; };
@@ -4561,7 +4571,7 @@
             });
 
             runner.describe('8g. enterAIWaitingPhase (единственная точка перехода хода к ИИ)', (it, assert) => {
-                const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
+                const { inGame } = makeTestFixtures({
                     drawDeck: [testCard('d1', 'Hearts', 6)],
                     playerHand: [testCard('p1', 'Hearts', 6)],
                     enemyHand: [testCard('e1', 'Hearts', 7)],
@@ -4588,7 +4598,7 @@
                 });
 
                 it('enterAIWaitingPhase(): фаза AI_WAITING, сохранение, таймер с заданной задержкой', () => {
-                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => {
+                    inGame({}, () => {
                         withFakeTimers((timers) => {
                             clearLocalSave();
                             enterAIWaitingPhase(() => {}, 1234);
@@ -4605,7 +4615,7 @@
                 });
 
                 it('enterAIWaitingPhase(): отменяет ранее запланированный таймер и делает старое действие устаревшим', () => {
-                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => {
+                    inGame({}, () => {
                         withFakeTimers((timers, cleared) => {
                             let first = 0, second = 0;
                             enterAIWaitingPhase(() => { first++; });
@@ -4622,7 +4632,7 @@
                 });
 
                 it('scheduleEnemyAI() запускает executeEnemyAI() через enterAIWaitingPhase() с нужной задержкой', () => {
-                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => {
+                    inGame({}, () => {
                         withFakeTimers((timers) => {
                             scheduleEnemyAI(AI_QUICK_DELAY_MS);
                             assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
@@ -4635,7 +4645,7 @@
             });
 
             runner.describe('8h. Победа над соперником и продолжение игры (враг с 0 HP)', (it, assert) => {
-                const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
+                const { inGame } = makeTestFixtures({
                     drawDeck: [testCard('d1', 'Hearts', 6)],
                     playerHand: [testCard('p1', 'Hearts', 6)],
                     enemyHand: [testCard('e1', 'Hearts', 7)], trumpCard: testCard('t1', 'Hearts', 6),
@@ -4644,7 +4654,7 @@
                 const closeUi = closeTestUI;
 
                 it('Смертельный урон переводит бой в BATTLE_OVER и сохраняет уже выданную награду', () => {
-                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => withCleanup(() => {
+                    inGame({}, () => withCleanup(() => {
                         clearLocalSave();
                         damageEnemyHP(999);
                         assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER);
@@ -4657,7 +4667,7 @@
                 });
 
                 it('Нелетальный урон фазу не меняет', () => {
-                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(), () => withCleanup(() => {
+                    inGame({}, () => withCleanup(() => {
                         damageEnemyHP(2);
                         assert.equal(battle.enemyHP, 3);
                         assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
@@ -4668,7 +4678,7 @@
                 // exactly what the reported screenshot showed) must resume at the shop.
                 [BATTLE_PHASES.BATTLE_OVER, BATTLE_PHASES.RESOLVING, BATTLE_PHASES.PLAYER_ATTACK].forEach((phase) => {
                     it('resumeFromSave(): враг с 0 HP и фазой "' + phase + '" ведёт в магазин без повторной награды', () => {
-                        withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({ enemyHP: 0, phase }), () => withCleanup(() => {
+                        inGame({ enemyHP: 0, phase }, () => withCleanup(() => {
                             clearLocalSave();
                             resumeFromSave();
                             assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER);
@@ -4682,7 +4692,7 @@
                 });
 
                 it('resumeFromSave(): живой враг — поведение прежнее (ход возвращается игроку)', () => {
-                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({ enemyHP: 5, phase: BATTLE_PHASES.RESOLVING }), () => withCleanup(() => {
+                    inGame({ enemyHP: 5, phase: BATTLE_PHASES.RESOLVING }, () => withCleanup(() => {
                         clearLocalSave();
                         resumeFromSave();
                         assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
@@ -4693,7 +4703,7 @@
             });
 
             runner.describe('8i. Дисциплина состояния (проверки до смены фазы, единый commit, allow-list сохранения, инварианты)', (it, assert) => {
-                const { makeFixtureBattle, makeFixtureRun } = makeTestFixtures({
+                const { makeFixtureBattle, inGame, inGameSaved } = makeTestFixtures({
                     drawDeck: [testCard('d1', 'Hearts', 6), testCard('d2', 'Hearts', 8)],
                     playerHand: [testCard('p1', 'Hearts', 6)],
                     enemyHand: [testCard('e1', 'Hearts', 7)], trumpCard: testCard('d1', 'Hearts', 6)
@@ -4703,13 +4713,11 @@
                 // The exact pair the original bug needed: a handler entered with a valid phase
                 // but nothing on the table used to set RESOLVING and then bail out.
                 const assertNoStrandedPhase = (fn, phase, overrides) => {
-                    preserveLocalSaveAround(() => {
-                        withIsolatedGameState(makeFixtureRun(), makeFixtureBattle(Object.assign({ phase, table: [] }, overrides)), () => {
-                            const tokenBefore = battle.actionToken;
-                            fn();
-                            assert.equal(battle.phase, phase, 'фаза не должна меняться, если действие невозможно');
-                            assert.equal(battle.actionToken, tokenBefore, 'токен не должен меняться, если действие невозможно');
-                        });
+                    inGameSaved(Object.assign({ phase, table: [] }, overrides), () => {
+                        const tokenBefore = battle.actionToken;
+                        fn();
+                        assert.equal(battle.phase, phase, 'фаза не должна меняться, если действие невозможно');
+                        assert.equal(battle.actionToken, tokenBefore, 'токен не должен меняться, если действие невозможно');
                     });
                 };
 
@@ -4728,17 +4736,15 @@
                 });
 
                 it('handleBito(true) при cardsToTake делегирует взятие и не остаётся в RESOLVING', () => {
-                    preserveLocalSaveAround(() => {
-                        withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({
-                            phase: BATTLE_PHASES.AI_WAITING, defender: 'enemy', cardsToTake: true, table: openAttack()
-                        }), () => withCleanup(() => {
-                            handleBito(true);
-                            assert.isTrue(battle.phase !== BATTLE_PHASES.RESOLVING, 'игра застряла в RESOLVING');
-                            assert.equal(battle.table.length, 0, 'стол должен быть забран врагом');
-                            assert.isTrue(battle.enemyHand.some(c => c.id === 'a1'), 'атакующая карта должна уйти врагу');
-                            assert.equal(battle.cardsToTake, false);
-                        }, closeUi, clearAITimer, clearLocalSave));
-                    });
+                    inGameSaved({
+                        phase: BATTLE_PHASES.AI_WAITING, defender: 'enemy', cardsToTake: true, table: openAttack()
+                    }, () => withCleanup(() => {
+                        handleBito(true);
+                        assert.isTrue(battle.phase !== BATTLE_PHASES.RESOLVING, 'игра застряла в RESOLVING');
+                        assert.equal(battle.table.length, 0, 'стол должен быть забран врагом');
+                        assert.isTrue(battle.enemyHand.some(c => c.id === 'a1'), 'атакующая карта должна уйти врагу');
+                        assert.equal(battle.cardsToTake, false);
+                    }, closeUi, clearAITimer, clearLocalSave));
                 });
 
                 // ---- One commit, not save+render by hand ----
@@ -4750,18 +4756,16 @@
                 });
 
                 it('handlePlayerTake() фиксирует результат через commitBattleState() ровно один раз до round-end проверки', () => {
-                    preserveLocalSaveAround(() => {
-                        withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({
-                            phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', table: openAttack()
-                        }), () => {
-                            const realCommit = window.commitBattleState;
-                            let commits = 0;
-                            window.commitBattleState = function () { commits++; return realCommit.apply(this, arguments); };
-                            try {
-                                handlePlayerTake();
-                                assert.isTrue(commits >= 1, 'commitBattleState() не вызывался');
-                            } finally { window.commitBattleState = realCommit; closeUi(); clearAITimer(); clearLocalSave(); }
-                        });
+                    inGameSaved({
+                        phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', table: openAttack()
+                    }, () => {
+                        const realCommit = window.commitBattleState;
+                        let commits = 0;
+                        window.commitBattleState = function () { commits++; return realCommit.apply(this, arguments); };
+                        try {
+                            handlePlayerTake();
+                            assert.isTrue(commits >= 1, 'commitBattleState() не вызывался');
+                        } finally { window.commitBattleState = realCommit; closeUi(); clearAITimer(); clearLocalSave(); }
                     });
                 });
 
@@ -4824,26 +4828,24 @@
                 });
 
                 it('assertBattleState(): по умолчанию молчит; во включённом режиме commitBattleState() падает ДО записи сейва', () => {
-                    preserveLocalSaveAround(() => {
-                        withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({ phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'player' }), () => {
-                            const realRender = window.renderAll;
-                            window.renderAll = () => {};
-                            const wasEnabled = battleInvariantChecksEnabled;
-                            try {
-                                clearLocalSave();
-                                battleInvariantChecksEnabled = false;
-                                assertBattleState(); // must not throw with the flag off
-                                battleInvariantChecksEnabled = true;
-                                let threw = false;
-                                try { commitBattleState(); } catch (e) { threw = /invariant/i.test(e.message); }
-                                assert.isTrue(threw, 'commit должен бросить при нарушенном инварианте');
-                                assert.isTrue(localStorage.getItem(SAVE_KEY) === null, 'битое состояние не должно попасть в сейв');
-                            } finally {
-                                battleInvariantChecksEnabled = wasEnabled;
-                                window.renderAll = realRender;
-                                clearLocalSave();
-                            }
-                        });
+                    inGameSaved({ phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'player' }, () => {
+                        const realRender = window.renderAll;
+                        window.renderAll = () => {};
+                        const wasEnabled = battleInvariantChecksEnabled;
+                        try {
+                            clearLocalSave();
+                            battleInvariantChecksEnabled = false;
+                            assertBattleState(); // must not throw with the flag off
+                            battleInvariantChecksEnabled = true;
+                            let threw = false;
+                            try { commitBattleState(); } catch (e) { threw = /invariant/i.test(e.message); }
+                            assert.isTrue(threw, 'commit должен бросить при нарушенном инварианте');
+                            assert.isTrue(localStorage.getItem(SAVE_KEY) === null, 'битое состояние не должно попасть в сейв');
+                        } finally {
+                            battleInvariantChecksEnabled = wasEnabled;
+                            window.renderAll = realRender;
+                            clearLocalSave();
+                        }
                     });
                 });
 
@@ -4852,20 +4854,20 @@
                         const wasEnabled = battleInvariantChecksEnabled;
                         battleInvariantChecksEnabled = true;
                         try {
-                            withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({
+                            inGame({
                                 phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', table: openAttack()
-                            }), () => {
+                            }, () => {
                                 try { handlePlayerTake(); } finally { closeUi(); clearAITimer(); }
                             });
-                            withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({
+                            inGame({
                                 phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy',
                                 table: [testPair(testCard('a1', 'Hearts', 9), testCard('a2', 'Hearts', 10))]
-                            }), () => {
+                            }, () => {
                                 try { handleBito(); } finally { closeUi(); clearAITimer(); }
                             });
-                            withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({
+                            inGame({
                                 phase: BATTLE_PHASES.AI_WAITING, defender: 'enemy', cardsToTake: true, table: openAttack()
-                            }), () => {
+                            }, () => {
                                 try { handleEnemyTake(); } finally { closeUi(); clearAITimer(); }
                             });
                         } finally { battleInvariantChecksEnabled = wasEnabled; clearLocalSave(); }
@@ -4892,7 +4894,7 @@
                 });
 
                 it('serializeGameState(): пишет только поля из allow-list и не протаскивает новые/runtime-поля', () => {
-                    withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({ leakedField: 123, aiTimer: 77, actionToken: 9 }), () => {
+                    inGame({ leakedField: 123, aiTimer: 77, actionToken: 9 }, () => {
                         const data = serializeGameState();
                         assert.equal(data.version, SAVE_VERSION);
                         assert.isTrue(data.run === run, 'run должен попадать в сейв');
@@ -4904,16 +4906,14 @@
                 });
 
                 it('saveGameState()/loadGameState(): лишнее поле в сейве игнорируется при загрузке', () => {
-                    preserveLocalSaveAround(() => {
-                        withIsolatedGameState(makeFixtureRun(), makeFixtureBattle({ phase: BATTLE_PHASES.PLAYER_ATTACK }), () => {
-                            try {
-                                const data = serializeGameState();
-                                data.battle.leakedField = 'x';
-                                localStorage.setItem(SAVE_KEY, JSON.stringify(data));
-                                assert.isTrue(loadGameState(), 'сейв должен загрузиться');
-                                assert.isFalse('leakedField' in battle, 'чужое поле не должно попасть в battle');
-                            } finally { clearAITimer(); clearLocalSave(); }
-                        });
+                    inGameSaved({ phase: BATTLE_PHASES.PLAYER_ATTACK }, () => {
+                        try {
+                            const data = serializeGameState();
+                            data.battle.leakedField = 'x';
+                            localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+                            assert.isTrue(loadGameState(), 'сейв должен загрузиться');
+                            assert.isFalse('leakedField' in battle, 'чужое поле не должно попасть в battle');
+                        } finally { clearAITimer(); clearLocalSave(); }
                     });
                 });
             });
