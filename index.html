@@ -3428,7 +3428,7 @@
 
         // Runs fn against a throwaway run/battle under full test conditions: the
         // real save is preserved, battle invariants are enforced on every commit,
-        // and afterwards the AI timer, the save and the modal are cleaned up.
+        // and afterwards the AI timer, the save and any open modal/shop are cleaned up.
         function withTestGame(fixtureRun, fixtureBattle, fn) {
             return preserveLocalSaveAround(() =>
                 withIsolatedGameState(fixtureRun, fixtureBattle, () => {
@@ -3436,17 +3436,9 @@
                     battleInvariantChecksEnabled = true;
                     try { fn(); } finally {
                         battleInvariantChecksEnabled = wasEnabled;
-                        clearAITimer(); clearLocalSave(); closeModal();
+                        clearAITimer(); clearLocalSave(); closeTestUI();
                     }
                 }));
-        }
-
-        function withCleanup(fn, ...cleanup) {
-            try {
-                return fn();
-            } finally {
-                cleanup.forEach(cleanupFn => cleanupFn());
-            }
         }
 
         /**
@@ -4670,18 +4662,17 @@
             });
 
             runner.describe('8h. Победа над соперником и продолжение игры (враг с 0 HP)', (it, assert) => {
-                const { inGame } = makeTestFixtures({
+                const { inGame, inGameStrict } = makeTestFixtures({
                     drawDeck: [testCard('d1', 'Hearts', 6)],
                     playerHand: [testCard('p1', 'Hearts', 6)],
                     enemyHand: [testCard('e1', 'Hearts', 7)], trumpCard: testCard('t1', 'Hearts', 6),
                     enemyHP: 5
                 }, { gold: 15 });
-                const closeUi = closeTestUI;
                 // Run overrides for a test that needs one relic (a fresh array every call).
                 const relicRun = (id) => ({ relics: [{ id }] });
 
                 it('Смертельный урон переводит бой в BATTLE_OVER и сохраняет уже выданную награду', () => {
-                    inGame({}, () => withCleanup(() => {
+                    inGameStrict({}, () => {
                         clearLocalSave();
                         damageEnemyHP(999);
                         assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER);
@@ -4690,15 +4681,15 @@
                         assert.equal(saved.battle.phase, BATTLE_PHASES.BATTLE_OVER);
                         assert.equal(saved.run.gold, 15 + WIN_GOLD_BASE + WIN_GOLD_PER_FLOOR, 'награда должна быть уже в сейве');
                         assert.isTrue(validateSaveData(saved), 'сейв победы должен быть валиден');
-                    }, closeUi, clearLocalSave));
+                    });
                 });
 
                 it('Нелетальный урон фазу не меняет', () => {
-                    inGame({}, () => withCleanup(() => {
+                    inGameStrict({}, () => {
                         damageEnemyHP(2);
                         assert.equal(battle.enemyHP, 3);
                         assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
-                    }, closeUi, clearLocalSave));
+                    });
                 });
 
                 // cascade_transfer can deal the killing blow, and a transfer is not a
@@ -4706,11 +4697,11 @@
                 // carrying on (the reported hang — enemy at 0 HP, win modal replaced by the
                 // "Враг Переводит!" one, no way forward).
                 it('Каскадный перевод: враг переводит атаку и гибнет от урона — победа, модалка победы не перекрыта', () => {
-                    inGame({
+                    inGameStrict({
                         phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', enemyHP: CASCADE_TRANSFER_DAMAGE,
                         table: [testPair(testCard('a1', 'Clubs', 8))],
                         enemyHand: [testCard('e1', 'Hearts', 8), testCard('e2', 'Pikes', 12)]
-                    }, () => withCleanup(() => {
+                    }, () => {
                         clearLocalSave();
                         executeEnemyAction({ type: 'transfer', card: battle.enemyHand[0] });
                         assert.equal(battle.enemyHP, 0);
@@ -4720,16 +4711,16 @@
                         assert.equal(JSON.parse(localStorage.getItem(SAVE_KEY)).battle.phase, BATTLE_PHASES.BATTLE_OVER, 'в сейве — победа, а не живой раунд');
                         getEl('msg-btn').click();
                         assert.isFalse(getEl('shop-modal').classList.contains('hidden'), 'после победы должен открыться магазин');
-                    }, closeUi, clearLocalSave), relicRun('cascade_transfer'));
+                    }, relicRun('cascade_transfer'));
                 });
 
                 it('Каскадный перевод: игрок переводит атаку и добивает врага — победа, ход ИИ не запускается', () => {
-                    inGame({
+                    inGameStrict({
                         phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: true, enemyHP: CASCADE_TRANSFER_DAMAGE,
                         table: [testPair(testCard('a1', 'Clubs', 8))],
                         playerHand: [testCard('p1', 'Hearts', 8), testCard('p2', 'Pikes', 12)],
                         enemyHand: [testCard('e1', 'Hearts', 7), testCard('e2', 'Pikes', 12)]
-                    }, () => withCleanup(() => {
+                    }, () => {
                         clearLocalSave();
                         window.onPlayerCardClick(0);
                         assert.equal(battle.enemyHP, 0);
@@ -4738,46 +4729,46 @@
                         assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
                         assert.equal(run.gold, 15 + WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR, 'награда выдаётся ровно один раз');
                         assert.equal(JSON.parse(localStorage.getItem(SAVE_KEY)).battle.phase, BATTLE_PHASES.BATTLE_OVER);
-                    }, closeUi, clearLocalSave), relicRun('cascade_transfer'));
+                    }, relicRun('cascade_transfer'));
                 });
 
                 // Same root cause on the defend path: sharp_suit's hit lands inside
                 // onPlayerCardClick(), which then used to hand the turn to the AI anyway.
                 it('sharp_suit: враг гибнет от урона при защите козырем — победа, ход ИИ не запускается', () => {
-                    inGame({
+                    inGameStrict({
                         phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', enemyHP: SHARP_SUIT_DAMAGE,
                         table: [testPair(testCard('a1', 'Pikes', 7))],
                         playerHand: [testCard('p1', 'Hearts', 9)]
-                    }, () => withCleanup(() => {
+                    }, () => {
                         clearLocalSave();
                         window.onPlayerCardClick(0);
                         assert.equal(battle.enemyHP, 0);
                         assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER, 'победа не должна перезаписываться фазой AI_WAITING');
                         assert.isTrue(battle.aiTimer === null, 'после победы ход ИИ планироваться не должен');
                         assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
-                    }, closeUi, clearLocalSave), relicRun('sharp_suit'));
+                    }, relicRun('sharp_suit'));
                 });
 
                 it('Каскадный перевод: нелетальный урон — перевод проходит как обычно', () => {
-                    inGame({
+                    inGameStrict({
                         phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', enemyHP: CASCADE_TRANSFER_DAMAGE + 1,
                         table: [testPair(testCard('a1', 'Clubs', 8))],
                         enemyHand: [testCard('e1', 'Hearts', 8), testCard('e2', 'Pikes', 12)]
-                    }, () => withCleanup(() => {
+                    }, () => {
                         clearLocalSave();
                         executeEnemyAction({ type: 'transfer', card: battle.enemyHand[0] });
                         assert.equal(battle.enemyHP, 1);
                         assert.equal(battle.phase, BATTLE_PHASES.PLAYER_DEFENSE);
                         assert.equal(battle.defender, 'player');
                         assert.equal(getEl('msg-title').innerText, 'Враг Переводит!');
-                    }, closeUi, clearLocalSave), relicRun('cascade_transfer'));
+                    }, relicRun('cascade_transfer'));
                 });
 
                 // Both a fresh BATTLE_OVER save and a legacy save (active phase + 0 HP,
                 // exactly what the reported screenshot showed) must resume at the shop.
                 [BATTLE_PHASES.BATTLE_OVER, BATTLE_PHASES.RESOLVING, BATTLE_PHASES.PLAYER_ATTACK].forEach((phase) => {
                     it('resumeFromSave(): враг с 0 HP и фазой "' + phase + '" ведёт в магазин без повторной награды', () => {
-                        inGame({ enemyHP: 0, phase }, () => withCleanup(() => {
+                        inGameStrict({ enemyHP: 0, phase }, () => {
                             clearLocalSave();
                             resumeFromSave();
                             assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER);
@@ -4786,23 +4777,23 @@
                             getEl('msg-btn').click();
                             const shop = getEl('shop-modal');
                             assert.isFalse(shop.classList.contains('hidden'), 'магазин должен открыться');
-                        }, closeUi, clearLocalSave));
+                        });
                     });
                 });
 
                 it('resumeFromSave(): живой враг — поведение прежнее (ход возвращается игроку)', () => {
-                    inGame({ enemyHP: 5, phase: BATTLE_PHASES.RESOLVING }, () => withCleanup(() => {
+                    inGameStrict({ enemyHP: 5, phase: BATTLE_PHASES.RESOLVING }, () => {
                         clearLocalSave();
                         resumeFromSave();
                         assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
                         const shop = getEl('shop-modal');
                         assert.isTrue(shop.classList.contains('hidden'), 'магазин открываться не должен');
-                    }, closeUi, clearLocalSave));
+                    });
                 });
             });
 
             runner.describe('8i. Дисциплина состояния (проверки до смены фазы, единый commit, allow-list сохранения, инварианты)', (it, assert) => {
-                const { makeFixtureBattle, inGame, inGameSaved } = makeTestFixtures({
+                const { makeFixtureBattle, inGame, inGameSaved, inGameStrict } = makeTestFixtures({
                     drawDeck: [testCard('d1', 'Hearts', 6), testCard('d2', 'Hearts', 8)],
                     playerHand: [testCard('p1', 'Hearts', 6)],
                     enemyHand: [testCard('e1', 'Hearts', 7)], trumpCard: testCard('d1', 'Hearts', 6)
@@ -4835,15 +4826,15 @@
                 });
 
                 it('handleBito(true) при cardsToTake делегирует взятие и не остаётся в RESOLVING', () => {
-                    inGameSaved({
+                    inGameStrict({
                         phase: BATTLE_PHASES.AI_WAITING, defender: 'enemy', cardsToTake: true, table: openAttack()
-                    }, () => withCleanup(() => {
+                    }, () => {
                         handleBito(true);
                         assert.isTrue(battle.phase !== BATTLE_PHASES.RESOLVING, 'игра застряла в RESOLVING');
                         assert.equal(battle.table.length, 0, 'стол должен быть забран врагом');
                         assert.isTrue(battle.enemyHand.some(c => c.id === 'a1'), 'атакующая карта должна уйти врагу');
                         assert.equal(battle.cardsToTake, false);
-                    }, closeUi, clearAITimer, clearLocalSave));
+                    });
                 });
 
                 // ---- One commit, not save+render by hand ----
@@ -5018,7 +5009,7 @@
 
             runner.describe('8j. Примитивы карт и стола (moveCard, removeCard, dealCard, API стола)', (it, assert) => {
                 const C = testCard;
-                const { inGame } = makeTestFixtures({
+                const { inGame, inGameStrict } = makeTestFixtures({
                     drawDeck: [C('d1', 'Hearts', 6), C('d2', 'Hearts', 8), C('d3', 'Pikes', 9)],
                     playerHand: [C('p1', 'Hearts', 6), C('p2', 'Pikes', 9)],
                     enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 9)], trumpCard: C('d1', 'Hearts', 6)
@@ -5212,40 +5203,32 @@
                 });
 
                 it('handleBito(): после отбоя в сбросе лежат карты, не пары; инвариант уникальности работает на сбросе', () => {
-                    preserveLocalSaveAround(() => {
-                        inGame({
-                            drawDeck: [], phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy',
-                            table: [testPair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10))]
-                        }, () => {
-                            withCleanup(() => {
-                                handleBito();
-                                assert.equal(battle.discardPile.map(c => c.id).sort().join(), 'a1,b1');
-                                battle.playerHand.push(C('a1', 'Pikes', 7)); // тот же id уже в сбросе
-                                assert.isTrue(getBattleInvariantViolations(battle).length > 0, 'дубликат в сбросе должен ловиться');
-                            }, clearAITimer, clearLocalSave, closeModal);
-                        });
+                    inGameStrict({
+                        drawDeck: [], phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy',
+                        table: [testPair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10))]
+                    }, () => {
+                        handleBito();
+                        assert.equal(battle.discardPile.map(c => c.id).sort().join(), 'a1,b1');
+                        battle.playerHand.push(C('a1', 'Pikes', 7)); // тот же id уже в сбросе
+                        assert.isTrue(getBattleInvariantViolations(battle).length > 0, 'дубликат в сбросе должен ловиться');
                     });
                 });
 
                 it('handlePlayerTake(): враг подкидывает по номиналам стола до лимита, все карты стола уходят в руку игрока', () => {
-                    preserveLocalSaveAround(() => {
-                        inGame({
-                            drawDeck: [], phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player',
-                            // лимит подкидывания = число карт в руке защитника (здесь 4)
-                            playerHand: [C('p1', 'Hearts', 6), C('p2', 'Hearts', 10), C('p3', 'Hearts', 11), C('p4', 'Hearts', 12)],
-                            enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Hearts', 9), C('e3', 'Hearts', 14)],
-                            table: [testPair(C('a1', 'Pikes', 7)), testPair(C('a2', 'Hearts', 9))]
-                        }, () => {
-                            withCleanup(() => {
-                                const before = allIds();
-                                handlePlayerTake();
-                                // номинал 9 есть на столе: e1 и e2 подкинуты, e3 (туз) нет
-                                assert.equal(battle.enemyHand.map(c => c.id).join(), 'e3');
-                                assert.equal(battle.table.length, 0);
-                                assert.equal(battle.playerHand.length, 4 + 4);
-                                assert.equal(allIds().join(), before.join());
-                            }, clearAITimer, clearLocalSave, closeModal);
-                        });
+                    inGameStrict({
+                        drawDeck: [], phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player',
+                        // лимит подкидывания = число карт в руке защитника (здесь 4)
+                        playerHand: [C('p1', 'Hearts', 6), C('p2', 'Hearts', 10), C('p3', 'Hearts', 11), C('p4', 'Hearts', 12)],
+                        enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Hearts', 9), C('e3', 'Hearts', 14)],
+                        table: [testPair(C('a1', 'Pikes', 7)), testPair(C('a2', 'Hearts', 9))]
+                    }, () => {
+                        const before = allIds();
+                        handlePlayerTake();
+                        // номинал 9 есть на столе: e1 и e2 подкинуты, e3 (туз) нет
+                        assert.equal(battle.enemyHand.map(c => c.id).join(), 'e3');
+                        assert.equal(battle.table.length, 0);
+                        assert.equal(battle.playerHand.length, 4 + 4);
+                        assert.equal(allIds().join(), before.join());
                     });
                 });
 
@@ -6286,9 +6269,11 @@
                         assert.equal(battle.enemyHP, 9);
                         assert.equal(run.gold, 3, 'runOverrides работают и в inGameStrict');
                         showModal('t', 'b');
+                        setVisible(getEl('shop-modal'), true, 'flex');
                     }, { gold: 3 });
                     assert.equal(battleInvariantChecksEnabled, wasEnabled, 'флаг инвариантов возвращён');
                     assert.isTrue(getEl('msg-box').classList.contains('hidden'), 'inGameStrict закрывает модалку');
+                    assert.isTrue(getEl('shop-modal').classList.contains('hidden'), 'inGameStrict закрывает магазин');
                     assert.isTrue(run === realRun && battle === realBattle, 'реальные run/battle возвращены');
                 });
 
