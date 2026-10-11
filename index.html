@@ -3328,6 +3328,13 @@
                 if (!Array.isArray(arr) || arr.length !== length) {
                     throw new Error(msg || `Ожидалась длина массива ${length}, получена: ${arr ? arr.length : 'не массив'}`);
                 }
+            },
+            // The current battle's phase. A custom message is kept, with both phases appended.
+            phase(expected, msg = '') {
+                if (battle.phase !== expected) {
+                    const detail = `ожидалась фаза боя ${expected}, получена: ${battle.phase}`;
+                    throw new Error(msg ? `${msg} (${detail})` : detail);
+                }
             }
         };
 
@@ -3793,10 +3800,10 @@
                 it('Фаза игрока определяется ролью защитника', () => {
                     battle.defender = 'enemy';
                     enterPlayerPhase();
-                    assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
+                    assert.phase(BATTLE_PHASES.PLAYER_ATTACK);
                     battle.defender = 'player';
                     enterPlayerPhase();
-                    assert.equal(battle.phase, BATTLE_PHASES.PLAYER_DEFENSE);
+                    assert.phase(BATTLE_PHASES.PLAYER_DEFENSE);
                 });
 
                 it('Первая атака игрока переводит бой в ожидание AI', () => {
@@ -3812,7 +3819,7 @@
                         assert.equal(battle.table.length, 1);
                         assert.equal(battle.table[0].attack.id, 'test_attack');
                         assert.equal(battle.playerHand.length, 0);
-                        assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
+                        assert.phase(BATTLE_PHASES.AI_WAITING);
                         assert.isTrue(battle.aiTimer !== null);
                     });
                 });
@@ -3838,7 +3845,7 @@
                         executeEnemyAI();
 
                         assert.isTrue(battle.cardsToTake);
-                        assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
+                        assert.phase(BATTLE_PHASES.PLAYER_ATTACK);
                     });
                 });
 
@@ -3863,7 +3870,7 @@
                         executeEnemyAI();
 
                         assert.isTrue(battle.cardsToTake);
-                        assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
+                        assert.phase(BATTLE_PHASES.AI_WAITING);
                         assert.isTrue(battle.aiTimer !== null);
                     });
                 });
@@ -3885,7 +3892,7 @@
 
                         assert.equal(battle.table.length, 1);
                         assert.equal(battle.table[0].defend.id, 'test_defend');
-                        assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
+                        assert.phase(BATTLE_PHASES.PLAYER_ATTACK);
                     });
                 });
 
@@ -3899,7 +3906,7 @@
 
                         executeEnemyAI();
 
-                        assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
+                        assert.phase(BATTLE_PHASES.AI_WAITING);
                         assert.isTrue(battle.aiTimer !== null);
                     });
                 });
@@ -3918,7 +3925,7 @@
                         () => {
                             const result = checkRoundEnd();
                             assert.isTrue(result, 'checkRoundEnd() должен сообщить, что раунд завершился');
-                            assert.equal(battle.phase, BATTLE_PHASES.ROUND_OVER);
+                            assert.phase(BATTLE_PHASES.ROUND_OVER);
                             assert.equal(getEl('msg-title').innerText, 'Раунд Проигран!');
                             // 2 карты на руках → урон 6 + 2*4 = 14, с 30 HP игрок выживает.
                             assert.equal(run.playerHP, 16);
@@ -3939,7 +3946,7 @@
                         () => {
                             const result = checkRoundEnd();
                             assert.isTrue(result);
-                            assert.equal(battle.phase, BATTLE_PHASES.ROUND_OVER);
+                            assert.phase(BATTLE_PHASES.ROUND_OVER);
                             assert.equal(getEl('msg-title').innerText, 'Поражение!');
                             // 1 карта на руке → урон 6 + 1*4 = 10, с 5 HP это смертельно.
                             assert.equal(run.playerHP, 0);
@@ -3959,7 +3966,7 @@
                         () => {
                             const result = checkRoundEnd();
                             assert.isTrue(result);
-                            assert.equal(battle.phase, BATTLE_PHASES.ROUND_OVER);
+                            assert.phase(BATTLE_PHASES.ROUND_OVER);
                             assert.equal(getEl('msg-title').innerText, 'Ничья в кону');
                             assert.equal(run.playerHP, 20, 'ничья не должна наносить урон');
                             const msgBox = getEl('msg-box');
@@ -3991,19 +3998,11 @@
             });
 
             runner.describe('8. Сохранение прогресса (LocalStorage)', (it, assert) => {
-                // Every test here goes through withIsolatedGameState instead of mutating
-                // the real run/battle directly. Before this refactor, tests 1, 3 and 4
-                // wrote straight to the live run/battle and relied on this describe's own
-                // origFloor/origGold/origBattleEnemyHP/origPlayerHand snapshot-and-restore
-                // at the very end to put things back — with two problems: it only patched
-                // four specific fields (not table/enemyHand/trumpCard/phase/etc., all of
-                // which loadGameState() below also overwrites), and it ran unconditionally
-                // after every it() rather than per-test, so a throw inside any one test
-                // would skip it entirely and leave the real state however that test left
-                // it. loadGameState() also reassigns the `run` variable outright
-                // (`run = parsed.run`), which — without isolation — permanently swaps the
-                // live run for a JSON-deserialized clone, breaking reference identity for
-                // every test that runs afterward.
+                // Every test here goes through withIsolatedGameState instead of mutating the
+                // real run/battle: loadGameState() reassigns `run` outright (run = parsed.run)
+                // and overwrites table/enemyHand/trumpCard/phase, so without isolation it would
+                // swap the live run for a deserialized clone for every later test, and a throw
+                // mid-test would skip any restore lines written after the asserts.
 
                 it('Сохраняет run и battle целиком (формат с version)', () => {
                     withIsolatedGameState(
@@ -4081,23 +4080,15 @@
                 });
 
                 it('РЕГРЕССИЯ: initNewRun() сохраняет уже инициализированный бой, а не пустой battle', () => {
-                    // saveGameState() must run AFTER startFloorBattle(): otherwise
-                    // localStorage holds the default battle (enemyHP: 0, hands not dealt,
-                    // phase: 'idle'), and if the tab is closed right after starting a new
-                    // game, "Continue game" would show an empty table.
+                    // saveGameState() must run AFTER startFloorBattle(): otherwise localStorage holds
+                    // the default battle (enemyHP: 0, hands not dealt, phase: 'idle'), and if the tab
+                    // is closed right after starting a new game, "Continue game" would show an empty
+                    // table.
                     //
-                    // This test needs initNewRun() (which reassigns run) and
-                    // startFloorBattle() (which mutates battle in place and, via
-                    // syncEnemyDisplay(), writes the enemy header straight to the DOM) to
-                    // run against throwaway objects, not the player's real run/battle — so
-                    // it goes through withIsolatedGameState rather than hand-rolling its own
-                    // save/restore. A manual oldRun/oldBattle capture-and-restore pattern was
-                    // tried here before and had two bugs: the restore lived after the asserts
-                    // with no try/finally (skipped entirely if an assert threw), and even
-                    // when it did run it only pointed the run/battle *variables* back — it
-                    // never undid startFloorBattle()'s in-place mutation of the real battle
-                    // object's fields (table, enemyHand, trumpCard, phase, etc.), since
-                    // battle was the live object throughout, not a swapped-in fixture.
+                    // initNewRun() reassigns run, and startFloorBattle() mutates battle in place and
+                    // writes the enemy header to the DOM, so this test runs against throwaway objects
+                    // via withIsolatedGameState: hand-written restore lines after the asserts are
+                    // skipped when an assert throws, and never undo in-place mutations of the battle.
                     withIsolatedGameState(
                         makeBareRun({ gold: 15 }),
                         makeTestBattle(),
@@ -4120,11 +4111,10 @@
                 });
 
                 it('РЕГРЕССИЯ: переход на следующий этаж сохраняет бой после его инициализации', () => {
-                    // The same ordering rule applies in the btn-next-floor handler.
-                    // Same withIsolatedGameState reasoning as the test above: without it the
-                    // floor-2 fixture would overwrite the *real* battle's table/enemyHand/
-                    // trumpCard/phase/etc. and leave "Уличный Мошенник" (floor 2's filler) in
-                    // the #enemy-name DOM element for the rest of the play session.
+                    // The same ordering rule applies in the btn-next-floor handler. Isolated for the
+                    // same reason: otherwise the floor-2 fixture would overwrite the real battle and
+                    // leave "Уличный Мошенник" in the #enemy-name DOM element for the rest of the
+                    // play session.
                     withIsolatedGameState(
                         makeTestRun({ floor: 2, gold: 15 }),
                         makeTestBattle(),
@@ -4388,7 +4378,7 @@
                     inGame({}, () => {
                         clearLocalSave();
                         setBattlePhase(BATTLE_PHASES.RESOLVING);
-                        assert.equal(battle.phase, BATTLE_PHASES.RESOLVING);
+                        assert.phase(BATTLE_PHASES.RESOLVING);
                         assert.equal(battle.actionToken, 1, 'токен должен увеличиваться при любом переходе');
                         assert.isTrue(localStorage.getItem(SAVE_KEY) === null, 'полупримённое действие не должно попадать в сейв');
                         clearLocalSave();
@@ -4409,7 +4399,7 @@
                         try {
                             clearLocalSave();
                             setBattlePhase(BATTLE_PHASES.PLAYER_ATTACK);
-                            assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
+                            assert.phase(BATTLE_PHASES.PLAYER_ATTACK);
                             assert.equal(battle.actionToken, 1, 'токен должен увеличиваться при переходе');
                             assert.isTrue(localStorage.getItem(SAVE_KEY) === null, 'смена фазы сама не должна писать сейв');
                             assert.equal(renders, 0, 'смена фазы сама не должна перерисовывать экран');
@@ -4494,7 +4484,7 @@
                             clearLocalSave();
                             let fired = 0;
                             scheduleEnemyAction(() => { fired++; });
-                            assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
+                            assert.phase(BATTLE_PHASES.AI_WAITING);
                             callbacks[0]();
                             assert.equal(fired, 1, 'действие с актуальным токеном должно выполниться');
 
@@ -4637,7 +4627,7 @@
                         withFakeTimers((timers) => {
                             clearLocalSave();
                             enterAIWaitingPhase(() => {}, 1234);
-                            assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
+                            assert.phase(BATTLE_PHASES.AI_WAITING);
                             assert.equal(battle.actionToken, 1);
                             assert.equal(timers.length, 1);
                             assert.equal(timers[0].delay, 1234);
@@ -4670,7 +4660,7 @@
                     inGame({}, () => {
                         withFakeTimers((timers) => {
                             scheduleEnemyAI(AI_QUICK_DELAY_MS);
-                            assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
+                            assert.phase(BATTLE_PHASES.AI_WAITING);
                             assert.equal(timers.length, 1);
                             assert.equal(timers[0].delay, AI_QUICK_DELAY_MS);
                             clearLocalSave();
@@ -4693,7 +4683,7 @@
                     inGameStrict({}, () => {
                         clearLocalSave();
                         damageEnemyHP(999);
-                        assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER);
+                        assert.phase(BATTLE_PHASES.BATTLE_OVER);
                         const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
                         assert.equal(saved.battle.enemyHP, 0);
                         assert.equal(saved.battle.phase, BATTLE_PHASES.BATTLE_OVER);
@@ -4706,7 +4696,7 @@
                     inGameStrict({}, () => {
                         damageEnemyHP(2);
                         assert.equal(battle.enemyHP, 3);
-                        assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
+                        assert.phase(BATTLE_PHASES.PLAYER_ATTACK);
                     });
                 });
 
@@ -4723,7 +4713,7 @@
                         clearLocalSave();
                         executeEnemyAction({ type: 'transfer', card: battle.enemyHand[0] });
                         assert.equal(battle.enemyHP, 0);
-                        assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER, 'бой должен остаться в BATTLE_OVER, а не отдать ход игроку');
+                        assert.phase(BATTLE_PHASES.BATTLE_OVER, 'бой должен остаться в BATTLE_OVER, а не отдать ход игроку');
                         assert.equal(getEl('msg-title').innerText, 'Победа в Бою!', 'модалка победы не должна замещаться модалкой перевода');
                         assert.equal(run.gold, 15 + WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR, 'награда выдаётся ровно один раз');
                         assert.equal(JSON.parse(localStorage.getItem(SAVE_KEY)).battle.phase, BATTLE_PHASES.BATTLE_OVER, 'в сейве — победа, а не живой раунд');
@@ -4742,7 +4732,7 @@
                         clearLocalSave();
                         window.onPlayerCardClick(0);
                         assert.equal(battle.enemyHP, 0);
-                        assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER, 'победа не должна перезаписываться фазой AI_WAITING');
+                        assert.phase(BATTLE_PHASES.BATTLE_OVER, 'победа не должна перезаписываться фазой AI_WAITING');
                         assert.isTrue(battle.aiTimer === null, 'после победы ход ИИ планироваться не должен');
                         assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
                         assert.equal(run.gold, 15 + WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR, 'награда выдаётся ровно один раз');
@@ -4761,7 +4751,7 @@
                         clearLocalSave();
                         window.onPlayerCardClick(0);
                         assert.equal(battle.enemyHP, 0);
-                        assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER, 'победа не должна перезаписываться фазой AI_WAITING');
+                        assert.phase(BATTLE_PHASES.BATTLE_OVER, 'победа не должна перезаписываться фазой AI_WAITING');
                         assert.isTrue(battle.aiTimer === null, 'после победы ход ИИ планироваться не должен');
                         assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
                     }, relicRun('sharp_suit'));
@@ -4807,7 +4797,7 @@
                         clearLocalSave();
                         executeEnemyAI();
                         assert.equal(battle.enemyHP, 0);
-                        assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER);
+                        assert.phase(BATTLE_PHASES.BATTLE_OVER);
                         assert.isTrue(battle.aiTimer === null, 'после победы ход ИИ планироваться не должен');
                         assert.equal(battle.table.length, 0, 'атака врага не должна выкладываться');
                         assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
@@ -4824,7 +4814,7 @@
                         clearLocalSave();
                         executeEnemyAction({ type: 'transfer', card: battle.enemyHand[0] });
                         assert.equal(battle.enemyHP, 1);
-                        assert.equal(battle.phase, BATTLE_PHASES.PLAYER_DEFENSE);
+                        assert.phase(BATTLE_PHASES.PLAYER_DEFENSE);
                         assert.equal(battle.defender, 'player');
                         assert.equal(getEl('msg-title').innerText, 'Враг Переводит!');
                     }, relicRun('cascade_transfer'));
@@ -4837,7 +4827,7 @@
                         inGameStrict({ enemyHP: 0, phase }, () => {
                             clearLocalSave();
                             resumeFromSave();
-                            assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER);
+                            assert.phase(BATTLE_PHASES.BATTLE_OVER);
                             assert.equal(run.gold, 15, 'награда не должна выдаваться повторно');
                             assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
                             getEl('msg-btn').click();
@@ -4851,7 +4841,7 @@
                     inGameStrict({ enemyHP: 5, phase: BATTLE_PHASES.RESOLVING }, () => {
                         clearLocalSave();
                         resumeFromSave();
-                        assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
+                        assert.phase(BATTLE_PHASES.PLAYER_ATTACK);
                         const shop = getEl('shop-modal');
                         assert.isTrue(shop.classList.contains('hidden'), 'магазин открываться не должен');
                     });
@@ -4872,7 +4862,7 @@
                     inGameSaved(Object.assign({ phase, table: [] }, overrides), () => {
                         const tokenBefore = battle.actionToken;
                         fn();
-                        assert.equal(battle.phase, phase, 'фаза не должна меняться, если действие невозможно');
+                        assert.phase(phase, 'фаза не должна меняться, если действие невозможно');
                         assert.equal(battle.actionToken, tokenBefore, 'токен не должен меняться, если действие невозможно');
                     });
                 };
@@ -5358,7 +5348,7 @@
                     inGameStrict({ playerHand: [] }, () => {
                         clearLocalSave();
                         const out = applyRoundResult(getRoundResult());
-                        assert.equal(battle.phase, BATTLE_PHASES.ROUND_OVER);
+                        assert.phase(BATTLE_PHASES.ROUND_OVER);
                         assert.equal(run.playerHP, 30, 'при победе игрока HP игрока не меняется');
                         assert.equal(battle.enemyHP, 40, 'урон врагу ложится при закрытии модалки, не здесь');
                         assert.equal(out.type, 'player_win');
@@ -5366,7 +5356,7 @@
                     });
                     inGameStrict({ enemyHand: [] }, () => {
                         const out = applyRoundResult(getRoundResult());
-                        assert.equal(battle.phase, BATTLE_PHASES.ROUND_OVER);
+                        assert.phase(BATTLE_PHASES.ROUND_OVER);
                         assert.equal(run.playerHP, 30 - out.damage);
                         assert.isFalse(out.isDefeated);
                         assert.isFalse(out.savedBySafetyRope);
@@ -5391,11 +5381,11 @@
                 it('checkRoundEnd(): false если раунд идёт; true и модалка + фаза ROUND_OVER, если закончен', () => {
                     inGameStrict({}, () => {
                         assert.isFalse(checkRoundEnd());
-                        assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK, 'фаза не должна меняться');
+                        assert.phase(BATTLE_PHASES.PLAYER_ATTACK, 'фаза не должна меняться');
                     });
                     inGameStrict({ playerHand: [] }, () => {
                         assert.isTrue(checkRoundEnd());
-                        assert.equal(battle.phase, BATTLE_PHASES.ROUND_OVER);
+                        assert.phase(BATTLE_PHASES.ROUND_OVER);
                         const box = getEl('msg-box');
                         assert.isTrue(box && !box.classList.contains('hidden'), 'модалка раунда должна быть показана');
                     });
@@ -5437,7 +5427,7 @@
                     inGameStrict({ phase: BATTLE_PHASES.PLAYER_ATTACK, isTransferActive: true, cascadeTransferUsedThisTurn: true, heavyBallastAppliedThisTurn: true,
                         drawDeck: Array.from({ length: HAND_SIZE * 2 + 2 }, (_, i) => C('x' + i, 'Pikes', 6 + (i % 9))), playerHand: [], enemyHand: [] }, () => {
                         beginResolution();
-                        assert.equal(battle.phase, BATTLE_PHASES.RESOLVING);
+                        assert.phase(BATTLE_PHASES.RESOLVING);
                         assert.isFalse(battle.isTransferActive);
                         clearLocalSave();
                         settleTurn('enemy');
@@ -5459,7 +5449,7 @@
                         assert.equal(battle.enemyHand.length, 2 + 3);
                         assert.equal(battle.enemyHP, 40 - 3 * TAKE_DAMAGE_PER_CARD);
                         assert.isFalse(battle.cardsToTake);
-                        assert.equal(battle.phase, BATTLE_PHASES.RESOLVING);
+                        assert.phase(BATTLE_PHASES.RESOLVING);
                     });
                 });
 
@@ -5468,7 +5458,7 @@
                         table: [testPair(C('a1', 'Pikes', 7)), testPair(C('a2', 'Hearts', 8))] }, () => {
                         const out = applyEnemyTake();
                         assert.isTrue(out.enemyJustDied);
-                        assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER);
+                        assert.phase(BATTLE_PHASES.BATTLE_OVER);
                         assert.equal(run.gold, WIN_GOLD_BASE + 1 * WIN_GOLD_PER_FLOOR);
                     }, { gold: 0 });
                     inGameStrict({ phase: BATTLE_PHASES.RESOLVING, enemyHP: 0, cardsToTake: true, table: [testPair(C('a1', 'Pikes', 7))] }, () => {
@@ -5571,7 +5561,7 @@
                         clearLocalSave();
                         damageEnemyHP(100);
                         assert.equal(battle.enemyHP, 0, 'HP не уходит ниже нуля');
-                        assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER);
+                        assert.phase(BATTLE_PHASES.BATTLE_OVER);
                         assert.equal(run.gold, WIN_GOLD_BASE + WIN_GOLD_PER_FLOOR);
                         const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
                         assert.equal(saved.battle.phase, BATTLE_PHASES.BATTLE_OVER, 'победа должна быть сохранена до закрытия модалки');
@@ -5751,7 +5741,7 @@
                             assert.equal(battle.enemyHand.length, 1);
                             assert.isFalse(battle.cardsToTake);
                             // всё отбито: решать, подкидывать ли ещё, теперь только игроку -> ход возвращается ему
-                            assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK);
+                            assert.phase(BATTLE_PHASES.PLAYER_ATTACK);
                         } finally { window.renderAll = realRender; clearAITimer(); }
                     });
                     inGameStrict({ defender: 'enemy', phase: BATTLE_PHASES.RESOLVING,
@@ -5759,7 +5749,7 @@
                         const realRender = window.renderAll; window.renderAll = () => {};
                         try {
                             executeEnemyAction(chooseEnemyAction());
-                            assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING, 'у игрока нет карт — враг сам объявляет бито (таймер)');
+                            assert.phase(BATTLE_PHASES.AI_WAITING, 'у игрока нет карт — враг сам объявляет бито (таймер)');
                         } finally { window.renderAll = realRender; clearAITimer(); }
                     });
                 });
@@ -5773,7 +5763,7 @@
                             assert.equal(battle.table[0].defend.id, 'e1');
                             assert.isTrue(battle.table[1].defend === null);
                             assert.isTrue(battle.cardsToTake);
-                            assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING, 'у игрока нет карт — враг планирует взятие');
+                            assert.phase(BATTLE_PHASES.AI_WAITING, 'у игрока нет карт — враг планирует взятие');
                         } finally { window.renderAll = realRender; clearAITimer(); }
                     });
                 });
@@ -5784,7 +5774,7 @@
                         assert.equal(battle.table.length, 1);
                         assert.equal(battle.table[0].attack.id, 'e2', 'самая слабая');
                         assert.equal(battle.enemyHand.map(c => c.id).join(), 'e3,e1', 'рука врага осталась упорядоченной от слабой к сильной');
-                        assert.equal(battle.phase, BATTLE_PHASES.PLAYER_DEFENSE);
+                        assert.phase(BATTLE_PHASES.PLAYER_DEFENSE);
                     });
                 });
 
@@ -5794,7 +5784,7 @@
                         assert.equal(battle.defender, 'player');
                         assert.equal(battle.table.length, 2);
                         assert.equal(battle.enemyHand.length, 1);
-                        assert.equal(battle.phase, BATTLE_PHASES.PLAYER_DEFENSE);
+                        assert.phase(BATTLE_PHASES.PLAYER_DEFENSE);
                         const box = getEl('msg-box');
                         assert.isTrue(box && !box.classList.contains('hidden'));
                     });
@@ -6341,6 +6331,17 @@
                     assert.isTrue(getEl('msg-box').classList.contains('hidden'), 'inGameStrict закрывает модалку');
                     assert.isTrue(getEl('shop-modal').classList.contains('hidden'), 'inGameStrict закрывает магазин');
                     assert.isTrue(run === realRun && battle === realBattle, 'реальные run/battle возвращены');
+                });
+
+                it('assert.phase(): сравнивает фазу текущего боя; при расхождении называет обе фазы и сохраняет своё сообщение', () => {
+                    withIsolatedGameState(makeTestRun(), makeTestBattle({ phase: BATTLE_PHASES.AI_WAITING }), () => {
+                        assert.phase(BATTLE_PHASES.AI_WAITING);
+                        let plain = '', custom = '';
+                        try { assert.phase(BATTLE_PHASES.BATTLE_OVER); } catch (err) { plain = err.message; }
+                        try { assert.phase(BATTLE_PHASES.BATTLE_OVER, 'после победы'); } catch (err) { custom = err.message; }
+                        assert.isTrue(plain.includes(BATTLE_PHASES.BATTLE_OVER) && plain.includes(BATTLE_PHASES.AI_WAITING), plain);
+                        assert.isTrue(custom.startsWith('после победы') && custom.includes(BATTLE_PHASES.AI_WAITING), custom);
+                    });
                 });
 
                 it('withTestGame(): включает инварианты на время теста, потом восстанавливает флаг, закрывает модалку и чистит сейв; реальный сейв сохраняется', () => {
@@ -7093,7 +7094,7 @@
                             handlePlayerTake();
                             assert.isTrue(battle.enemyHP > 0);
                             assert.isTrue(battle.aiTimer !== null, 'ИИ должен быть запланирован, пока враг жив');
-                            assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
+                            assert.phase(BATTLE_PHASES.AI_WAITING);
                         }
                     );
                 });
@@ -7113,7 +7114,7 @@
                             // показал бы «Раунд Выигран!» поверх победной модалки и потерял бы её openShop().
                             assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
                             // Победа фиксируется фазой BATTLE_OVER; PLAYER_ATTACK означал бы, что enterPlayerPhase() всё же вызвали.
-                            assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER, 'enterPlayerPhase() не должен вызываться после победы');
+                            assert.phase(BATTLE_PHASES.BATTLE_OVER, 'enterPlayerPhase() не должен вызываться после победы');
                             const msgBox = getEl('msg-box');
                             closeModal();
                         }
@@ -7530,7 +7531,7 @@
                             // рука при уже пустых колоде и столе никак не завершала раунд —
                             // игра зависала на "Ваш ход: Атака" без карт и без доступных
                             // действий (баг из отчёта пользователя).
-                            assert.equal(battle.phase, BATTLE_PHASES.ROUND_OVER, 'checkRoundEnd() должен был сработать и завершить раунд');
+                            assert.phase(BATTLE_PHASES.ROUND_OVER, 'checkRoundEnd() должен был сработать и завершить раунд');
                             assert.equal(getEl('msg-title').innerText, 'Раунд Выигран!');
                             const msgBox = getEl('msg-box');
                             closeModal();
@@ -7611,7 +7612,7 @@
                             assert.equal(battle.playerHand.length, 2, 'рука не должна была тронуться');
                             assert.equal(battle.discardPile.length, 0, 'ничего не должно было уйти в отбой');
                             assert.isFalse(battle.jesterDiscardUsedThisBattle, 'заряд не должен был потратиться на неудавшуюся попытку');
-                            assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK, 'ход не должен был завершиться');
+                            assert.phase(BATTLE_PHASES.PLAYER_ATTACK, 'ход не должен был завершиться');
                         }
                     );
                 });
@@ -7920,7 +7921,7 @@
 
                         restoreRealBattleAfterTests(snapshot);
                         assert.isTrue(battle.aiTimer !== null, 'Ход AI должен быть запланирован заново');
-                        assert.equal(battle.phase, BATTLE_PHASES.AI_WAITING);
+                        assert.phase(BATTLE_PHASES.AI_WAITING);
                         clearAITimer();
                     });
                 });
@@ -7954,7 +7955,7 @@
 
                             restoreRealStateAfterTests(snapshot);
 
-                            assert.equal(battle.phase, BATTLE_PHASES.PLAYER_ATTACK, 'фаза');
+                            assert.phase(BATTLE_PHASES.PLAYER_ATTACK, 'фаза');
                             assert.equal(battle.defender, 'enemy', 'защитник');
                             assert.equal(battle.table.length, 1, 'стол (вложенный массив должен быть восстановлен глубоко)');
                             assert.equal(battle.table[0].defend.id, 'd1', 'побитая карта на столе');
@@ -8006,7 +8007,7 @@
                         assert.isFalse(snapshot.aiPending);
                         restoreRealBattleAfterTests(snapshot);
                         assert.equal(battle.aiTimer, null);
-                        assert.equal(battle.phase, BATTLE_PHASES.PLAYER_DEFENSE);
+                        assert.phase(BATTLE_PHASES.PLAYER_DEFENSE);
                     });
                 });
 
