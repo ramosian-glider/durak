@@ -977,7 +977,7 @@
 
         function assertBattleState() {
             if (!battleInvariantChecksEnabled) return;
-            const violations = getBattleInvariantViolations(battle);
+            const violations = [...getBattleInvariantViolations(battle), ...checkBattleVictoryInvariants(battle)];
             if (violations.length > 0) {
                 throw new Error('Battle invariant violated: ' + violations.join('; '));
             }
@@ -1270,6 +1270,18 @@
 
         function checkBattleHPInvariants(b) {
             return (Number.isFinite(b.enemyHP) && b.enemyHP >= 0) ? [] : ['invalid enemyHP: ' + b.enemyHP];
+        }
+
+        // Commit-time only, deliberately NOT part of getBattleInvariantViolations():
+        // that one also validates saves, and older saves legitimately hold a dead
+        // enemy in a live phase (resumeFromSave() repairs them). In live play a dead
+        // enemy means the battle is won: winBattle() moves to BATTLE_OVER before its
+        // commit, so any other commit with 0 enemy HP means some code carried on after
+        // a lethal hit (cascade_transfer, sharp_suit, ...) instead of stopping.
+        function checkBattleVictoryInvariants(b) {
+            return (b.enemyHP <= 0 && b.phase !== BATTLE_PHASES.BATTLE_OVER)
+                ? ['enemy has 0 HP but phase is ' + b.phase + ' (a won battle must be BATTLE_OVER)']
+                : [];
         }
 
         function getBattleInvariantViolations(b) {
@@ -4747,6 +4759,54 @@
                         assert.isTrue(battle.aiTimer === null, 'после победы ход ИИ планироваться не должен');
                         assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
                     }, relicRun('sharp_suit'));
+                });
+
+                // Structural safety net for future relics: with invariants on (every strict
+                // test), a commit that leaves a dead enemy in a live phase throws at once.
+                it('Инвариант коммита: враг с 0 HP допустим только в BATTLE_OVER; проверка сейвов его не требует (старые сейвы чинит resumeFromSave)', () => {
+                    const dead = (phase) => makeTestBattle({ enemyHP: 0, phase });
+                    assert.equal(checkBattleVictoryInvariants(dead(BATTLE_PHASES.BATTLE_OVER)).length, 0);
+                    [BATTLE_PHASES.AI_WAITING, BATTLE_PHASES.RESOLVING, BATTLE_PHASES.PLAYER_ATTACK].forEach((phase) => {
+                        assert.equal(checkBattleVictoryInvariants(dead(phase)).length, 1, 'мёртвый враг в фазе ' + phase);
+                    });
+                    assert.equal(checkBattleVictoryInvariants(makeTestBattle({ enemyHP: 1, phase: BATTLE_PHASES.AI_WAITING })).length, 0);
+                    assert.equal(getBattleInvariantViolations(dead(BATTLE_PHASES.RESOLVING)).length, 0, 'проверка сейвов не должна отвергать старый сейв с 0 HP');
+                    inGameStrict({ enemyHP: 0, phase: BATTLE_PHASES.AI_WAITING }, () => {
+                        let message = '';
+                        try { commitBattleState({ render: false }); } catch (err) { message = err.message; }
+                        assert.isTrue(message.includes('must be BATTLE_OVER'), 'commit должен падать на мёртвом враге вне BATTLE_OVER: ' + message);
+                    });
+                });
+
+                // If you add a relic hook that calls damageEnemyHP(), this fails on purpose.
+                it('Охрана: хуки артефактов, способные убить врага, известны — у каждого есть тест «враг гибнет от хука»', () => {
+                    const lethalHooks = new Set();
+                    for (const effect of Object.values(RELIC_EFFECTS)) {
+                        for (const [hook, handler] of Object.entries(effect)) {
+                            if (typeof handler === 'function' && handler.toString().includes('damageEnemyHP(')) lethalHooks.add(hook);
+                        }
+                    }
+                    assert.equal(
+                        [...lethalHooks].sort().join(),
+                        ['onEnemyTurnStart', 'onPlayerDefend', 'onPlayerTookCards', 'onTransfer'].join(),
+                        'новый хук вызывает damageEnemyHP(): проверьте код, который его диспетчеризует (didEnemyJustDie / enterAIWaitingPhase) и добавьте тест в сюит 8h'
+                    );
+                });
+
+                it('heavy_ballast: враг гибнет от хука в начале своего хода — победа, ход ИИ не продолжается, модалка победы цела', () => {
+                    const bigHand = Array.from({ length: 10 }, (_, k) => testCard('e' + k, 'Pikes', 6));
+                    inGameStrict({
+                        phase: BATTLE_PHASES.AI_WAITING, defender: 'player', enemyHP: 2, enemyHand: bigHand, table: []
+                    }, () => {
+                        clearLocalSave();
+                        executeEnemyAI();
+                        assert.equal(battle.enemyHP, 0);
+                        assert.equal(battle.phase, BATTLE_PHASES.BATTLE_OVER);
+                        assert.isTrue(battle.aiTimer === null, 'после победы ход ИИ планироваться не должен');
+                        assert.equal(battle.table.length, 0, 'атака врага не должна выкладываться');
+                        assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
+                        assert.equal(run.gold, 15 + WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR, 'награда выдаётся ровно один раз');
+                    }, relicRun('heavy_ballast'));
                 });
 
                 it('Каскадный перевод: нелетальный урон — перевод проходит как обычно', () => {
