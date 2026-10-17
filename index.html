@@ -367,7 +367,12 @@
                 </div>
             </div>
             <div>
-                <h3 class="section-title">Шулерские Артефакты</h3>
+                <div class="flex items-center justify-between gap-2 mb-2">
+                    <h3 class="section-title !mb-0">Шулерские Артефакты</h3>
+                    <button id="btn-shop-reroll" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 font-black text-[11px] rounded-lg border border-amber-500/50 active:scale-95 transition flex-shrink-0" onclick="rerollShop()">
+                        🎲 Обновить
+                    </button>
+                </div>
                 <div id="shop-relics-list" class="grid grid-cols-1 gap-2">
                 </div>
             </div>
@@ -564,6 +569,12 @@
         const HEAL_COST = 10;
 
         const HEAL_AMOUNT = 10;
+
+        // Shop draft: the shop offers this many artifacts at a time (not the whole
+        // catalogue), and a reroll of the offer costs a flat fee.
+        const SHOP_DRAFT_SIZE = 4;
+
+        const SHOP_REROLL_COST = 5;
 
         const AI_QUICK_DELAY_MS = 400;
 
@@ -907,7 +918,9 @@
             maxHP: 30,
             gold: 15,
             relics: [],
-            deck: []
+            deck: [],
+            // Ids of the artifacts the shop currently offers; null = this shop visit has no draft yet.
+            shopOffer: null
         };
 
         let battle = {
@@ -1096,7 +1109,8 @@
                 maxHP: START_PLAYER_HP,
                 gold: START_GOLD,
                 relics: [],
-                deck: generateStandardDeck()
+                deck: generateStandardDeck(),
+                shopOffer: null
             };
             startFloorBattle();
             saveGameState();
@@ -1372,6 +1386,9 @@
             if (!Number.isFinite(savedRun.gold) || savedRun.gold < 0) return false;
             if (!Array.isArray(savedRun.relics)) return false;
             if (!Array.isArray(savedRun.deck) || savedRun.deck.length === 0) return false;
+            // Optional: older saves have no shop draft yet (null/undefined = not drawn).
+            if (savedRun.shopOffer != null &&
+                (!Array.isArray(savedRun.shopOffer) || !savedRun.shopOffer.every(id => typeof id === 'string'))) return false;
 
             return true;
         }
@@ -2728,6 +2745,57 @@
         // Between-battle shop: buying, selling and healing.
         // ============================================================
 
+        // ---- Shop draft ---------------------------------------------------------
+        // The shop offers SHOP_DRAFT_SIZE random artifacts instead of the whole
+        // catalogue. The offer is kept in run.shopOffer (as ids, so it is saved with
+        // the run): closing the game or reopening the shop never redraws it for free,
+        // and only a paid reroll or the next floor replaces it. The heal potion is
+        // not part of the draft — it is always on sale.
+
+        // Artifacts the player does not own yet (what the draft may draw from).
+        function getShopAvailableRelics() {
+            return ALL_RELICS.filter(r => !hasRelic(r.id));
+        }
+
+        // Fisher-Yates on a copy; `rng` is injectable so tests can be deterministic.
+        function shuffledCopy(items, rng = Math.random) {
+            const copy = [...items];
+            for (let i = copy.length - 1; i > 0; i--) {
+                const j = Math.floor(rng() * (i + 1));
+                [copy[i], copy[j]] = [copy[j], copy[i]];
+            }
+            return copy;
+        }
+
+        // Pure: picks up to `count` artifact ids from `pool`. Artifacts listed in
+        // `previousIds` (the offer being replaced) come last, so a reroll shows new
+        // options whenever the pool has enough of them.
+        function drawShopOffer(pool, count, previousIds = [], rng = Math.random) {
+            const fresh = pool.filter(r => !previousIds.includes(r.id));
+            const repeated = pool.filter(r => previousIds.includes(r.id));
+            return [...shuffledCopy(fresh, rng), ...shuffledCopy(repeated, rng)]
+                .slice(0, count)
+                .map(r => r.id);
+        }
+
+        // The artifacts on offer right now. Draws the first draft of this shop visit
+        // if there is none yet, and drops ids that can no longer be bought (already
+        // owned, or unknown after a catalogue change) WITHOUT refilling the gaps —
+        // an emptied offer stays empty until the player pays for a reroll.
+        function ensureShopOffer() {
+            if (!Array.isArray(run.shopOffer)) {
+                run.shopOffer = drawShopOffer(getShopAvailableRelics(), SHOP_DRAFT_SIZE);
+            }
+            const purchasable = new Set(getShopAvailableRelics().map(r => r.id));
+            run.shopOffer = [...new Set(run.shopOffer)].filter(id => purchasable.has(id));
+            return run.shopOffer.map(id => ALL_RELICS.find(r => r.id === id));
+        }
+
+        // A reroll only makes sense while some purchasable artifact is not on display.
+        function canRerollShop() {
+            return getShopAvailableRelics().length > ensureShopOffer().length;
+        }
+
         function openShop() {
             const shopModal = getEl('shop-modal');
             if (!shopModal) return;
@@ -2754,11 +2822,26 @@
                 `;
             }
 
+            const offer = ensureShopOffer();
+
+            const rerollBtn = getEl('btn-shop-reroll');
+            if (rerollBtn) {
+                const rerollPossible = canRerollShop();
+                rerollBtn.innerText = `🎲 Обновить · ${SHOP_REROLL_COST}$`;
+                rerollBtn.disabled = !rerollPossible;
+                rerollBtn.classList.toggle('opacity-40', !rerollPossible);
+            }
+
             const shopList = getEl('shop-relics-list');
             if (shopList) {
                 shopList.innerHTML = '';
-                const available = ALL_RELICS.filter(r => !hasRelic(r.id));
-                available.forEach(relic => {
+                if (offer.length === 0) {
+                    const emptyText = getShopAvailableRelics().length === 0
+                        ? 'Вы скупили все артефакты.'
+                        : 'Предложение раскуплено. Обновите его, чтобы увидеть новые артефакты.';
+                    shopList.innerHTML = `<div class="muted-text text-center py-3">${emptyText}</div>`;
+                }
+                offer.forEach(relic => {
                     const item = document.createElement('div');
                     item.className = "flex items-center justify-between gap-3 p-2.5 bg-slate-900 border border-emerald-800/60 rounded-xl";
                     item.innerHTML = `
@@ -2854,10 +2937,17 @@
             const relic = ALL_RELICS.find(r => r.id === relicId);
             if (!relic) return;
 
+            // Only what the draft currently offers can be bought.
+            if (!Array.isArray(run.shopOffer) || !run.shopOffer.includes(relicId)) {
+                showModal("Нет в продаже", "Этого артефакта сейчас нет в предложении магазина.");
+                return;
+            }
+
             if (run.gold >= relic.price) {
                 if (run.relics.length < MAX_RELICS) {
                     run.gold -= relic.price;
                     run.relics.push(relic);
+                    // openShop() below drops the bought id from the offer (see ensureShopOffer()).
                     audio.playWinSound();
                     openShop();
                     renderAll();
@@ -2867,6 +2957,23 @@
             } else {
                 showModal("Недостаточно денег", "Побеждайте в боях, чтобы зарабатывать золотые монеты.");
             }
+        };
+
+        window.rerollShop = function() {
+            ensureShopOffer();
+            if (!canRerollShop()) {
+                showModal("Нечего обновлять", "Все доступные артефакты уже в предложении.");
+                return;
+            }
+            if (run.gold < SHOP_REROLL_COST) {
+                showModal("Недостаточно денег", `Обновление предложения стоит ${SHOP_REROLL_COST}$.`);
+                return;
+            }
+            run.gold -= SHOP_REROLL_COST;
+            run.shopOffer = drawShopOffer(getShopAvailableRelics(), SHOP_DRAFT_SIZE, run.shopOffer);
+            audio.playWinSound();
+            openShop();
+            renderAll();
         };
 
         // ============================================================
@@ -3263,6 +3370,8 @@
             const shopModal = getEl('shop-modal');
             setVisible(shopModal, false, 'flex');
 
+            // The next shop visit gets a fresh draft.
+            run.shopOffer = null;
             run.floor++;
             if (run.floor > ENEMIES.length) {
                 clearLocalSave();
@@ -3401,7 +3510,7 @@
         }
 
         function makeTestRun(overrides = {}) {
-            return Object.assign({ floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck() }, overrides);
+            return Object.assign({ floor: 1, playerHP: 30, maxHP: 30, gold: 0, relics: [], deck: generateStandardDeck(), shopOffer: null }, overrides);
         }
 
         // A run with an empty deck: what most battle tests want, since they deal
@@ -6366,7 +6475,7 @@
             });
 
             runner.describe('9. Магазин и здоровье игрока', (it, assert) => {
-                withFieldSnapshot({ run: ['playerHP', 'maxHP', 'gold'] }, () => {
+                withFieldSnapshot({ run: ['playerHP', 'maxHP', 'gold', 'shopOffer'] }, () => {
                     it('openShop корректно обновляет отображение здоровья и золота', () => {
                         run.playerHP = 18;
                         run.maxHP = 30;
@@ -6404,10 +6513,11 @@
             });
 
             runner.describe('9b. Слоты артефактов в магазине (покупка/продажа)', (it, assert) => {
-              withFieldSnapshot({ run: ['relics', 'gold'] }, () => {
+              withFieldSnapshot({ run: ['relics', 'gold', 'shopOffer'] }, () => {
                 it('Купленный артефакт занимает самый левый свободный слот', () => {
                     run.relics = [];
                     run.gold = 100;
+                    run.shopOffer = ['cheat_eye', 'midas_touch']; // buyRelic() only sells what the draft offers
                     buyRelic('cheat_eye');
                     buyRelic('midas_touch');
                     assert.equal(run.relics.length, 2);
@@ -6452,6 +6562,226 @@
                 });
               });
                 closeTestUI();
+            });
+
+            runner.describe('9c. Драфт артефактов в магазине (предложение, реролл, лекарство)', (it, assert) => {
+                // Deterministic RNG (LCG) so draws are reproducible.
+                const makeSeededRng = (seed) => () => {
+                    seed = (seed * 1664525 + 1013904223) % 4294967296;
+                    return seed / 4294967296;
+                };
+                const poolOf = (...ids) => ids.map(id => ALL_RELICS.find(r => r.id === id));
+                // Runs fn in a throwaway run/battle with the sound muted.
+                const inShop = (runOverrides, fn) => {
+                    const realMuted = audio.isMuted;
+                    audio.isMuted = true;
+                    try { withTestGame(makeTestRun(runOverrides), makeTestBattle(), fn); }
+                    finally { audio.isMuted = realMuted; }
+                };
+                // Ids of the artifacts the shop actually renders (read from the buy buttons).
+                const shownIds = () => Array.from(getEl('shop-relics-list').querySelectorAll('button'))
+                    .map(b => b.getAttribute('onclick').match(/buyRelic\('(.+)'\)/)[1]);
+
+                it('drawShopOffer: ровно count уникальных артефактов из пула; пул меньше count — весь пул', () => {
+                    const ids = drawShopOffer(ALL_RELICS, SHOP_DRAFT_SIZE, [], makeSeededRng(1));
+                    assert.equal(ids.length, SHOP_DRAFT_SIZE);
+                    assert.equal(new Set(ids).size, SHOP_DRAFT_SIZE, 'id не должны повторяться');
+                    assert.isTrue(ids.every(id => ALL_RELICS.some(r => r.id === id)));
+                    const small = drawShopOffer(poolOf('cheat_eye', 'midas_touch'), SHOP_DRAFT_SIZE, [], makeSeededRng(1));
+                    assert.equal(small.length, 2, 'из пула в 2 артефакта нельзя выдать больше двух');
+                });
+
+                it('drawShopOffer: при реролле новые артефакты идут раньше прежних', () => {
+                    const previous = ['cheat_eye', 'midas_touch', 'mirror_ring', 'ace_sleeve'];
+                    const pool = poolOf(...previous, 'spam_mail', 'coin_magnet');
+                    for (let seed = 1; seed <= 20; seed++) {
+                        const ids = drawShopOffer(pool, SHOP_DRAFT_SIZE, previous, makeSeededRng(seed));
+                        assert.equal(ids.length, SHOP_DRAFT_SIZE);
+                        assert.isTrue(ids.includes('spam_mail') && ids.includes('coin_magnet'), `seed ${seed}: оба новых артефакта должны попасть в предложение`);
+                    }
+                });
+
+                it('drawShopOffer: если новых артефактов не хватает, добирает из прежних', () => {
+                    const previous = ['cheat_eye', 'midas_touch', 'mirror_ring', 'ace_sleeve'];
+                    const ids = drawShopOffer(poolOf(...previous, 'spam_mail'), SHOP_DRAFT_SIZE, previous, makeSeededRng(3));
+                    assert.equal(ids.length, SHOP_DRAFT_SIZE);
+                    assert.isTrue(ids.includes('spam_mail'), 'единственный новый артефакт должен быть в предложении');
+                });
+
+                it('Магазин показывает ровно SHOP_DRAFT_SIZE артефактов, а не весь каталог', () => {
+                    assert.isTrue(ALL_RELICS.length > SHOP_DRAFT_SIZE, 'проверка осмысленна, только пока каталог больше предложения');
+                    inShop({ gold: 50 }, () => {
+                        openShop();
+                        assert.equal(shownIds().length, SHOP_DRAFT_SIZE);
+                        assert.equal(shownIds().join(), run.shopOffer.join(), 'показано ровно то, что лежит в run.shopOffer');
+                    });
+                });
+
+                it('Уже купленные артефакты не попадают в драфт', () => {
+                    inShop({ relics: ALL_RELICS.slice(0, 5) }, () => {
+                        for (let i = 0; i < 10; i++) {
+                            run.shopOffer = null;
+                            openShop();
+                            assert.equal(shownIds().length, SHOP_DRAFT_SIZE);
+                            shownIds().forEach(id => assert.isFalse(hasRelic(id), `${id} уже куплен, но предложен`));
+                        }
+                    });
+                });
+
+                it('Предложение не меняется при повторном открытии магазина', () => {
+                    inShop({ gold: 50 }, () => {
+                        openShop();
+                        const first = run.shopOffer.join();
+                        openShop();
+                        openShop();
+                        assert.equal(run.shopOffer.join(), first, 'повторный openShop не должен бесплатно перебрасывать драфт');
+                    });
+                });
+
+                it('Предложение входит в сохранение забега и проходит валидацию (перезагрузка не перебрасывает драфт)', () => {
+                    inShop({ gold: 50 }, () => {
+                        openShop();
+                        const saved = JSON.parse(JSON.stringify(serializeGameState()));
+                        assert.isTrue(validateRunState(saved.run));
+                        assert.equal(saved.run.shopOffer.join(), run.shopOffer.join());
+                    });
+                });
+
+                it('validateRunState: shopOffer необязателен (старые сейвы), но должен быть массивом строк', () => {
+                    const withOffer = (value, present = true) => {
+                        const r = makeTestRun();
+                        if (present) r.shopOffer = value; else delete r.shopOffer;
+                        return r;
+                    };
+                    assert.isTrue(validateRunState(withOffer(undefined, false)), 'сейв без поля (до драфта) валиден');
+                    assert.isTrue(validateRunState(withOffer(null)));
+                    assert.isTrue(validateRunState(withOffer(['cheat_eye'])));
+                    assert.isFalse(validateRunState(withOffer('cheat_eye')), 'строка вместо массива');
+                    assert.isFalse(validateRunState(withOffer([1, 2])), 'не строки в массиве');
+                });
+
+                it('Лекарство всегда в магазине — и при обычном предложении, и когда все артефакты скуплены', () => {
+                    inShop({ gold: 50 }, () => {
+                        openShop();
+                        assert.isTrue(getEl('shop-heal-list').innerHTML.includes('buyHeal()'));
+                    });
+                    inShop({ gold: 50, relics: ALL_RELICS.slice() }, () => {
+                        openShop();
+                        assert.equal(shownIds().length, 0, 'артефактов на продажу не осталось');
+                        assert.isTrue(getEl('shop-heal-list').innerHTML.includes('buyHeal()'), 'лекарство не зависит от драфта');
+                        assert.isTrue(getEl('shop-relics-list').textContent.includes('скупили'), 'вместо пустоты — пояснение');
+                    });
+                });
+
+                it('buyRelic: артефакт вне предложения купить нельзя — золото и инвентарь не меняются', () => {
+                    inShop({ gold: 100 }, () => {
+                        openShop();
+                        const notOffered = ALL_RELICS.find(r => !run.shopOffer.includes(r.id)).id;
+                        buyRelic(notOffered);
+                        assert.equal(run.gold, 100);
+                        assert.isFalse(hasRelic(notOffered));
+                    });
+                });
+
+                it('buyRelic: купленный артефакт уходит из предложения, пустое место не пополняется', () => {
+                    inShop({ gold: 100 }, () => {
+                        openShop();
+                        const [first, ...rest] = run.shopOffer;
+                        buyRelic(first);
+                        assert.isTrue(hasRelic(first));
+                        assert.equal(run.shopOffer.join(), rest.join());
+                        assert.equal(shownIds().length, SHOP_DRAFT_SIZE - 1, 'в магазине осталось на один меньше');
+                    });
+                });
+
+                it('Раскупленное предложение не пополняется бесплатно: магазин пуст, пока игрок не оплатит реролл', () => {
+                    inShop({ gold: 200 }, () => {
+                        openShop();
+                        [...run.shopOffer].forEach(id => buyRelic(id));
+                        assert.equal(run.relics.length, SHOP_DRAFT_SIZE);
+                        assert.equal(run.shopOffer.length, 0);
+                        openShop();
+                        openShop();
+                        assert.equal(shownIds().length, 0, 'повторные открытия магазина не должны перебрасывать драфт');
+                        assert.isTrue(getEl('shop-relics-list').textContent.includes('Обновите'), 'подсказка про реролл');
+                        assert.isFalse(getEl('btn-shop-reroll').disabled, 'реролл доступен: в пуле есть что показать');
+                    });
+                });
+
+                it('Реролл: списывает SHOP_REROLL_COST и выдаёт SHOP_DRAFT_SIZE артефактов, которых не было в прежнем предложении', () => {
+                    inShop({ gold: 20 }, () => {
+                        openShop();
+                        const before = [...run.shopOffer];
+                        rerollShop();
+                        assert.equal(run.gold, 20 - SHOP_REROLL_COST);
+                        assert.equal(run.shopOffer.length, SHOP_DRAFT_SIZE);
+                        assert.isTrue(run.shopOffer.every(id => !before.includes(id)), 'пула хватает на целиком новое предложение');
+                        assert.equal(shownIds().join(), run.shopOffer.join(), 'магазин перерисован с новым предложением');
+                    });
+                });
+
+                it('Реролл без денег: ничего не списывается и предложение прежнее', () => {
+                    inShop({ gold: SHOP_REROLL_COST - 1 }, () => {
+                        openShop();
+                        const before = run.shopOffer.join();
+                        rerollShop();
+                        assert.equal(run.gold, SHOP_REROLL_COST - 1);
+                        assert.equal(run.shopOffer.join(), before);
+                    });
+                });
+
+                it('Реролл после покупки снова наполняет предложение до SHOP_DRAFT_SIZE', () => {
+                    inShop({ gold: 100 }, () => {
+                        openShop();
+                        const bought = ALL_RELICS.find(r => r.id === run.shopOffer[0]);
+                        buyRelic(bought.id);
+                        assert.equal(run.shopOffer.length, SHOP_DRAFT_SIZE - 1);
+                        rerollShop();
+                        assert.equal(run.shopOffer.length, SHOP_DRAFT_SIZE);
+                        assert.isFalse(run.shopOffer.includes(bought.id), 'купленный артефакт не возвращается в предложение');
+                        assert.equal(run.gold, 100 - bought.price - SHOP_REROLL_COST);
+                    });
+                });
+
+                it('Реролл бесполезен, когда весь пул уже в предложении: кнопка отключена, золото не тратится', () => {
+                    inShop({ gold: 50, relics: ALL_RELICS.slice(0, ALL_RELICS.length - SHOP_DRAFT_SIZE) }, () => {
+                        openShop();
+                        assert.equal(run.shopOffer.length, SHOP_DRAFT_SIZE);
+                        assert.isTrue(getEl('btn-shop-reroll').disabled);
+                        const before = run.shopOffer.join();
+                        rerollShop();
+                        assert.equal(run.gold, 50);
+                        assert.equal(run.shopOffer.join(), before);
+                    });
+                });
+
+                it('Кнопка реролла показывает цену из SHOP_REROLL_COST и активна, пока есть что обновлять', () => {
+                    inShop({ gold: 50 }, () => {
+                        openShop();
+                        const btn = getEl('btn-shop-reroll');
+                        assert.isTrue(btn.innerText.includes(SHOP_REROLL_COST + '$'));
+                        assert.isFalse(btn.disabled);
+                    });
+                });
+
+                it('Неизвестные и уже купленные id в предложении отбрасываются без пополнения, дубли схлопываются', () => {
+                    inShop({ relics: poolOf('cheat_eye') }, () => {
+                        run.shopOffer = ['cheat_eye', 'no_such_relic', 'midas_touch', 'midas_touch'];
+                        openShop();
+                        assert.equal(run.shopOffer.join(), 'midas_touch');
+                    });
+                });
+
+                it('Следующий этаж сбрасывает предложение, а в новом магазине выдаётся новый драфт', () => {
+                    inShop({ gold: 50 }, () => {
+                        openShop();
+                        assert.equal(run.shopOffer.length, SHOP_DRAFT_SIZE);
+                        getEl('btn-next-floor').onclick();
+                        assert.isTrue(run.shopOffer === null, 'предложение прошлого этажа не должно переезжать на следующий');
+                        openShop();
+                        assert.equal(run.shopOffer.length, SHOP_DRAFT_SIZE);
+                    });
+                });
             });
 
             runner.describe('10. Уровень соперника, урон при взятии и бонус HP за босса', (it, assert) => {
@@ -6613,11 +6943,16 @@
                             applyPlayerDamage(100); // срабатывает и потребляет safety_rope
                             assert.isFalse(hasRelic('safety_rope'));
 
+                            assert.isTrue(getShopAvailableRelics().some(r => r.id === 'safety_rope'),
+                                'После срабатывания трос должен снова попадать в пул магазина — это осознанное поведение, подтверждённое пользователем');
+
+                            // The draft is random, so put the rope on offer explicitly and check it is shown.
+                            run.shopOffer = ['safety_rope'];
                             openShop();
                             const shopList = getEl('shop-relics-list');
                             const offersSafetyRope = Array.from(shopList.children)
                                 .some(item => item.textContent.includes('Страховочный трос'));
-                            assert.isTrue(offersSafetyRope, 'После срабатывания трос должен снова появиться в списке покупки — это осознанное поведение, подтверждённое пользователем');
+                            assert.isTrue(offersSafetyRope, 'Если драфт предложил трос, он должен отображаться в списке покупки');
 
                             buyRelic('safety_rope');
                             assert.isTrue(hasRelic('safety_rope'), 'Повторная покупка должна вернуть артефакт в инвентарь');
