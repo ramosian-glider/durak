@@ -15,7 +15,8 @@
         .felt-bg {
             background: radial-gradient(circle at center, #1b3a21 0%, #0d1e12 70%, #050b06 100%);
         }
-        .card-shadow {
+        .card-shadow,
+        .card-normal {
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.2);
         }
         .hand-scroll::-webkit-scrollbar { display: none; }
@@ -37,6 +38,13 @@
         }
 
         /* Shared UI primitives. Color/style variants follow below. */
+        .stat-badge,
+        .btn-icon-header,
+        .btn-action-base,
+        .turn-banner-base,
+        .relic-slot-base {
+            border-width: 1px;
+        }
         .stat-badge {
             padding: 0.25rem 0.625rem;
             border-radius: 9999px;
@@ -44,7 +52,6 @@
             display: flex;
             align-items: center;
             gap: 0.25rem;
-            border-width: 1px;
         }
         .stat-badge-emerald { background-color: rgba(2, 44, 34, 0.8); border-color: rgba(15, 118, 110, 0.5); color: #6ee7b7; }
         .stat-badge-rose { background-color: rgba(76, 5, 25, 0.8); border-color: rgba(190, 18, 60, 0.5); color: #fca5a5; }
@@ -70,7 +77,6 @@
             font-size: 0.75rem;
             transition-property: color, background-color, border-color, transform, box-shadow;
             box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
-            border-width: 1px;
         }
         .btn-icon-slate { background-color: rgba(30, 41, 59, 0.8); border-color: rgba(71, 85, 105, 0.5); color: #e2e8f0; }
         .btn-icon-slate:hover { background-color: #334155; }
@@ -84,7 +90,6 @@
             font-weight: 800;
             font-size: 0.75rem;
             transition-property: all;
-            border-width: 1px;
             text-align: center;
             color: #ffffff;
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
@@ -122,7 +127,6 @@
         .card-normal {
             border-color: #cbd5e1;
             background-image: linear-gradient(to bottom, #ffffff, #f1f5f9);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.2);
         }
         .card-trump {
             border-color: #fbbf24;
@@ -140,7 +144,6 @@
             box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
             animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
             z-index: 10;
-            border-width: 1px;
         }
         .turn-banner-amber { background-color: rgba(245, 158, 11, 0.2); color: #fcd34d; border-color: rgba(245, 158, 11, 0.4); }
         .turn-banner-indigo { background-color: rgba(99, 102, 241, 0.3); color: #c7d2fe; border-color: rgba(129, 140, 248, 0.6); }
@@ -154,14 +157,14 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            border-width: 1px;
         }
+        .relic-slot-filled,
+        .relic-slot-sellable { cursor: pointer; }
         .relic-slot-filled {
             background-color: rgba(245, 158, 11, 0.2);
             border-color: rgba(251, 191, 36, 0.6);
             font-size: 1.125rem;
             box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-            cursor: pointer;
         }
         .relic-slot-empty {
             border-style: dashed;
@@ -170,7 +173,6 @@
             color: #047857;
         }
         .relic-slot-sellable {
-            cursor: pointer;
             transition: transform 0.15s ease, border-color 0.15s ease;
         }
         .relic-slot-sellable:hover { border-color: rgba(244, 63, 94, 0.85); transform: scale(1.08); }
