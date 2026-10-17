@@ -3413,24 +3413,22 @@
         function makeTestFixtures(battleDefaults = {}, runDefaults = {}) {
             const makeFixtureBattle = (overrides = {}) => makeTestBattle(structuredClone(battleDefaults), overrides);
             const makeFixtureRun = (overrides = {}) => makeTestRun({ ...runDefaults, ...overrides });
+            const runFixture = (setup, battleOverrides, fn, runOverrides) =>
+                setup(makeFixtureRun(runOverrides), makeFixtureBattle(battleOverrides), fn);
+            const inGame = (battleOverrides, fn, runOverrides) =>
+                runFixture(withIsolatedGameState, battleOverrides, fn, runOverrides);
+
             return {
                 makeFixtureBattle,
                 makeFixtureRun,
-                // Runs fn against a throwaway run + battle built from these fixtures.
-                // `runOverrides` (optional, last so existing calls stay as they are)
-                // is applied over the suite's run defaults: inGame({}, fn, { relics: [...] }).
-                inGame: (battleOverrides, fn, runOverrides) =>
-                    withIsolatedGameState(makeFixtureRun(runOverrides), makeFixtureBattle(battleOverrides), fn),
-                // Same, and additionally keeps the player's real save intact (for
-                // tests that write or clear saves).
+                // `runOverrides` is optional and always wins over suite defaults.
+                inGame,
+                // Preserve the player's real save for tests that write or clear saves.
                 inGameSaved: (battleOverrides, fn, runOverrides) =>
-                    preserveLocalSaveAround(() =>
-                        withIsolatedGameState(makeFixtureRun(runOverrides), makeFixtureBattle(battleOverrides), fn)),
-                // The full test environment (withTestGame): battle invariants enforced on
-                // every commit, and afterwards the AI timer, the save and the modal are
-                // cleaned up. Use it for tests that drive real game flow end to end.
+                    preserveLocalSaveAround(() => inGame(battleOverrides, fn, runOverrides)),
+                // Enforce battle invariants and clean up timers/UI for end-to-end tests.
                 inGameStrict: (battleOverrides, fn, runOverrides) =>
-                    withTestGame(makeFixtureRun(runOverrides), makeFixtureBattle(battleOverrides), fn)
+                    runFixture(withTestGame, battleOverrides, fn, runOverrides)
             };
         }
 
