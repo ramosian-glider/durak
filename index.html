@@ -176,6 +176,11 @@
             transition: transform 0.15s ease, border-color 0.15s ease;
         }
         .relic-slot-sellable:hover { border-color: rgba(244, 63, 94, 0.85); transform: scale(1.08); }
+        .ability-flash { animation: ability-flash-pulse 0.7s ease-out; }
+        @keyframes ability-flash-pulse {
+            0% { box-shadow: 0 0 0 0 rgb(251 191 36 / 0.9); background-color: rgb(180 83 9 / 0.8); }
+            100% { box-shadow: 0 0 0 10px rgb(251 191 36 / 0); }
+        }
         .relic-highlight { animation: relic-highlight-pulse 0.7s ease-out; }
         @keyframes relic-highlight-pulse {
             0% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.9); border-color: rgba(250, 204, 21, 1); transform: scale(1.12); }
@@ -576,6 +581,34 @@
 
         const SHOP_REROLL_COST = 5;
 
+        // Filler enemy abilities (see ENEMY_ABILITY_EFFECTS). All numbers live here.
+        // swindle: gold the player loses each time they take the table.
+        const SWINDLE_GOLD_LOSS = 2;
+
+        // lucky_start: at the start of every round the enemy swaps this many of its
+        // weakest cards for the strongest non-trump cards of the draw deck. The hand
+        // size never changes: extra cards are a handicap in Durak, not a perk.
+        const LUCKY_START_SWAPS = 1;
+
+        // hearty: HP the enemy regains each time it successfully defends a table.
+        const HEARTY_REGEN_ON_DEFENSE = 2;
+
+        // pickpocket: share of the victory gold the player loses (rounded down in the player's favour).
+        const PICKPOCKET_REWARD_CUT = 0.3;
+
+        // all_in: flat extra HP damage the player takes each time they take the table.
+        const ALL_IN_EXTRA_TAKE_DAMAGE = 1;
+
+        // stacked_deck: at the start of every round the enemy swaps this many of its
+        // weakest non-trump cards for trumps from the draw deck (hand size unchanged).
+        const STACKED_DECK_SWAPS = 1;
+
+        // thick_skin: every hit on the enemy is reduced by this much (but never below 1).
+        const THICK_SKIN_DAMAGE_REDUCTION = 1;
+
+        // How long the enemy ability badge flashes after its ability fires.
+        const ENEMY_ABILITY_FLASH_MS = 700;
+
         const AI_QUICK_DELAY_MS = 400;
 
         const AI_STANDARD_DELAY_MS = 500;
@@ -608,18 +641,27 @@
         // boss's ability "stays unlocked forever" are all computed by
         // buildEnemyLadder(), so nothing here needs to be maintained by hand.
 
-        // Pool of filler enemies (no special ability, clones of the basic Sharper).
-        // buildEnemyLadder hands them out in order and, once it runs out of
-        // templates, loops back to the start of the pool.
+        // Pool of filler enemies. buildEnemyLadder hands them out in order and, once it
+        // runs out of templates, loops back to the start of the pool. A template may
+        // carry its own abilityId/abilityDesc (the effect itself lives in
+        // ENEMY_ABILITY_EFFECTS); without one the filler is a plain opponent. A filler
+        // ability is never permanent: it is active on that one enemy only.
         const FILLER_POOL = [
-            { name: "Начинающий Шулер", avatar: "🙂" },
-            { name: "Уличный Мошенник", avatar: "🧔" },
-            { name: "Карточный Жучок", avatar: "🧑‍🦱" },
-            { name: "Барный Хитрец", avatar: "🍻" },
-            { name: "Ловкий Карманник", avatar: "🧤" },
-            { name: "Азартный Игрок", avatar: "🎲" },
-            { name: "Матёрый Катала", avatar: "🎰" },
-            { name: "Теневой Подручный", avatar: "🕶️" },
+            { name: "Начинающий Шулер", avatar: "🙂" }, // plain on purpose: the first fight teaches the basics
+            { name: "Уличный Мошенник", avatar: "🧔",
+              abilityId: "swindle", abilityDesc: `Когда вы берёте карты, вы теряете ${SWINDLE_GOLD_LOSS}$` },
+            { name: "Карточный Жучок", avatar: "🧑‍🦱",
+              abilityId: "lucky_start", abilityDesc: "В начале раунда меняет слабую карту на сильную из колоды" },
+            { name: "Барный Хитрец", avatar: "🍻",
+              abilityId: "hearty", abilityDesc: `Восстанавливает ${HEARTY_REGEN_ON_DEFENSE} HP за каждую успешную защиту` },
+            { name: "Ловкий Карманник", avatar: "🧤",
+              abilityId: "pickpocket", abilityDesc: `Награда за победу меньше на ${Math.round(PICKPOCKET_REWARD_CUT * 100)}%` },
+            { name: "Азартный Игрок", avatar: "🎲",
+              abilityId: "all_in", abilityDesc: `Когда вы берёте карты, вы теряете ещё ${ALL_IN_EXTRA_TAKE_DAMAGE} HP` },
+            { name: "Матёрый Катала", avatar: "🎰",
+              abilityId: "stacked_deck", abilityDesc: "В начале раунда меняет слабую карту на козырь из колоды" },
+            { name: "Теневой Подручный", avatar: "🕶️",
+              abilityId: "thick_skin", abilityDesc: `Каждый удар по нему слабее на ${THICK_SKIN_DAMAGE_REDUCTION} (но не меньше 1)` },
         ];
 
         // Named bosses, in the order they appear. Each one can specify:
@@ -675,7 +717,8 @@
                     const hp = Math.round(hpFrom + (hpTo - hpFrom) * t);
                     ladder.push({
                         name: template.name, avatar: template.avatar, hp,
-                        abilityId: "none", abilityDesc: "Стандартный противник",
+                        abilityId: template.abilityId || "none",
+                        abilityDesc: template.abilityDesc || "Стандартный противник",
                         level,
                     });
                 }
@@ -1197,6 +1240,7 @@
             battle.trumpSuit = battle.trumpCard.suit;
 
             replenishHands();
+            fireEnemyAbilityHook('onRoundStart');
             // Last on purpose: the commit persists, and the save must see the
             // fully rebuilt round (new trump, dealt hands), not a half-reset one.
             setBattlePhase(BATTLE_PHASES.PLAYER_ATTACK);
@@ -1534,6 +1578,16 @@
             return battle.drawDeck.splice(idx, 1)[0];
         }
 
+        // Moves `card` from `from` into the draw deck at a random spot above the bottom
+        // card (index 0 is the trump marker and must stay put). Returns false —
+        // changing nothing — when the card is not in `from`.
+        function tuckCardIntoDeck(card, from) {
+            const removed = removeCard(from, card);
+            if (removed === null) return false;
+            battle.drawDeck.splice(1 + Math.floor(Math.random() * battle.drawDeck.length), 0, removed);
+            return true;
+        }
+
         // -- table -----------------------------------------------------------
 
         function getOpenAttacks() {
@@ -1838,6 +1892,7 @@
             if (battle.defender === 'enemy') {
                 discardTable();
                 battle.defender = 'player';
+                fireEnemyAbilityHook('onEnemyDefended');
             } else {
                 fireAllHooks('onDefenseSucceeded');
                 discardTable();
@@ -1906,7 +1961,7 @@
 
             const enemyData = getCurrentEnemy();
             const levelMultiplier = enemyData.abilityId === 'double_penalty' ? 2 : 1;
-            const selfDamage = cardsTakenCount * enemyData.level * levelMultiplier;
+            const baseSelfDamage = cardsTakenCount * enemyData.level * levelMultiplier;
 
             // Hooks receive the raw number of cards taken (the same baseline the
             // enemy's own take-damage uses), NOT the already-scaled selfDamage above.
@@ -1923,6 +1978,8 @@
             let savedBySafetyRope = false;
             if (!enemyJustDied) {
                 fireAllHooks('onPlayerTakePenalty');
+                fireEnemyAbilityHook('onPlayerTake', { cardsTakenCount });
+                const selfDamage = applyEnemyAbilityModifier('modifyPlayerTakeDamage', baseSelfDamage, { cardsTakenCount });
                 ({ isDefeated, savedBySafetyRope } = applyPlayerDamage(selfDamage));
             }
 
@@ -2057,7 +2114,7 @@
         // State only: pays out the battle-won gold (and the boss max-HP bonus) and
         // returns the text to show for it.
         function grantVictoryRewards() {
-            const goldReward = WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR;
+            const goldReward = applyEnemyAbilityModifier('modifyVictoryGold', WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR);
             run.gold += goldReward;
 
             let rewardText = `Вы одолели соперника! Получено +${goldReward}$`;
@@ -2090,12 +2147,22 @@
         // This commits on its own (inside winBattle) because it is also reached from
         // relic hooks and modal callbacks that have no commit of their own after it.
         function damageEnemyHP(amount) {
+            amount = applyEnemyAbilityModifier('modifyDamageToEnemy', amount);
             battle.enemyHP = Math.max(0, battle.enemyHP - amount);
             setElText('enemy-hp', battle.enemyHP);
 
             if (battle.enemyHP <= 0) {
                 winBattle();
             }
+        }
+
+        // The single way enemy HP goes up (never above the enemy's starting HP).
+        // Returns the HP actually gained.
+        function healEnemyHP(amount) {
+            const before = battle.enemyHP;
+            battle.enemyHP = Math.min(getCurrentEnemy().hp, before + amount);
+            setElText('enemy-hp', battle.enemyHP);
+            return battle.enemyHP - before;
         }
 
         // Single choke point for all damage dealt to the player. Centralizing this
@@ -2110,6 +2177,144 @@
             }
 
             return { isDefeated: run.playerHP <= 0, savedBySafetyRope };
+        }
+
+        // ============================================================
+        // ENEMY ABILITIES
+        // ------------------------------------------------------------
+        // Filler abilities live in ENEMY_ABILITY_EFFECTS, a registry shaped like RELIC_EFFECTS:
+        // one entry per abilityId holding named hooks. The code that owns an event calls
+        // fireEnemyAbilityHook() / applyEnemyAbilityModifier() with a hook name and never
+        // asks for a specific ability. The four boss abilities (no_transfer, ai_transfer,
+        // aggressive_throw, double_penalty) are still checked inline where they act.
+        // Every ability of the current enemy (enemyData.activeAbilities) takes part, so a
+        // future permanent ability needs no extra wiring.
+        // ============================================================
+
+        // Hook names an ENEMY_ABILITY_EFFECTS entry may define (a test rejects any other key).
+        //   notifications (return true when they acted, which flashes the badge):
+        //     onRoundStart(), onPlayerTake({ cardsTakenCount }), onEnemyDefended()
+        //   modifiers (take a number, return the new one):
+        //     modifyPlayerTakeDamage(damage, ctx), modifyVictoryGold(gold), modifyDamageToEnemy(amount)
+        const KNOWN_ENEMY_ABILITY_HOOKS = [
+            'onRoundStart', 'onPlayerTake', 'onEnemyDefended',
+            'modifyPlayerTakeDamage', 'modifyVictoryGold', 'modifyDamageToEnemy'
+        ];
+
+        const ENEMY_ABILITY_EFFECTS = {
+            // Taking the table costs the player gold.
+            swindle: {
+                onPlayerTake() {
+                    const lost = Math.min(run.gold, SWINDLE_GOLD_LOSS);
+                    run.gold -= lost;
+                    return lost > 0;
+                }
+            },
+            // The enemy starts every round with a better hand: its weakest card goes back
+            // into the deck and the strongest non-trump card of the deck takes its place.
+            lucky_start: {
+                onRoundStart() {
+                    return swapWeakEnemyCards(
+                        LUCKY_START_SWAPS,
+                        card => card.suit !== battle.trumpSuit,
+                        candidates => candidates.reduce((best, c) => (cardPower(c) > cardPower(best) ? c : best))
+                    );
+                }
+            },
+            // The enemy heals whenever it defends the table successfully.
+            hearty: {
+                onEnemyDefended() {
+                    return healEnemyHP(HEARTY_REGEN_ON_DEFENSE) > 0;
+                }
+            },
+            // Less gold for the win; the cut rounds down, so the player keeps the odd coin.
+            pickpocket: {
+                modifyVictoryGold(gold) {
+                    return gold - Math.floor(gold * PICKPOCKET_REWARD_CUT);
+                }
+            },
+            // Taking the table hurts a little more.
+            all_in: {
+                modifyPlayerTakeDamage(damage) {
+                    return damage + ALL_IN_EXTRA_TAKE_DAMAGE;
+                }
+            },
+            // The enemy starts every round holding a trump in place of its weakest card.
+            stacked_deck: {
+                onRoundStart() {
+                    return swapWeakEnemyCards(
+                        STACKED_DECK_SWAPS,
+                        card => card.suit === battle.trumpSuit,
+                        candidates => candidates[Math.floor(Math.random() * candidates.length)]
+                    );
+                }
+            },
+            // Every hit on the enemy is weaker, but a hit always lands for at least 1.
+            thick_skin: {
+                modifyDamageToEnemy(amount) {
+                    return amount > 0 ? Math.max(1, amount - THICK_SKIN_DAMAGE_REDUCTION) : amount;
+                }
+            }
+        };
+
+        // Up to `count` times: puts the enemy's weakest non-trump card back into the draw
+        // deck (at a random spot) and takes the deck card chosen by pickReplacement()
+        // from those passing isCandidate(). The enemy's hand size and the deck size never
+        // change, the trump marker at the bottom of the deck is never touched, and a swap
+        // never makes the hand weaker. Returns true if at least one swap happened.
+        function swapWeakEnemyCards(count, isCandidate, pickReplacement) {
+            const markerId = battle.trumpCard ? battle.trumpCard.id : null;
+            let swapped = 0;
+            for (let i = 0; i < count; i++) {
+                const weakest = battle.enemyHand
+                    .filter(c => c.suit !== battle.trumpSuit)
+                    .sort((a, b) => cardPower(a) - cardPower(b))[0];
+                const candidates = battle.drawDeck.filter(c => c.id !== markerId && isCandidate(c));
+                if (!weakest || candidates.length === 0) break;
+
+                const replacement = pickReplacement(candidates);
+                if (cardPower(replacement) <= cardPower(weakest)) break;
+
+                moveCard(replacement, battle.drawDeck, battle.enemyHand);
+                tuckCardIntoDeck(weakest, battle.enemyHand);
+                swapped++;
+            }
+            return swapped > 0;
+        }
+
+        function getActiveEnemyAbilityEffects() {
+            return [...getCurrentEnemy().activeAbilities]
+                .map(id => ENEMY_ABILITY_EFFECTS[id])
+                .filter(Boolean);
+        }
+
+        // Briefly flashes the enemy ability badge so the player sees the ability act.
+        function flashEnemyAbility() {
+            const badge = getEl('boss-ability-badge');
+            if (!badge) return;
+            badge.classList.remove('ability-flash');
+            void badge.offsetWidth; // restart the animation if it is already running
+            badge.classList.add('ability-flash');
+            setTimeout(() => badge.classList.remove('ability-flash'), ENEMY_ABILITY_FLASH_MS);
+        }
+
+        // Notification hook: every active ability that defines it runs.
+        function fireEnemyAbilityHook(hookName, ctx) {
+            let acted = false;
+            for (const effect of getActiveEnemyAbilityEffects()) {
+                if (typeof effect[hookName] === 'function' && effect[hookName](ctx) === true) acted = true;
+            }
+            if (acted) flashEnemyAbility();
+        }
+
+        // Modifier hook: each active ability that defines it transforms the value in turn.
+        function applyEnemyAbilityModifier(hookName, value, ctx) {
+            let result = value;
+            for (const effect of getActiveEnemyAbilityEffects()) {
+                if (typeof effect[hookName] === 'function') result = effect[hookName](result, ctx);
+            }
+            if (result !== value) flashEnemyAbility();
+            return result;
         }
 
         // ============================================================
@@ -5397,6 +5602,28 @@
                     });
                 });
 
+                it('tuckCardIntoDeck: карта уходит в колоду на случайное место выше нижней карты (маркера козыря); чужую карту не трогает', () => {
+                    const C = testCard;
+                    withTestGame(makeTestRun(), makeTestBattle({
+                        drawDeck: [C('t0', 'Hearts', 6), C('d1', 'Pikes', 7), C('d2', 'Pikes', 8)],
+                        enemyHand: [C('e1', 'Pikes', 9)]
+                    }), () => {
+                        const positions = new Set();
+                        for (let i = 0; i < 60; i++) {
+                            if (battle.enemyHand.length === 0) battle.enemyHand.push(C('e1', 'Pikes', 9));
+                            assert.isTrue(tuckCardIntoDeck(battle.enemyHand[0], battle.enemyHand));
+                            assert.equal(battle.drawDeck[0].id, 't0', 'нижняя карта на месте');
+                            assert.equal(battle.drawDeck.length, 4);
+                            assert.equal(battle.enemyHand.length, 0);
+                            positions.add(battle.drawDeck.findIndex(c => c.id === 'e1'));
+                            removeCard(battle.drawDeck, C('e1', 'Pikes', 9));
+                        }
+                        assert.isTrue(positions.size > 1 && !positions.has(0) && !positions.has(-1), 'позиции случайны и всегда выше маркера');
+                        assert.isFalse(tuckCardIntoDeck(C('zz', 'Pikes', 6), battle.enemyHand), 'карты нет в руке — ничего не меняется');
+                        assert.equal(battle.drawDeck.length, 3);
+                    });
+                });
+
                 // ---- static guard: no hand-rolled card moves outside the primitives ----
                 it('В боевом коде нет ручных splice/pop/push карт вне секции примитивов', () => {
                     const productionSource = getProductionSource();
@@ -6874,6 +7101,278 @@
                         assert.equal(run.maxHP, 30);
                     });
                     closeTestUI();
+                });
+            });
+
+            runner.describe('10b. Способности обычных противников (ENEMY_ABILITY_EFFECTS)', (it, assert) => {
+                const floorOf = (abilityId) => ENEMIES.findIndex(e => e.abilityId === abilityId) + 1;
+                const enemyOf = (abilityId) => ENEMIES[floorOf(abilityId) - 1];
+                // Runs fn as a fight against the filler that owns `abilityId` (sound muted).
+                const inFight = (abilityId, battleOverrides, runOverrides, fn) => {
+                    const realMuted = audio.isMuted;
+                    audio.isMuted = true;
+                    try {
+                        withTestGame(makeTestRun({ floor: floorOf(abilityId), ...runOverrides }), makeTestBattle(battleOverrides), fn);
+                    } finally { audio.isMuted = realMuted; }
+                };
+                // The enemy throws a matching card, then the player takes the whole table.
+                const takeScenario = (extra = {}) => ({
+                    phase: BATTLE_PHASES.RESOLVING, defender: 'player',
+                    playerHand: [testCard('p1', 'Hearts', 6), testCard('p2', 'Hearts', 10), testCard('p3', 'Hearts', 11)],
+                    enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Hearts', 14)],
+                    table: [testPair(testCard('a1', 'Pikes', 9))],
+                    ...extra
+                });
+                const cardsJustTaken = () => battle.playerHand.length - 3;
+
+                // ---- the ladder and the registry ----
+                it('Лестница: первый обычный враг без способности, остальные получили по своей способности', () => {
+                    const fillers = ENEMIES.filter(e => !e.isBoss);
+                    assert.equal(fillers[0].abilityId, 'none');
+                    assert.equal(fillers[0].abilityDesc, 'Стандартный противник');
+                    fillers.slice(1).forEach(e => {
+                        assert.isTrue(e.abilityId !== 'none', `${e.name}: способность не задана`);
+                        assert.isTrue(e.activeAbilities.has(e.abilityId));
+                    });
+                    assert.equal(new Set(fillers.map(e => e.abilityId)).size, fillers.length, 'способности обычных врагов не повторяются');
+                });
+
+                it('Способность обычного врага не постоянная: после его этажа она больше не активна', () => {
+                    ENEMIES.filter(e => !e.isBoss && e.abilityId !== 'none').forEach(e => {
+                        ENEMIES.slice(e.floor).forEach(later => {
+                            assert.isFalse(later.activeAbilities.has(e.abilityId), `${e.abilityId} просочилась на этаж ${later.floor}`);
+                        });
+                    });
+                });
+
+                it('Реестр: у каждой способности обычного врага есть эффект, нет лишних записей и неизвестных хуков', () => {
+                    const usedIds = new Set(ENEMIES.map(e => e.abilityId));
+                    ENEMIES.filter(e => !e.isBoss && e.abilityId !== 'none').forEach(e => {
+                        assert.isTrue(!!ENEMY_ABILITY_EFFECTS[e.abilityId], `${e.abilityId}: нет записи в ENEMY_ABILITY_EFFECTS`);
+                    });
+                    Object.entries(ENEMY_ABILITY_EFFECTS).forEach(([id, effect]) => {
+                        assert.isTrue(usedIds.has(id), `${id}: способность не назначена ни одному врагу`);
+                        Object.keys(effect).forEach(key => {
+                            assert.isTrue(KNOWN_ENEMY_ABILITY_HOOKS.includes(key), `${id}.${key}: неизвестное имя хука (опечатка или не добавлен в KNOWN_ENEMY_ABILITY_HOOKS?)`);
+                        });
+                    });
+                });
+
+                it('Способности боссов не затронуты: у боссов нет записей в реестре эффектов', () => {
+                    ENEMIES.filter(e => e.isBoss).forEach(boss => {
+                        assert.isFalse(boss.abilityId in ENEMY_ABILITY_EFFECTS, `${boss.abilityId} должна проверяться по месту, а не через реестр`);
+                    });
+                });
+
+                it('Описание способности берёт числа из констант и показывается в шапке врага', () => {
+                    assert.isTrue(enemyOf('swindle').abilityDesc.includes(`${SWINDLE_GOLD_LOSS}$`));
+                    assert.isTrue(enemyOf('hearty').abilityDesc.includes(String(HEARTY_REGEN_ON_DEFENSE)));
+                    assert.isTrue(enemyOf('pickpocket').abilityDesc.includes(`${Math.round(PICKPOCKET_REWARD_CUT * 100)}%`));
+                    inFight('swindle', {}, {}, () => {
+                        syncEnemyDisplay();
+                        assert.isTrue(getEl('boss-ability-badge').innerText.includes(enemyOf('swindle').abilityDesc));
+                    });
+                });
+
+                // ---- swindle ----
+                it('swindle: взятие карт стоит SWINDLE_GOLD_LOSS золота, но золото не уходит в минус', () => {
+                    inFight('swindle', takeScenario(), { gold: 10 }, () => {
+                        applyPlayerTake();
+                        assert.equal(run.gold, 10 - SWINDLE_GOLD_LOSS);
+                    });
+                    inFight('swindle', takeScenario(), { gold: 1 }, () => {
+                        applyPlayerTake();
+                        assert.equal(run.gold, 0);
+                    });
+                });
+
+                it('swindle: если взятие убило врага (артефактом), победа важнее — золото не списывается', () => {
+                    inFight('swindle', takeScenario({ enemyHP: 1 }), { gold: 10, relics: [{ id: 'mirror_ring' }] }, () => {
+                        const out = applyPlayerTake();
+                        assert.isTrue(out.enemyJustDied);
+                        const reward = WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR;
+                        assert.equal(run.gold, 10 + reward);
+                    });
+                });
+
+                // ---- all_in ----
+                it('all_in: взятие карт стоит ALL_IN_EXTRA_TAKE_DAMAGE HP сверх обычного урона', () => {
+                    inFight('all_in', takeScenario(), { playerHP: 30, maxHP: 30 }, () => {
+                        applyPlayerTake();
+                        const expected = cardsJustTaken() * getCurrentEnemy().level + ALL_IN_EXTRA_TAKE_DAMAGE;
+                        assert.equal(30 - run.playerHP, expected);
+                    });
+                });
+
+                it('all_in: на обычном противнике урон при взятии прежний (без надбавки)', () => {
+                    withTestGame(makeTestRun({ floor: 1, playerHP: 30, maxHP: 30 }), makeTestBattle(takeScenario()), () => {
+                        applyPlayerTake();
+                        assert.equal(30 - run.playerHP, cardsJustTaken() * getCurrentEnemy().level);
+                    });
+                });
+
+                // ---- lucky_start / stacked_deck ----
+                it('lucky_start: слабейшая карта врага уходит в колоду, на её место приходит сильнейшая некозырная; размеры руки и колоды те же', () => {
+                    inFight('lucky_start', {
+                        trumpSuit: 'Hearts', trumpCard: testCard('t0', 'Hearts', 6),
+                        drawDeck: [testCard('t0', 'Hearts', 6), testCard('k1', 'Pikes', 14), testCard('x1', 'Pikes', 7), testCard('h1', 'Hearts', 12)],
+                        enemyHand: [testCard('e1', 'Pikes', 6), testCard('e2', 'Pikes', 10)]
+                    }, {}, () => {
+                        assert.isTrue(ENEMY_ABILITY_EFFECTS.lucky_start.onRoundStart());
+                        const handIds = battle.enemyHand.map(c => c.id).sort().join();
+                        assert.equal(handIds, 'e2,k1', 'вместо шестёрки — туз; козырь h1 не берётся');
+                        assert.equal(battle.drawDeck.length, 4);
+                        assert.isTrue(battle.drawDeck.some(c => c.id === 'e1'), 'шестёрка вернулась в колоду');
+                        assert.equal(battle.drawDeck[0].id, 't0', 'маркер козыря остался внизу колоды');
+                    });
+                });
+
+                it('lucky_start: рука не меняется, если замена не усилит её или некого менять', () => {
+                    inFight('lucky_start', {
+                        trumpSuit: 'Hearts', trumpCard: testCard('t0', 'Hearts', 6),
+                        drawDeck: [testCard('t0', 'Hearts', 6), testCard('x1', 'Pikes', 7)],
+                        enemyHand: [testCard('e1', 'Pikes', 14)]
+                    }, {}, () => {
+                        assert.isFalse(ENEMY_ABILITY_EFFECTS.lucky_start.onRoundStart(), 'семёрка не лучше туза');
+                        assert.equal(battle.enemyHand[0].id, 'e1');
+                    });
+                    inFight('lucky_start', {
+                        trumpSuit: 'Hearts', trumpCard: testCard('t0', 'Hearts', 6),
+                        drawDeck: [testCard('t0', 'Hearts', 6), testCard('x1', 'Pikes', 14)],
+                        enemyHand: [testCard('e1', 'Hearts', 7)]
+                    }, {}, () => {
+                        assert.isFalse(ENEMY_ABILITY_EFFECTS.lucky_start.onRoundStart(), 'в руке только козырь — менять нечего');
+                        assert.equal(battle.enemyHand[0].id, 'e1');
+                    });
+                });
+
+                it('На обычном противнике раунд начинается с рук по HAND_SIZE', () => {
+                    withTestGame(makeTestRun({ floor: 1 }), makeTestBattle(), () => {
+                        startNewRound();
+                        assert.equal(battle.enemyHand.length, HAND_SIZE);
+                        assert.equal(battle.playerHand.length, HAND_SIZE);
+                    });
+                });
+
+                it('stacked_deck: слабейшая некозырная карта врага меняется на козырь из колоды, но не на карту-маркер', () => {
+                    inFight('stacked_deck', {
+                        trumpSuit: 'Hearts', trumpCard: testCard('t0', 'Hearts', 6),
+                        drawDeck: [testCard('t0', 'Hearts', 6), testCard('t1', 'Hearts', 9), testCard('x1', 'Pikes', 7)],
+                        enemyHand: [testCard('e1', 'Pikes', 6), testCard('e2', 'Pikes', 10)]
+                    }, {}, () => {
+                        assert.isTrue(ENEMY_ABILITY_EFFECTS.stacked_deck.onRoundStart());
+                        assert.equal(battle.enemyHand.map(c => c.id).sort().join(), 'e2,t1', 'вместо шестёрки — козырь t1, а не маркер t0');
+                        assert.equal(battle.drawDeck.length, 3);
+                        assert.equal(battle.drawDeck[0].id, 't0', 'маркер козыря остался внизу колоды');
+                        assert.isTrue(battle.drawDeck.some(c => c.id === 'e1'));
+                    });
+                });
+
+                it('stacked_deck: если в колоде нет козырей кроме маркера — рука не меняется', () => {
+                    inFight('stacked_deck', {
+                        trumpSuit: 'Hearts', trumpCard: testCard('t0', 'Hearts', 6),
+                        drawDeck: [testCard('t0', 'Hearts', 6), testCard('x1', 'Pikes', 7)],
+                        enemyHand: [testCard('e1', 'Pikes', 6)]
+                    }, {}, () => {
+                        assert.isFalse(ENEMY_ABILITY_EFFECTS.stacked_deck.onRoundStart());
+                        assert.equal(battle.enemyHand[0].id, 'e1');
+                        assert.equal(battle.drawDeck.length, 2);
+                    });
+                });
+
+                it('lucky_start и stacked_deck в живых раундах: рука врага остаётся HAND_SIZE, карты не теряются и не дублируются', () => {
+                    ['lucky_start', 'stacked_deck'].forEach(abilityId => {
+                        inFight(abilityId, {}, {}, () => {
+                            for (let i = 0; i < 20; i++) {
+                                startNewRound();
+                                assert.equal(battle.enemyHand.length, HAND_SIZE, `${abilityId}: у врага не должно быть лишних карт`);
+                                assert.equal(battle.playerHand.length, HAND_SIZE);
+                                assert.equal(battle.drawDeck[0].id, battle.trumpCard.id, 'козырь-маркер остаётся нижней картой колоды');
+                                const ids = [...battle.drawDeck, ...battle.playerHand, ...battle.enemyHand].map(c => c.id);
+                                assert.equal(new Set(ids).size, run.deck.length);
+                            }
+                        });
+                    });
+                });
+
+                // ---- hearty ----
+                it('hearty: успешная защита врага (БИТО) лечит его на HEARTY_REGEN_ON_DEFENSE', () => {
+                    const maxHP = enemyOf('hearty').hp;
+                    inFight('hearty', {
+                        phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', enemyHP: maxHP - 6,
+                        playerHand: [testCard('p1', 'Hearts', 6)],
+                        enemyHand: [testCard('e1', 'Pikes', 8), testCard('e2', 'Pikes', 12)],
+                        drawDeck: [testCard('d1', 'Spades', 7), testCard('d2', 'Spades', 8)],
+                        table: [testPair(testCard('a1', 'Pikes', 7), testCard('b1', 'Pikes', 9))]
+                    }, {}, () => {
+                        handleBito();
+                        assert.equal(battle.enemyHP, maxHP - 6 + HEARTY_REGEN_ON_DEFENSE);
+                    });
+                });
+
+                it('hearty: лечение не поднимает здоровье выше начального', () => {
+                    inFight('hearty', { enemyHP: enemyOf('hearty').hp - 1 }, {}, () => {
+                        assert.equal(healEnemyHP(HEARTY_REGEN_ON_DEFENSE), 1);
+                        assert.equal(battle.enemyHP, enemyOf('hearty').hp);
+                        assert.equal(healEnemyHP(HEARTY_REGEN_ON_DEFENSE), 0, 'при полном HP лечить нечего');
+                    });
+                });
+
+                it('hearty: когда враг забирает стол, он не лечится', () => {
+                    inFight('hearty', {
+                        phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', cardsToTake: true,
+                        enemyHP: enemyOf('hearty').hp,
+                        table: [testPair(testCard('a1', 'Pikes', 7))]
+                    }, {}, () => {
+                        applyEnemyTake();
+                        assert.equal(battle.enemyHP, enemyOf('hearty').hp - TAKE_DAMAGE_PER_CARD);
+                    });
+                });
+
+                // ---- pickpocket ----
+                it('pickpocket: награда за победу меньше на PICKPOCKET_REWARD_CUT (округление в пользу игрока)', () => {
+                    inFight('pickpocket', {}, { gold: 0 }, () => {
+                        const base = WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR;
+                        const text = grantVictoryRewards();
+                        const expected = base - Math.floor(base * PICKPOCKET_REWARD_CUT);
+                        assert.equal(run.gold, expected);
+                        assert.isTrue(expected < base && expected > 0);
+                        assert.isTrue(text.includes(`+${expected}$`), 'в тексте награды — итоговая сумма');
+                    });
+                });
+
+                // ---- thick_skin ----
+                it('thick_skin: каждый удар слабее на THICK_SKIN_DAMAGE_REDUCTION, но не меньше 1; нулевой удар остаётся нулевым', () => {
+                    inFight('thick_skin', { enemyHP: 30 }, {}, () => {
+                        damageEnemyHP(5);
+                        assert.equal(battle.enemyHP, 30 - (5 - THICK_SKIN_DAMAGE_REDUCTION));
+                        const afterBig = battle.enemyHP;
+                        damageEnemyHP(1);
+                        assert.equal(battle.enemyHP, afterBig - 1, 'удар в 1 ед. всё равно проходит');
+                        const afterSmall = battle.enemyHP;
+                        damageEnemyHP(0);
+                        assert.equal(battle.enemyHP, afterSmall);
+                    });
+                });
+
+                it('thick_skin: на обычном противнике урон проходит полностью', () => {
+                    withTestGame(makeTestRun({ floor: 1 }), makeTestBattle({ enemyHP: 30 }), () => {
+                        damageEnemyHP(5);
+                        assert.equal(battle.enemyHP, 25);
+                    });
+                });
+
+                // ---- feedback ----
+                it('Когда способность сработала, значок способности мигает; когда нет — не мигает', () => {
+                    inFight('thick_skin', { enemyHP: 30 }, {}, () => {
+                        const badge = getEl('boss-ability-badge');
+                        badge.classList.remove('ability-flash');
+                        damageEnemyHP(0);
+                        assert.isFalse(badge.classList.contains('ability-flash'), 'ничего не изменилось — вспышки нет');
+                        damageEnemyHP(5);
+                        assert.isTrue(badge.classList.contains('ability-flash'));
+                        badge.classList.remove('ability-flash');
+                    });
                 });
             });
 
