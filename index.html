@@ -176,6 +176,24 @@
             transition: transform 0.15s ease, border-color 0.15s ease;
         }
         .relic-slot-sellable:hover { border-color: rgba(244, 63, 94, 0.85); transform: scale(1.08); }
+        /* Floating change plates ("-5 HP", "+3$"): see the FLOATING CHANGE PLATES section in the script. */
+        #floater-layer { position: fixed; inset: 0; pointer-events: none; z-index: 60; overflow: hidden; }
+        .floater {
+            position: absolute; padding: 1px 8px; border-radius: 9999px; white-space: nowrap;
+            font-size: 15px; font-weight: 800; background: rgb(2 6 23 / 0.88); border: 1px solid currentColor;
+            text-shadow: 0 1px 2px #000; transform: translate(-50%, -50%);
+            animation: floater-rise var(--floater-life, 1.1s) ease-out forwards;
+        }
+        .floater-hp-loss { color: #f87171; }
+        .floater-hp-gain { color: #4ade80; }
+        .floater-enemy-hit { color: #22d3ee; }
+        .floater-gold-gain { color: #fbbf24; }
+        .floater-gold-loss { color: #fb923c; }
+        @keyframes floater-rise {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+            15% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+            100% { opacity: 0; transform: translate(-50%, calc(-50% - var(--floater-rise, 44px))) scale(1); }
+        }
         .ability-flash { animation: ability-flash-pulse 0.7s ease-out; }
         @keyframes ability-flash-pulse {
             0% { box-shadow: 0 0 0 0 rgb(251 191 36 / 0.9); background-color: rgb(180 83 9 / 0.8); }
@@ -440,6 +458,8 @@
         </div>
     </div>
 
+    <div id="floater-layer"></div>
+
     <script>
 
         // --- File map (top to bottom) ---
@@ -608,6 +628,26 @@
 
         // How long the enemy ability badge flashes after its ability fires.
         const ENEMY_ABILITY_FLASH_MS = 700;
+
+        // Floating change plates: how long one lives, how far it drifts up, how far
+        // apart plates that appear at the same spot at once are stacked.
+        const FLOATER_LIFETIME_MS = 1100;
+        const FLOATER_RISE_PX = 44;
+        const FLOATER_STACK_STEP_PX = 20;
+
+        // Use different heart colors to distinguish damage to the enemy from player HP changes.
+        const FLOATER_HP_ICON = '❤️';
+        const FLOATER_ENEMY_HIT_ICON = '💙';
+
+        // Keeps a plate fully on screen when its anchor sits near the viewport edge.
+        const FLOATER_EDGE_MARGIN_PX = 36;
+
+        // Where a plate with no particular source appears: next to the stat it changes.
+        const FLOATER_STAT_DISPLAY_IDS = {
+            playerHP: 'player-hp-display',
+            enemyHP: 'enemy-hp',
+            gold: 'player-gold-display'
+        };
 
         const AI_QUICK_DELAY_MS = 400;
 
@@ -1804,7 +1844,7 @@
             setBattlePhase(BATTLE_PHASES.ROUND_OVER);
             const outcome = { ...result };
             if (result.type === 'enemy_win') {
-                Object.assign(outcome, applyPlayerDamage(result.damage));
+                Object.assign(outcome, withChangeSource({ kind: 'table' }, () => applyPlayerDamage(result.damage)));
             }
             commitBattleState();
             return outcome;
@@ -1820,7 +1860,7 @@
                     break;
                 case 'player_win':
                     showModal("Раунд Выигран!", `Вы первыми скинули все карты! Противник остается в дураках и получает ${outcome.damage} ед. урона.`, () => {
-                        damageEnemyHP(outcome.damage);
+                        withChangeSource({ kind: 'table' }, () => damageEnemyHP(outcome.damage));
                         if (battle.enemyHP > 0) {
                             startNewRound();
                         }
@@ -1921,8 +1961,10 @@
 
             const enemyHPBeforeDamage = battle.enemyHP;
             let damage = cardsCount * TAKE_DAMAGE_PER_CARD;
-            damage += fireHookSum('onEnemyTookCards');
-            damageEnemyHP(damage);
+            // Each artifact's share gets its own plate; the take damage itself is one plate on the table.
+            const artifactDamageParts = [];
+            damage += fireHookSum('onEnemyTookCards', undefined, artifactDamageParts);
+            withChangeSource({ kind: 'table' }, () => damageEnemyHP(damage, artifactDamageParts));
 
             battle.cardsToTake = false;
             return { enemyJustDied: didEnemyJustDie(enemyHPBeforeDamage) };
@@ -1980,7 +2022,10 @@
                 fireAllHooks('onPlayerTakePenalty');
                 fireEnemyAbilityHook('onPlayerTake', { cardsTakenCount });
                 const selfDamage = applyEnemyAbilityModifier('modifyPlayerTakeDamage', baseSelfDamage, { cardsTakenCount });
-                ({ isDefeated, savedBySafetyRope } = applyPlayerDamage(selfDamage));
+                // The damage for the cards is one plate on the table; an enemy ability's extra gets its own at the enemy icon.
+                const abilityExtra = selfDamage - baseSelfDamage;
+                const abilityParts = abilityExtra > 0 ? [{ amount: abilityExtra, source: { kind: 'enemy' } }] : [];
+                ({ isDefeated, savedBySafetyRope } = withChangeSource({ kind: 'table' }, () => applyPlayerDamage(selfDamage, abilityParts)));
             }
 
             return { enemyJustDied, isDefeated, savedBySafetyRope };
@@ -2115,12 +2160,12 @@
         // returns the text to show for it.
         function grantVictoryRewards() {
             const goldReward = applyEnemyAbilityModifier('modifyVictoryGold', WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR);
-            run.gold += goldReward;
+            changeGold(goldReward);
 
             let rewardText = `Вы одолели соперника! Получено +${goldReward}$`;
             if (getCurrentEnemy().isBoss) {
                 run.maxHP += BOSS_MAX_HP_BONUS;
-                run.playerHP = Math.min(run.maxHP, run.playerHP + BOSS_MAX_HP_BONUS);
+                healPlayerHP(BOSS_MAX_HP_BONUS);
                 rewardText += ` и +${BOSS_MAX_HP_BONUS} к максимальному здоровью за победу над боссом!`;
             }
             return rewardText;
@@ -2146,10 +2191,12 @@
         // The single way enemy HP goes down. Reaching 0 ends the battle (winBattle()).
         // This commits on its own (inside winBattle) because it is also reached from
         // relic hooks and modal callbacks that have no commit of their own after it.
-        function damageEnemyHP(amount) {
+        // `parts` splits the plates by source (see announceDamage()); the HP change is the same.
+        function damageEnemyHP(amount, parts = []) {
             amount = applyEnemyAbilityModifier('modifyDamageToEnemy', amount);
             battle.enemyHP = Math.max(0, battle.enemyHP - amount);
             setElText('enemy-hp', battle.enemyHP);
+            announceDamage('enemyHP', amount, parts);
 
             if (battle.enemyHP <= 0) {
                 winBattle();
@@ -2162,14 +2209,157 @@
             const before = battle.enemyHP;
             battle.enemyHP = Math.min(getCurrentEnemy().hp, before + amount);
             setElText('enemy-hp', battle.enemyHP);
+            announceChange('enemyHP', battle.enemyHP - before);
             return battle.enemyHP - before;
+        }
+
+        // ============================================================
+        // FLOATING CHANGE PLATES
+        // ------------------------------------------------------------
+        // Every gold / HP change in battle shows a short plate with the number that
+        // drifts up and fades out. WHERE it appears says WHO caused the change (a
+        // "change source"):
+        //   { kind: 'relic', id }  next to that artifact's slot
+        //   { kind: 'enemy' }      next to the enemy icon (an enemy ability)
+        //   { kind: 'table' }      middle of the table: damage for taken cards and
+        //                          for a lost/won round, ONE plate for all cards
+        //   null                   next to the changed stat itself (HP / gold readout)
+        // The relic and enemy-ability hook dispatchers set the current source around
+        // each handler, so a handler that calls damageEnemyHP()/changeGold() needs no
+        // extra code. A damage total made of several shares (take damage + an
+        // artifact's bonus + an enemy ability's extra) is split into one plate per
+        // source whose numbers add up to the total (see announceDamage()).
+        // Plates are cosmetic: nothing here may ever throw into game logic.
+        // ============================================================
+
+        let currentChangeSource = null;
+
+        // Runs fn with `source` as the current change source, restoring the previous one.
+        function withChangeSource(source, fn) {
+            const previous = currentChangeSource;
+            currentChangeSource = source;
+            try {
+                return fn();
+            } finally {
+                currentChangeSource = previous;
+            }
+        }
+
+        // Plates alive per source key, so plates appearing at once at the same spot
+        // are stacked instead of drawn over each other.
+        const floaterStackCounts = {};
+
+        function getFloaterSourceKey(source, stat) {
+            return source ? `${source.kind}:${source.id || ''}` : `stat:${stat}`;
+        }
+
+        // The element a plate is placed over. A relic whose slot is not on screen falls
+        // back to the whole artifact bar.
+        function getFloaterAnchor(source, stat) {
+            if (source && source.kind === 'relic') {
+                return document.querySelector(`#relics-bar [data-relic-id="${source.id}"]`) || getEl('relics-bar');
+            }
+            if (source && source.kind === 'enemy') return getEl('enemy-avatar');
+            if (source && source.kind === 'table') return getEl('table-pairs');
+            return getEl(FLOATER_STAT_DISPLAY_IDS[stat]);
+        }
+
+        // Text and style of a plate. Gold: "+3$" / "−2$". Player HP: "−5 ❤️" (red) / "+5 ❤️"
+        // (green). Damage to the enemy is a hit of the player's, so it is "−6 ⚔️" (cyan);
+        // when the enemy heals it is a plain "+2 ❤️" (green), shown at the enemy icon.
+        function describeChange(stat, delta) {
+            const sign = delta > 0 ? '+' : '−';
+            const amount = Math.abs(delta);
+            if (stat === 'gold') {
+                return { text: `${sign}${amount}$`, className: `floater-gold-${delta > 0 ? 'gain' : 'loss'}` };
+            }
+            if (stat === 'enemyHP' && delta < 0) {
+                return { text: `${sign}${amount} ${FLOATER_ENEMY_HIT_ICON}`, className: 'floater-enemy-hit' };
+            }
+            return { text: `${sign}${amount} ${FLOATER_HP_ICON}`, className: `floater-hp-${delta > 0 ? 'gain' : 'loss'}` };
+        }
+
+        function showFloater(anchor, key, text, className) {
+            try {
+                const layer = getEl('floater-layer');
+                if (!layer || !anchor || typeof anchor.getBoundingClientRect !== 'function') return;
+
+                const rect = anchor.getBoundingClientRect();
+                const stacked = floaterStackCounts[key] || 0;
+                floaterStackCounts[key] = stacked + 1;
+
+                const clamp = (value, max) => Math.max(FLOATER_EDGE_MARGIN_PX, Math.min(value, max - FLOATER_EDGE_MARGIN_PX));
+                const plate = document.createElement('div');
+                plate.className = `floater ${className}`;
+                plate.dataset.source = key;
+                plate.textContent = text;
+                plate.style.left = `${clamp(rect.left + rect.width / 2, window.innerWidth)}px`;
+                plate.style.top = `${clamp(rect.top + rect.height / 2, window.innerHeight) - stacked * FLOATER_STACK_STEP_PX}px`;
+                plate.style.setProperty('--floater-life', `${FLOATER_LIFETIME_MS}ms`);
+                plate.style.setProperty('--floater-rise', `${FLOATER_RISE_PX}px`);
+                layer.appendChild(plate);
+
+                setTimeout(() => {
+                    plate.remove();
+                    floaterStackCounts[key] = Math.max(0, (floaterStackCounts[key] || 1) - 1);
+                }, FLOATER_LIFETIME_MS);
+            } catch (err) {
+                console.warn('Floating plate skipped:', err);
+            }
+        }
+
+        function clearFloaters() {
+            const layer = getEl('floater-layer');
+            if (layer) layer.innerHTML = '';
+            Object.keys(floaterStackCounts).forEach(key => delete floaterStackCounts[key]);
+        }
+
+        // Shows one plate for a change of `stat` ('playerHP' | 'enemyHP' | 'gold') by `delta`.
+        function announceChange(stat, delta, source = currentChangeSource) {
+            if (!delta) return;
+            const { text, className } = describeChange(stat, delta);
+            showFloater(getFloaterAnchor(source, stat), getFloaterSourceKey(source, stat), text, className);
+        }
+
+        // Splits a damage `total` into plates: each part {amount, source} gets a plate at
+        // its own source and the remainder one at the current source. The plates add up
+        // to `total` (a part is trimmed if the total came out smaller, e.g. after armor).
+        function announceDamage(stat, total, parts = []) {
+            let remaining = total;
+            for (const part of parts) {
+                const shown = Math.min(part.amount, remaining);
+                if (shown <= 0) continue;
+                announceChange(stat, -shown, part.source);
+                remaining -= shown;
+            }
+            announceChange(stat, -remaining);
+        }
+
+        // The single way the player's gold changes in battle (never below 0).
+        // Returns the change actually applied.
+        function changeGold(delta) {
+            const applied = Math.max(-run.gold, delta);
+            run.gold += applied;
+            announceChange('gold', applied);
+            return applied;
+        }
+
+        // The single way the player's HP goes up in battle (never above max HP).
+        // Returns the HP actually gained.
+        function healPlayerHP(amount) {
+            const before = run.playerHP;
+            run.playerHP = Math.min(run.maxHP, before + amount);
+            announceChange('playerHP', run.playerHP - before);
+            return run.playerHP - before;
         }
 
         // Single choke point for all damage dealt to the player. Centralizing this
         // (instead of `run.playerHP -= x` scattered at each call site) is what lets
         // safety_rope reliably intercept a lethal hit no matter where it came from.
-        function applyPlayerDamage(amount) {
+        // `parts` splits the plates by source (see announceDamage()); the HP change is the same.
+        function applyPlayerDamage(amount, parts = []) {
             run.playerHP = Math.max(0, run.playerHP - amount);
+            announceDamage('playerHP', amount, parts);
             let savedBySafetyRope = false;
 
             if (run.playerHP <= 0) {
@@ -2205,9 +2395,7 @@
             // Taking the table costs the player gold.
             swindle: {
                 onPlayerTake() {
-                    const lost = Math.min(run.gold, SWINDLE_GOLD_LOSS);
-                    run.gold -= lost;
-                    return lost > 0;
+                    return changeGold(-SWINDLE_GOLD_LOSS) < 0;
                 }
             },
             // The enemy starts every round with a better hand: its weakest card goes back
@@ -2302,7 +2490,8 @@
         function fireEnemyAbilityHook(hookName, ctx) {
             let acted = false;
             for (const effect of getActiveEnemyAbilityEffects()) {
-                if (typeof effect[hookName] === 'function' && effect[hookName](ctx) === true) acted = true;
+                if (typeof effect[hookName] !== 'function') continue;
+                if (withChangeSource({ kind: 'enemy' }, () => effect[hookName](ctx)) === true) acted = true;
             }
             if (acted) flashEnemyAbility();
         }
@@ -2565,6 +2754,7 @@
                     if (idx === -1) return false;
                     run.relics.splice(idx, 1);
                     run.playerHP = 1;
+                    announceChange('playerHP', 1);
                     discardTable();
                     return true;
                 }
@@ -2575,7 +2765,7 @@
                 // so it's dispatched via fireAllHooks() rather than fireHook().
                 onCardPlayed(card) {
                     if (card.value === 6) {
-                        run.gold += COIN_MAGNET_GOLD_PER_SIX;
+                        changeGold(COIN_MAGNET_GOLD_PER_SIX);
                         return true;
                     }
                 }
@@ -2601,7 +2791,7 @@
                 // NOT wired to onPlayerDefend, which fires per card. Additive,
                 // so dispatched via fireAllHooks().
                 onDefenseSucceeded() {
-                    run.gold += MIDAS_TOUCH_GOLD_ON_DEFEND;
+                    changeGold(MIDAS_TOUCH_GOLD_ON_DEFEND);
                     return true;
                 }
             },
@@ -2810,17 +3000,20 @@
         // Runs a relic hook in one of three modes: first truthy result, all
         // handlers, or sum of numeric results. `highlight` is disabled for
         // read-only queries used during rendering.
-        function runRelicHooks(hookName, ctx, mode = 'first') {
+        // In 'sum' mode `contributions`, if given, collects each relic's share as
+        // { amount, source } so the caller can show a plate per artifact.
+        function runRelicHooks(hookName, ctx, mode = 'first', contributions = null) {
             let result = mode === 'sum' ? 0 : null;
             for (const relic of run.relics) {
                 const effect = RELIC_EFFECTS[relic.id];
                 const handler = effect?.[hookName];
                 if (typeof handler !== 'function') continue;
 
-                const value = handler(ctx);
+                const value = withChangeSource({ kind: 'relic', id: relic.id }, () => handler(ctx));
                 if (mode === 'sum') {
                     if (typeof value === 'number' && value !== 0) {
                         result += value;
+                        contributions?.push({ amount: value, source: { kind: 'relic', id: relic.id } });
                         highlightRelic(relic.id);
                     }
                 } else if (value) {
@@ -2844,8 +3037,8 @@
 
         // Additive numeric modifier: combine all contributions before the caller
         // performs its single side effect.
-        function fireHookSum(hookName, ctx) {
-            return runRelicHooks(hookName, ctx, 'sum');
+        function fireHookSum(hookName, ctx, contributions = null) {
+            return runRelicHooks(hookName, ctx, 'sum', contributions);
         }
 
         // Read-only hook used during rendering; it never highlights a relic.
@@ -3084,6 +3277,7 @@
                     ? `relic-slot-base relic-slot-filled${sellable ? ' relic-slot-sellable' : ''}`
                     : 'relic-slot-base relic-slot-empty';
                 slot.innerText = relic?.icon || '+';
+                if (relic) slot.dataset.relicId = relic.id; // anchor for floating change plates
 
                 if (relic && sellable) {
                     const price = Math.floor(relic.price / 2);
@@ -3867,6 +4061,7 @@
         // Closes UI that tests may have opened, without duplicating DOM cleanup.
         function closeTestUI() {
             closeModal();
+            clearFloaters();
             const shop = getEl('shop-modal');
             if (shop) setVisible(shop, false, 'flex');
         }
@@ -7372,6 +7567,253 @@
                         damageEnemyHP(5);
                         assert.isTrue(badge.classList.contains('ability-flash'));
                         badge.classList.remove('ability-flash');
+                    });
+                });
+            });
+
+            runner.describe('10c. Всплывающие плашки изменений золота и HP', (it, assert) => {
+                const floorOf = (abilityId) => ENEMIES.findIndex(e => e.abilityId === abilityId) + 1;
+                // Runs fn in a throwaway run/battle (sound muted) with an empty plate layer.
+                const inBattle = (runOverrides, battleOverrides, fn) => {
+                    const realMuted = audio.isMuted;
+                    audio.isMuted = true;
+                    try {
+                        withTestGame(makeTestRun(runOverrides), makeTestBattle(battleOverrides), () => {
+                            clearFloaters();
+                            fn();
+                        });
+                    } finally { audio.isMuted = realMuted; }
+                };
+                // "source|text" of every plate currently on screen, sorted.
+                const plates = () => Array.from(getEl('floater-layer').children)
+                    .map(el => `${el.dataset.source}|${el.textContent}`).sort();
+                const amountOf = (plate) => Number(plate.split('|')[1].replace(/[^0-9]/g, ''));
+                const takeScenario = () => ({
+                    phase: BATTLE_PHASES.RESOLVING, defender: 'player', enemyHP: 40,
+                    playerHand: [testCard('p1', 'Hearts', 6), testCard('p2', 'Hearts', 10), testCard('p3', 'Hearts', 11)],
+                    enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Hearts', 14)],
+                    table: [testPair(testCard('a1', 'Pikes', 9))]
+                });
+                const cardsJustTaken = () => battle.playerHand.length - 3;
+                const enemyTakeScenario = () => ({
+                    phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', cardsToTake: true, enemyHP: 40,
+                    table: [testPair(testCard('a1', 'Pikes', 7))]
+                });
+
+                // ---- text, style, anchors ----
+                it('describeChange: формат и стиль плашки для золота и HP', () => {
+                    assert.equal(describeChange('gold', 3).text, '+3$');
+                    assert.equal(describeChange('gold', 3).className, 'floater-gold-gain');
+                    assert.equal(describeChange('gold', -2).text, '−2$');
+                    assert.equal(describeChange('gold', -2).className, 'floater-gold-loss');
+                    assert.isTrue(describeChange('playerHP', -5).text.startsWith('−5 '));
+                    assert.equal(describeChange('playerHP', -5).className, 'floater-hp-loss');
+                    assert.equal(describeChange('playerHP', 5).className, 'floater-hp-gain');
+                });
+
+                it('describeChange: урон врагу — с синим сердцем, не похож на урон игроку; лечение врага — обычное «+N ❤️»', () => {
+                    const hitOnEnemy = describeChange('enemyHP', -6);
+                    const hitOnPlayer = describeChange('playerHP', -6);
+                    assert.equal(hitOnEnemy.text, `−6 ${FLOATER_ENEMY_HIT_ICON}`);
+                    assert.equal(hitOnEnemy.className, 'floater-enemy-hit');
+                    assert.isTrue(hitOnEnemy.text !== hitOnPlayer.text && hitOnEnemy.className !== hitOnPlayer.className, 'два вида урона различимы');
+                    assert.equal(describeChange('enemyHP', 2).text, describeChange('playerHP', 2).text, 'лечение врага — то же сердце, что и у лечения игрока');
+                    assert.equal(describeChange('enemyHP', 2).className, 'floater-hp-gain');
+                    assert.isFalse(describeChange('enemyHP', 2).text.includes(FLOATER_ENEMY_HIT_ICON), 'плюс с синим сердцем не используется');
+                });
+
+                it('Якорь плашки: артефакт — его слот, способность врага — иконка врага, стол — центр стола, без источника — показатель', () => {
+                    inBattle({ relics: [ALL_RELICS.find(r => r.id === 'coin_magnet')] }, {}, () => {
+                        renderRelicSlots('relics-bar');
+                        const slot = getFloaterAnchor({ kind: 'relic', id: 'coin_magnet' }, 'gold');
+                        assert.equal(slot.dataset.relicId, 'coin_magnet');
+                        assert.isTrue(getEl('relics-bar').contains(slot));
+                        assert.equal(getFloaterAnchor({ kind: 'relic', id: 'no_such_relic' }, 'gold'), getEl('relics-bar'), 'нет слота — вся панель артефактов');
+                        assert.equal(getFloaterAnchor({ kind: 'enemy' }, 'gold'), getEl('enemy-avatar'));
+                        assert.equal(getFloaterAnchor({ kind: 'table' }, 'playerHP'), getEl('table-pairs'));
+                        assert.equal(getFloaterAnchor(null, 'playerHP'), getEl('player-hp-display'));
+                        assert.equal(getFloaterAnchor(null, 'enemyHP'), getEl('enemy-hp'));
+                        assert.equal(getFloaterAnchor(null, 'gold'), getEl('player-gold-display'));
+                    });
+                });
+
+                // ---- damage for taken cards: ONE plate on the table ----
+                it('Игрок берёт карты: одна плашка урона посреди стола на все карты вместе', () => {
+                    inBattle({ floor: 1, playerHP: 30, maxHP: 30 }, takeScenario(), () => {
+                        applyPlayerTake();
+                        const expected = cardsJustTaken() * getCurrentEnemy().level;
+                        assert.equal(plates().length, 1, 'не по плашке на каждую карту');
+                        assert.equal(amountOf(plates()[0]), expected);
+                        assert.isTrue(plates()[0].startsWith('table:|−'));
+                        assert.equal(30 - run.playerHP, expected);
+                    });
+                });
+
+                it('Враг берёт карты: одна плашка на столе на все карты, а доля артефакта — отдельной плашкой у артефакта', () => {
+                    inBattle({ floor: 1, relics: [{ id: 'ace_sleeve' }] }, enemyTakeScenario(), () => {
+                        applyEnemyTake();
+                        assert.equal(plates().length, 2);
+                        assert.isTrue(plates().includes(`relic:ace_sleeve|−${ACE_SLEEVE_BONUS_DAMAGE} ${FLOATER_ENEMY_HIT_ICON}`));
+                        assert.isTrue(plates().includes(`table:|−${TAKE_DAMAGE_PER_CARD} ${FLOATER_ENEMY_HIT_ICON}`));
+                    });
+                    inBattle({ floor: 1 }, enemyTakeScenario(), () => {
+                        applyEnemyTake();
+                        assert.equal(plates().join(), `table:|−${TAKE_DAMAGE_PER_CARD} ${FLOATER_ENEMY_HIT_ICON}`, 'без артефактов — одна плашка');
+                    });
+                });
+
+                it('Плашки одного удара в сумме дают реальное снижение HP, даже если броня съела часть урона', () => {
+                    inBattle({ floor: floorOf('thick_skin'), relics: [{ id: 'ace_sleeve' }] }, enemyTakeScenario(), () => {
+                        const before = battle.enemyHP;
+                        applyEnemyTake();
+                        const shown = plates().reduce((sum, p) => sum + amountOf(p), 0);
+                        assert.equal(shown, before - battle.enemyHP);
+                        assert.equal(before - battle.enemyHP, TAKE_DAMAGE_PER_CARD + ACE_SLEEVE_BONUS_DAMAGE - THICK_SKIN_DAMAGE_REDUCTION);
+                    });
+                });
+
+                // ---- artifacts ----
+                it('Артефакт, бьющий врага при взятии карт игроком: плашка у артефакта, урон игроку — на столе', () => {
+                    inBattle({ floor: 1, relics: [{ id: 'mirror_ring' }] }, takeScenario(), () => {
+                        applyPlayerTake();
+                        const reflected = cardsJustTaken() * TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER;
+                        assert.equal(plates().length, 2);
+                        assert.isTrue(plates().includes(`relic:mirror_ring|−${reflected} ${FLOATER_ENEMY_HIT_ICON}`));
+                        assert.isTrue(plates().some(p => p.startsWith('table:|−')));
+                    });
+                });
+
+                it('Артефакт, приносящий золото: плашка +золота у артефакта', () => {
+                    inBattle({ floor: 1, gold: 0, relics: [{ id: 'coin_magnet' }] }, {}, () => {
+                        fireAllHooks('onCardPlayed', testCard('s1', 'Pikes', 6));
+                        assert.equal(plates().join(), `relic:coin_magnet|+${COIN_MAGNET_GOLD_PER_SIX}$`);
+                        assert.equal(run.gold, COIN_MAGNET_GOLD_PER_SIX);
+                    });
+                });
+
+                it('safety_rope: плашка урона, затем плашка +1 HP у троса', () => {
+                    inBattle({ floor: 1, playerHP: 3, relics: [{ id: 'safety_rope' }] }, {}, () => {
+                        applyPlayerDamage(10);
+                        assert.equal(run.playerHP, 1);
+                        assert.equal(plates().length, 2);
+                        assert.isTrue(plates().some(p => p.startsWith('stat:playerHP|−10')));
+                        assert.isTrue(plates().some(p => p.startsWith('relic:safety_rope|+1')));
+                    });
+                });
+
+                // ---- enemy abilities: the plate sits at the enemy icon ----
+                it('all_in: надбавка способности — плашка у врага, урон за карты — отдельная плашка на столе', () => {
+                    inBattle({ floor: floorOf('all_in'), playerHP: 30, maxHP: 30 }, takeScenario(), () => {
+                        applyPlayerTake();
+                        assert.equal(plates().length, 2);
+                        assert.isTrue(plates().includes(`enemy:|−${ALL_IN_EXTRA_TAKE_DAMAGE} ❤️`));
+                        const tablePlate = plates().find(p => p.startsWith('table:'));
+                        assert.equal(amountOf(tablePlate), cardsJustTaken() * getCurrentEnemy().level);
+                        assert.equal(30 - run.playerHP, plates().reduce((sum, p) => sum + amountOf(p), 0), 'плашки в сумме равны потере HP');
+                    });
+                });
+
+                it('swindle: потеря золота — плашка у врага; золото не уходит в минус, а на нуле плашки нет', () => {
+                    inBattle({ floor: floorOf('swindle'), gold: 10 }, takeScenario(), () => {
+                        applyPlayerTake();
+                        assert.isTrue(plates().includes(`enemy:|−${SWINDLE_GOLD_LOSS}$`));
+                    });
+                    inBattle({ floor: 1, gold: 1 }, {}, () => {
+                        changeGold(-5);
+                        assert.equal(plates().join(), 'stat:gold|−1$', 'показано реальное изменение, а не запрошенное');
+                        assert.equal(run.gold, 0);
+                        clearFloaters();
+                        changeGold(-5);
+                        assert.equal(plates().length, 0, 'золото не изменилось — плашки нет');
+                    });
+                });
+
+                it('hearty: лечение врага — плашка +HP у врага', () => {
+                    inBattle({ floor: floorOf('hearty') }, { enemyHP: 10 }, () => {
+                        fireEnemyAbilityHook('onEnemyDefended');
+                        assert.equal(plates().join(), `enemy:|+${HEARTY_REGEN_ON_DEFENSE} ❤️`);
+                    });
+                });
+
+                // ---- rewards and round results ----
+                it('Награда за победу: золото плашкой у показателя золота, бонус HP за босса — у показателя HP', () => {
+                    inBattle({ floor: 1, gold: 0 }, {}, () => {
+                        grantVictoryRewards();
+                        assert.equal(plates().length, 1);
+                        assert.isTrue(plates()[0].startsWith('stat:gold|+'));
+                        assert.equal(amountOf(plates()[0]), run.gold);
+                    });
+                    inBattle({ floor: ENEMIES.find(e => e.isBoss).floor, gold: 0, playerHP: 10, maxHP: 30 }, {}, () => {
+                        grantVictoryRewards();
+                        assert.equal(plates().length, 2);
+                        assert.isTrue(plates().includes(`stat:playerHP|+${BOSS_MAX_HP_BONUS} ❤️`));
+                    });
+                });
+
+                it('Проигранный раунд: одна плашка урона игроку посреди стола', () => {
+                    inBattle({ floor: 1, playerHP: 30, maxHP: 30 }, {
+                        phase: BATTLE_PHASES.RESOLVING, defender: 'player', drawDeck: [], table: [], enemyHand: [],
+                        playerHand: [testCard('p1', 'Hearts', 6), testCard('p2', 'Hearts', 10)]
+                    }, () => {
+                        const result = getRoundResult();
+                        assert.equal(result.type, 'enemy_win');
+                        applyRoundResult(result);
+                        assert.equal(plates().join(), `table:|−${result.damage} ❤️`);
+                    });
+                });
+
+                it('Выигранный раунд: одна плашка урона врагу посреди стола', () => {
+                    inBattle({ floor: 1 }, { enemyHP: 40 }, () => {
+                        presentRoundResult({ type: 'player_win', cardsLeft: 2, damage: 14 });
+                        getEl('msg-btn').click();
+                        assert.equal(plates().join(), `table:|−14 ${FLOATER_ENEMY_HIT_ICON}`);
+                    });
+                });
+
+                // ---- plumbing ----
+                it('announceDamage: плашки в сумме равны итогу, доля источника обрезается, если итог меньше неё', () => {
+                    inBattle({ floor: 1 }, {}, () => {
+                        announceDamage('enemyHP', 4, [{ amount: 5, source: { kind: 'relic', id: 'ace_sleeve' } }]);
+                        assert.equal(plates().join(), `relic:ace_sleeve|−4 ${FLOATER_ENEMY_HIT_ICON}`, 'остатка нет — плашка только у артефакта');
+                        clearFloaters();
+                        announceDamage('enemyHP', 7, [{ amount: 5, source: { kind: 'relic', id: 'ace_sleeve' } }]);
+                        assert.equal(plates().length, 2);
+                        assert.equal(plates().reduce((sum, p) => sum + amountOf(p), 0), 7);
+                    });
+                });
+
+                it('Плашки одного источника в один момент не накладываются: каждая следующая выше', () => {
+                    inBattle({ floor: 1, gold: 0 }, {}, () => {
+                        announceChange('gold', 1, { kind: 'enemy' });
+                        announceChange('gold', 2, { kind: 'enemy' });
+                        const tops = Array.from(getEl('floater-layer').children).map(el => parseFloat(el.style.top));
+                        assert.equal(tops.length, 2);
+                        assert.equal(tops[0] - tops[1], FLOATER_STACK_STEP_PX);
+                    });
+                });
+
+                it('Плашка исчезает через FLOATER_LIFETIME_MS, а счётчик наложения обнуляется', () => {
+                    inBattle({ floor: 1 }, {}, () => {
+                        const realSetTimeout = window.setTimeout;
+                        const queued = [];
+                        window.setTimeout = (fn, ms) => { queued.push({ fn, ms }); return 0; };
+                        try {
+                            announceChange('gold', 1, { kind: 'enemy' });
+                        } finally { window.setTimeout = realSetTimeout; }
+                        assert.equal(plates().length, 1);
+                        assert.equal(queued.length, 1);
+                        assert.equal(queued[0].ms, FLOATER_LIFETIME_MS);
+                        queued[0].fn();
+                        assert.equal(plates().length, 0);
+                        assert.equal(floaterStackCounts['enemy:'], 0);
+                    });
+                });
+
+                it('Плашки косметические: нулевое изменение, нет якоря или слоя — ничего не показывается и ничего не ломается', () => {
+                    inBattle({ floor: 1 }, {}, () => {
+                        announceChange('gold', 0);
+                        showFloater(null, 'x', '+1$', 'floater-gold-gain');
+                        assert.equal(plates().length, 0);
                     });
                 });
             });
