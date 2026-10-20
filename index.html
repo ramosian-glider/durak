@@ -2019,7 +2019,7 @@
             let isDefeated = false;
             let savedBySafetyRope = false;
             if (!enemyJustDied) {
-                fireAllHooks('onPlayerTakePenalty');
+                fireAllHooks('onPlayerTakePenalty', { cardsTakenCount });
                 fireEnemyAbilityHook('onPlayerTake', { cardsTakenCount });
                 const selfDamage = applyEnemyAbilityModifier('modifyPlayerTakeDamage', baseSelfDamage, { cardsTakenCount });
                 // The damage for the cards is one plate on the table; an enemy ability's extra gets its own at the enemy icon.
@@ -2894,7 +2894,8 @@
                 // Fires before applyPlayerDamage().
                 // Dispatched via fireAllHooks: a pure side effect on the
                 // hand, nothing to intercept or sum.
-                onPlayerTakePenalty() {
+                onPlayerTakePenalty({ cardsTakenCount }) {
+                    if (cardsTakenCount < BALLAST_DROP_DISCARD_COUNT) return;
                     discardLowestNonTrumpCards(battle.playerHand, BALLAST_DROP_DISCARD_COUNT);
                     return true;
                 }
@@ -8455,16 +8456,39 @@
                                 testCard('p2', 'Pikes', 6),
                             ],
                             enemyHand: [testCard('e1', 'Pikes', 9)],
-                            table: [testPair(testCard('x1', 'Hearts', 6))],
+                            table: [
+                                testPair(testCard('x1', 'Hearts', 6)),
+                                testPair(testCard('x2', 'Pikes', 8)),
+                            ],
                             defender: 'player',
                             enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
                         }),
                         () => {
                             handlePlayerTake();
-                            // p1, p2 (некозырные) сброшены; остаётся только x1 (козырь, взятый со стола)
-                            assert.equal(battle.playerHand.length, 1);
-                            assert.equal(battle.playerHand[0].id, 'x1');
+                            // При взятии двух карт артефакт сбрасывает p1 и p2 из руки.
                             assert.equal(battle.discardPile.filter(c => c.id === 'p1' || c.id === 'p2').length, 2);
+                            assert.isFalse(battle.playerHand.some(c => c.id === 'p1' || c.id === 'p2'));
+                            assert.isTrue(battle.playerHand.some(c => c.id === 'x1'));
+                            assert.isTrue(battle.playerHand.some(c => c.id === 'x2'));
+                        }
+                    );
+                });
+
+                it('ballast_drop: не срабатывает, если со стола взята только одна карта', () => {
+                    withIsolatedGameState(
+                        makeBareRun({ playerHP: 100, maxHP: 100, relics: [{ id: 'ballast_drop' }] }),
+                        makeTestBattle({
+                            playerHand: [testCard('p1', 'Pikes', 7)],
+                            enemyHand: [testCard('e1', 'Pikes', 9)],
+                            table: [testPair(testCard('x1', 'Pikes', 6))],
+                            defender: 'player',
+                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
+                        }),
+                        () => {
+                            handlePlayerTake();
+                            assert.equal(battle.playerHand.length, 2, 'Обе карты должны остаться в руке');
+                            assert.equal(battle.discardPile.filter(c => c.id === 'p1' || c.id === 'x1').length, 0,
+                                'Сброс балласта не должен сбрасывать карты при взятии одной карты');
                         }
                     );
                 });
