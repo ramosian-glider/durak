@@ -655,6 +655,9 @@
 
         const AI_TAKE_RESOLVE_DELAY_MS = 600;
 
+        // Pause between the cards the enemy throws in while the player is taking.
+        const ENEMY_THROW_IN_DELAY_MS = 500;
+
         const AI_POST_THROW_DELAY_MS = 700;
 
         const ALL_RELICS = [
@@ -794,6 +797,9 @@
             PLAYER_DEFENSE: 'player_defense',
             AI_WAITING: 'ai_waiting',
             RESOLVING: 'resolving',
+            // The player has declared a take (defender is 'player'); the enemy may still
+            // throw cards in, one per step, before the player collects the table.
+            ENEMY_THROWING_IN: 'enemy_throwing_in',
             ROUND_OVER: 'round_over',
             BATTLE_OVER: 'battle_over'
         });
@@ -805,6 +811,7 @@
             BATTLE_PHASES.PLAYER_ATTACK,
             BATTLE_PHASES.PLAYER_DEFENSE,
             BATTLE_PHASES.AI_WAITING,
+            BATTLE_PHASES.ENEMY_THROWING_IN,
             BATTLE_PHASES.RESOLVING
         ]);
 
@@ -1094,19 +1101,23 @@
         // staleness check compares against the value this very transition produced:
         // any later phase change (player click, round end, another transition)
         // makes the pending action stale and it silently does nothing.
-        function enterAIWaitingPhase(action, delay = AI_STANDARD_DELAY_MS) {
+        //
+        // `phase` is AI_WAITING for a normal AI move; the enemy's throw-in steps during
+        // a player take use ENEMY_THROWING_IN, so that stage is a real, saved phase
+        // rather than a private timer.
+        function enterAIWaitingPhase(action, delay = AI_STANDARD_DELAY_MS, phase = BATTLE_PHASES.AI_WAITING) {
             // A won battle never hands the turn to the AI. A relic hook can kill the
             // enemy in the middle of a player action (cascade_transfer, sharp_suit):
             // winBattle() has already moved us to BATTLE_OVER and shown the victory
             // modal, and the caller carrying on to "now the AI moves" must not undo it.
             if (battle.phase === BATTLE_PHASES.BATTLE_OVER) return;
             clearAITimer();
-            setBattlePhase(BATTLE_PHASES.AI_WAITING);
+            setBattlePhase(phase);
             commitBattleState();
             const token = battle.actionToken;
             battle.aiTimer = setTimeout(() => {
                 battle.aiTimer = null;
-                if (battle.actionToken !== token || battle.phase !== BATTLE_PHASES.AI_WAITING) return;
+                if (battle.actionToken !== token || battle.phase !== phase) return;
                 action();
             }, delay);
         }
@@ -1256,6 +1267,9 @@
             // If the game was saved while the AI was thinking — restart it
             if (battle.phase === BATTLE_PHASES.AI_WAITING) {
                 scheduleEnemyAI(AI_STANDARD_DELAY_MS);
+            } else if (battle.phase === BATTLE_PHASES.ENEMY_THROWING_IN) {
+                // Saved mid-take: the enemy carries on throwing in, then the player collects.
+                scheduleEnemyThrowIn();
             } else if (battle.phase === BATTLE_PHASES.RESOLVING || battle.phase === BATTLE_PHASES.IDLE) {
                 // If the phase is indeterminate — hand the turn back to the player
                 enterPlayerPhase();
@@ -1325,7 +1339,8 @@
         // assertBattleState() after every commit.
 
         // A player phase and the defender role must agree: PLAYER_ATTACK <=> the
-        // enemy defends, PLAYER_DEFENSE <=> the player defends. (AI_WAITING and the
+        // enemy defends, PLAYER_DEFENSE <=> the player defends; ENEMY_THROWING_IN only happens while the
+        // player defends (it is a take in progress). (AI_WAITING and the
         // transient/terminal phases can legitimately go with either role.)
         function checkBattlePhaseInvariants(b) {
             const violations = [];
@@ -1333,6 +1348,7 @@
             if (b.defender !== 'player' && b.defender !== 'enemy') violations.push('unknown defender: ' + b.defender);
             if (b.phase === BATTLE_PHASES.PLAYER_ATTACK && b.defender !== 'enemy') violations.push('PLAYER_ATTACK requires defender "enemy"');
             if (b.phase === BATTLE_PHASES.PLAYER_DEFENSE && b.defender !== 'player') violations.push('PLAYER_DEFENSE requires defender "player"');
+            if (b.phase === BATTLE_PHASES.ENEMY_THROWING_IN && b.defender !== 'player') violations.push('ENEMY_THROWING_IN requires defender "player"');
             return violations;
         }
 
@@ -1989,16 +2005,10 @@
             if (!checkRoundEnd()) enterPlayerPhase();
         }
 
-        // State only: the enemy throws in whatever it legally can, then the player
-        // collects the table and takes the self-damage for it. Returns
-        // { enemyJustDied, isDefeated, savedBySafetyRope }.
+        // State only: the player collects the table and takes the self-damage for it.
+        // Whatever the enemy wanted to throw in has already been thrown (see
+        // enemyThrowInStep()). Returns { enemyJustDied, isDefeated, savedBySafetyRope }.
         function applyPlayerTake() {
-            const maxAllowed = getMaxAllowedAttacks();
-            while (battle.table.length < maxAllowed) {
-                const throwCard = battle.enemyHand.find(c => isRankOnTable(c.value));
-                if (!throwCard || !playAttackCard(battle.enemyHand, throwCard)) break;
-            }
-
             const cardsTakenCount = collectTable(battle.playerHand);
 
             const enemyData = getCurrentEnemy();
@@ -2049,21 +2059,57 @@
             }
         }
 
-        function handlePlayerTake() {
-            // Check everything before touching state (see handleBito()).
-            if (!canAcceptPlayerAction() || battle.defender !== 'player') return;
-            if (battle.table.length === 0) return;
+        // The next card the enemy may throw in while the player takes: a rank already
+        // on the table, within the attack limit. null when there is none.
+        function getEnemyThrowInCard() {
+            if (battle.table.length >= getMaxAllowedAttacks()) return null;
+            return battle.enemyHand.find(c => isRankOnTable(c.value)) || null;
+        }
 
+        // The player's take is declared: the enemy gets to throw in, one card per
+        // step. Each step is a committed ENEMY_THROWING_IN phase, so the table the
+        // player is about to collect is always real, visible and savable state.
+        function scheduleEnemyThrowIn() {
+            enterAIWaitingPhase(() => enemyThrowInStep(), ENEMY_THROW_IN_DELAY_MS, BATTLE_PHASES.ENEMY_THROWING_IN);
+        }
+
+        function enemyThrowInStep() {
+            if (battle.phase !== BATTLE_PHASES.ENEMY_THROWING_IN) return;
+            const card = getEnemyThrowInCard();
+            if (card !== null && playAttackCard(battle.enemyHand, card)) {
+                scheduleEnemyThrowIn();
+                return;
+            }
+            finishPlayerTake();
+        }
+
+        // Nothing more to throw in: the player collects the table and the take resolves.
+        function finishPlayerTake() {
+            clearAITimer();
             beginResolution();
 
             const currentDefender = battle.defender;
-            audio.playTakeSound();
-
             const outcome = applyPlayerTake();
 
             battle.defender = 'player';
             settleTurn(currentDefender);
             presentPlayerTakeOutcome(outcome);
+        }
+
+        function handlePlayerTake() {
+            // Check everything before touching state (see handleBito()).
+            if (!canAcceptPlayerAction() || battle.defender !== 'player') return;
+            if (battle.table.length === 0) return;
+
+            audio.playTakeSound();
+            battle.isTransferActive = false;
+
+            // Nothing to throw in: the take resolves right away.
+            if (getEnemyThrowInCard() === null) {
+                finishPlayerTake();
+                return;
+            }
+            scheduleEnemyThrowIn();
         }
 
         // Discards up to `count` of the lowest-ranked non-trump cards from a hand
@@ -3429,6 +3475,8 @@
                     text: battle.cardsToTake ? "Соперник забирает карты! (Жмите БИТО)" : "Ваш ход: Атака",
                     color: 'amber'
                 }
+                : battle.phase === BATTLE_PHASES.ENEMY_THROWING_IN
+                    ? { text: "Вы берёте карты... Соперник подкидывает", color: 'rose' }
                 : battle.isTransferActive
                     ? { text: "Выберите карту для Перевода!", color: 'indigo' }
                     : { text: "Ход соперника: Защищайтесь!", color: 'rose' };
@@ -4071,14 +4119,20 @@
             return {
                 battle,
                 inBattle: battle.phase !== BATTLE_PHASES.IDLE,
-                aiPending: battle.phase === BATTLE_PHASES.AI_WAITING && battle.aiTimer !== null
+                // The phase whose pending timer the tests cancel (null = nothing to re-arm).
+                pendingPhase: battle.aiTimer !== null ? battle.phase : null
             };
         }
 
         function restoreRealBattleAfterTests(snapshot) {
-            if (snapshot.inBattle && battle === snapshot.battle && snapshot.aiPending) {
-                syncEnemyDisplay();
-                scheduleEnemyAI(AI_STANDARD_DELAY_MS);
+            if (snapshot.inBattle && battle === snapshot.battle) {
+                if (snapshot.pendingPhase === BATTLE_PHASES.AI_WAITING) {
+                    syncEnemyDisplay();
+                    scheduleEnemyAI(AI_STANDARD_DELAY_MS);
+                } else if (snapshot.pendingPhase === BATTLE_PHASES.ENEMY_THROWING_IN) {
+                    syncEnemyDisplay();
+                    scheduleEnemyThrowIn();
+                }
             }
         }
 
@@ -4134,6 +4188,13 @@
         }
 
         function runGameUnitTests() {
+            // Plays the enemy's throw-in steps of a declared take to the end, without
+            // waiting for timers: each step is the same function the timer would call.
+            function playOutEnemyThrowIn() {
+                let guard = 50;
+                while (battle.phase === BATTLE_PHASES.ENEMY_THROWING_IN && guard-- > 0) enemyThrowInStep();
+            }
+
             const realBattleSnapshot = captureRealBattleForTests();
             const realStateSnapshot = captureRealStateForTests();
 
@@ -5087,7 +5148,8 @@
                 });
 
                 it('ACTIVE_BATTLE_PHASES: ровно фазы идущего раунда, все — существующие фазы', () => {
-                    assert.equal(ACTIVE_BATTLE_PHASES.length, 4);
+                    assert.equal(ACTIVE_BATTLE_PHASES.length, 5);
+                    assert.isTrue(ACTIVE_BATTLE_PHASES.includes(BATTLE_PHASES.ENEMY_THROWING_IN), 'взятие игрока — идущий раунд');
                     for (const p of ACTIVE_BATTLE_PHASES) assert.isTrue(Object.values(BATTLE_PHASES).includes(p), 'неизвестная фаза ' + p);
                     for (const p of [BATTLE_PHASES.IDLE, BATTLE_PHASES.ROUND_OVER, BATTLE_PHASES.BATTLE_OVER]) {
                         assert.isFalse(ACTIVE_BATTLE_PHASES.includes(p), 'фаза ' + p + ' не должна быть активной');
@@ -5790,6 +5852,7 @@
                     }, () => {
                         const before = allIds();
                         handlePlayerTake();
+                        playOutEnemyThrowIn();
                         // номинал 9 есть на столе: e1 и e2 подкинуты, e3 (туз) нет
                         assert.equal(battle.enemyHand.map(c => c.id).join(), 'e3');
                         assert.equal(battle.table.length, 0);
@@ -5998,7 +6061,7 @@
                     });
                 });
 
-                it('applyPlayerTake(): враг подкидывает, игрок забирает стол и получает урон; возвращает исход, ничего не показывая', () => {
+                it('applyPlayerTake(): игрок забирает стол и получает урон; возвращает исход, ничего не показывая; сам не подкидывает', () => {
                     inGameStrict({ phase: BATTLE_PHASES.RESOLVING, defender: 'player',
                         playerHand: [C('p1', 'Hearts', 6), C('p2', 'Hearts', 10), C('p3', 'Hearts', 11)],
                         enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Hearts', 14)],
@@ -6012,9 +6075,9 @@
                             assert.isFalse(out.isDefeated);
                             assert.isFalse(out.savedBySafetyRope);
                             assert.equal(battle.table.length, 0);
-                            assert.equal(battle.playerHand.length, 3 + 2, 'атака + подкинутая девятка');
-                            assert.equal(battle.enemyHand.map(c => c.id).join(), 'e2');
-                            assert.equal(run.playerHP, 30 - 2 * getCurrentEnemy().level);
+                            assert.equal(battle.playerHand.length, 3 + 1, 'только карты, лежавшие на столе');
+                            assert.equal(battle.enemyHand.map(c => c.id).join(), 'e1,e2', 'подкидывание — отдельный шаг (enemyThrowInStep)');
+                            assert.equal(run.playerHP, 30 - 1 * getCurrentEnemy().level);
                             assert.equal(modals, 0, 'applyPlayerTake не должен показывать UI');
                         } finally { window.showModal = realShow; }
                     });
@@ -6894,6 +6957,119 @@
                         battleInvariantChecksEnabled = wasEnabled;
                         if (preRaw === null) localStorage.removeItem(SAVE_KEY); else localStorage.setItem(SAVE_KEY, preRaw);
                     }
+                });
+            });
+
+            runner.describe('8o. Взятие игрока: враг подкидывает по шагам (ENEMY_THROWING_IN)', (it, assert) => {
+                const C = testCard;
+                const { inGameStrict } = makeTestFixtures({
+                    drawDeck: [], phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player',
+                    // лимит подкидывания = число карт в руке защитника (здесь 4)
+                    playerHand: [C('p1', 'Hearts', 6), C('p2', 'Hearts', 10), C('p3', 'Hearts', 11), C('p4', 'Hearts', 12)],
+                    enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Hearts', 9), C('e3', 'Hearts', 14)],
+                    table: [testPair(C('a1', 'Pikes', 7)), testPair(C('a2', 'Hearts', 9))],
+                    trumpCard: C('t1', 'Spades', 6)
+                });
+                const allIds = () => [...battle.drawDeck, ...battle.discardPile, ...battle.playerHand, ...battle.enemyHand, ...getTableCards()].map(c => c.id).sort();
+
+                it('handlePlayerTake(): если враг может подкинуть, взятие объявлено, но стол, рука и HP ещё не тронуты', () => {
+                    inGameStrict({}, () => {
+                        const hpBefore = run.playerHP;
+                        handlePlayerTake();
+                        assert.phase(BATTLE_PHASES.ENEMY_THROWING_IN);
+                        assert.equal(battle.table.length, 2, 'стол остаётся на месте, пока враг подкидывает');
+                        assert.equal(battle.playerHand.length, 4);
+                        assert.equal(run.playerHP, hpBefore, 'урон — только после того, как игрок забрал карты');
+                        assert.isTrue(battle.aiTimer !== null, 'следующий шаг подкидывания запланирован');
+                    });
+                });
+
+                it('enemyThrowInStep(): шаг = одна подкинутая карта (с учётом лимита); пустой шаг — игрок забирает стол и получает урон', () => {
+                    inGameStrict({}, () => {
+                        const before = allIds();
+                        const hpBefore = run.playerHP;
+                        handlePlayerTake();
+
+                        enemyThrowInStep();
+                        assert.phase(BATTLE_PHASES.ENEMY_THROWING_IN);
+                        assert.equal(battle.table.length, 3);
+                        assert.equal(battle.enemyHand.map(c => c.id).join(), 'e2,e3');
+                        assert.equal(battle.playerHand.length, 4, 'рука игрока не меняется во время подкидывания');
+
+                        enemyThrowInStep();
+                        assert.equal(battle.table.length, 4, 'лимит подкидывания достигнут');
+                        assert.equal(battle.enemyHand.map(c => c.id).join(), 'e3');
+                        assert.phase(BATTLE_PHASES.ENEMY_THROWING_IN);
+
+                        enemyThrowInStep();
+                        assert.equal(battle.table.length, 0);
+                        assert.equal(battle.playerHand.length, 8);
+                        assert.equal(run.playerHP, hpBefore - 4 * getCurrentEnemy().level);
+                        assert.phase(BATTLE_PHASES.AI_WAITING);
+                        assert.equal(allIds().join(), before.join(), 'ни одна карта не потерялась и не задвоилась');
+                    });
+                });
+
+                it('handlePlayerTake(): если подкидывать нечего — взятие разрешается сразу, без фазы ENEMY_THROWING_IN', () => {
+                    inGameStrict({ enemyHand: [C('e1', 'Hearts', 14)], table: [testPair(C('a1', 'Pikes', 7))] }, () => {
+                        handlePlayerTake();
+                        assert.phase(BATTLE_PHASES.AI_WAITING);
+                        assert.equal(battle.table.length, 0);
+                        assert.equal(battle.playerHand.length, 5);
+                    });
+                });
+
+                it('во время подкидывания игрок не может ни отбиться, ни взять повторно; чужой шаг вне своей фазы ничего не делает', () => {
+                    inGameStrict({}, () => {
+                        handlePlayerTake();
+                        assert.isFalse(canAcceptPlayerAction());
+                        handlePlayerTake();
+                        handleBito();
+                        assert.phase(BATTLE_PHASES.ENEMY_THROWING_IN);
+                        assert.equal(battle.table.length, 2);
+                        assert.equal(battle.discardPile.length, 0);
+
+                        clearAITimer();
+                        setBattlePhase(BATTLE_PHASES.PLAYER_DEFENSE);
+                        enemyThrowInStep();
+                        assert.equal(battle.table.length, 2, 'шаг подкидывания не работает вне фазы ENEMY_THROWING_IN');
+                    });
+                });
+
+                it('баннер объясняет, что идёт подкидывание', () => {
+                    inGameStrict({}, () => {
+                        handlePlayerTake();
+                        assert.isTrue(getEl('turn-banner').innerText.includes('подкидывает'), getEl('turn-banner').innerText);
+                    });
+                });
+
+                it('фаза сохраняется: сейв валиден, а после возобновления враг продолжает подкидывать', () => {
+                    inGameStrict({}, () => {
+                        handlePlayerTake();
+                        assert.isTrue(hasSavedGame(), 'сейв посреди подкидывания должен проходить валидацию');
+                        clearAITimer(); // как при перезагрузке вкладки: таймер потерян
+                        resumeFromSave();
+                        assert.phase(BATTLE_PHASES.ENEMY_THROWING_IN);
+                        assert.isTrue(battle.aiTimer !== null, 'шаг подкидывания должен быть запланирован заново');
+                        playOutEnemyThrowIn();
+                        assert.phase(BATTLE_PHASES.AI_WAITING);
+                        assert.equal(battle.playerHand.length, 8);
+                    });
+                });
+
+                it('инвариант: ENEMY_THROWING_IN возможна только пока защищается игрок', () => {
+                    const has = (b) => getBattleInvariantViolations(b).some(v => v.includes('ENEMY_THROWING_IN'));
+                    assert.isTrue(has(makeTestBattle({ phase: BATTLE_PHASES.ENEMY_THROWING_IN, defender: 'enemy' })));
+                    assert.isFalse(has(makeTestBattle({ phase: BATTLE_PHASES.ENEMY_THROWING_IN, defender: 'player' })));
+                });
+
+                it('начало нового забега во время подкидывания отменяет запланированный шаг', () => {
+                    inGameStrict({}, () => {
+                        handlePlayerTake();
+                        assert.isTrue(battle.aiTimer !== null);
+                        initNewRun();
+                        assert.equal(battle.aiTimer, null, 'шаг подкидывания живёт в battle.aiTimer и снимается вместе с остальными ходами ИИ');
+                    });
                 });
             });
 
@@ -9213,7 +9389,7 @@
                         // Stand-in for the real battle: the AI's move is pending.
                         battle.aiTimer = setTimeout(() => {}, 60000);
                         const snapshot = captureRealBattleForTests();
-                        assert.isTrue(snapshot.aiPending, 'Снимок должен зафиксировать ожидающий ход AI');
+                        assert.equal(snapshot.pendingPhase, BATTLE_PHASES.AI_WAITING, 'Снимок должен зафиксировать ожидающий ход AI');
 
                         // What a test helper does to the real battle.
                         withFieldSnapshot({ battle: ['phase'] }, () => {});
@@ -9304,10 +9480,23 @@
                 it('Если AI не ждал хода, restoreRealBattleAfterTests ничего не планирует', () => {
                     withIsolatedGameState(fixtureRun(), Object.assign(aiWaitingFixture(), { phase: BATTLE_PHASES.PLAYER_DEFENSE }), () => {
                         const snapshot = captureRealBattleForTests();
-                        assert.isFalse(snapshot.aiPending);
+                        assert.equal(snapshot.pendingPhase, null);
                         restoreRealBattleAfterTests(snapshot);
                         assert.equal(battle.aiTimer, null);
                         assert.phase(BATTLE_PHASES.PLAYER_DEFENSE);
+                    });
+                });
+
+                it('restoreRealBattleAfterTests возвращает и шаг подкидывания врага (взятие игрока не зависает)', () => {
+                    withIsolatedGameState(fixtureRun(), Object.assign(aiWaitingFixture(), { phase: BATTLE_PHASES.ENEMY_THROWING_IN, defender: 'player' }), () => {
+                        battle.aiTimer = setTimeout(() => {}, 60000);
+                        const snapshot = captureRealBattleForTests();
+                        assert.equal(snapshot.pendingPhase, BATTLE_PHASES.ENEMY_THROWING_IN);
+                        clearAITimer();
+                        restoreRealBattleAfterTests(snapshot);
+                        assert.isTrue(battle.aiTimer !== null, 'шаг подкидывания должен быть запланирован заново');
+                        assert.phase(BATTLE_PHASES.ENEMY_THROWING_IN);
+                        clearAITimer();
                     });
                 });
 
