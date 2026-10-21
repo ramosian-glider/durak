@@ -1160,6 +1160,22 @@
             commitBattleState();
         }
 
+        // The one way a table gets resolved (bito or take): park the battle in
+        // RESOLVING, run `mutate` (state only; whatever it returns goes to `present`),
+        // settle the turn (flags, refill, one commit), then `present` (UI and
+        // scheduling only). Callers check their preconditions BEFORE calling this:
+        // nothing may bail out once the battle is in RESOLVING.
+        function resolveTurn(mutate, present) {
+            clearAITimer();
+            beginResolution();
+
+            const currentDefender = battle.defender;
+            const result = mutate();
+
+            settleTurn(currentDefender);
+            present(result);
+        }
+
         function enterPlayerPhase() {
             clearAITimer();
             setBattlePhase(
@@ -1816,7 +1832,8 @@
         // BATTLE STATE TRANSITIONS
         // ------------------------------------------------------------
         // What happens when someone acts: bito, take, a card played, the round or the battle
-        // ending. Handlers follow check -> beginResolution() -> mutate -> settleTurn() -> present;
+        // ending. Handlers follow check -> resolveTurn(mutate, present), which runs
+        // beginResolution() -> mutate -> settleTurn() -> present;
         // applyX() functions change state only, presentX() functions touch only the UI.
         // ============================================================
 
@@ -1936,33 +1953,30 @@
                 return;
             }
 
-            // 2. Now mutate. RESOLVING for BOTH the AI and the player path: the roles
-            //    flip below, so a commit in the middle must not see the old player phase
-            //    paired with the new defender (PLAYER_ATTACK + defender 'player').
-            //    enterPlayerPhase() / scheduleEnemyAI() / checkRoundEnd() set the final phase.
-            clearAITimer();
-            beginResolution();
-
-            const currentDefender = battle.defender;
-
-            if (battle.defender === 'enemy') {
-                discardTable();
-                battle.defender = 'player';
-                fireEnemyAbilityHook('onEnemyDefended');
-            } else {
-                fireAllHooks('onDefenseSucceeded');
-                discardTable();
-                battle.defender = 'enemy';
-            }
-
-            settleTurn(currentDefender);
-
-            if (!checkRoundEnd()) {
-                if (battle.defender === 'player') {
-                    scheduleEnemyAI(AI_STANDARD_DELAY_MS);
+            // 2. Now mutate. resolveTurn() parks the battle in RESOLVING for BOTH the AI
+            //    and the player path: the roles flip below, so a commit in the middle
+            //    must not see the old player phase paired with the new defender
+            //    (PLAYER_ATTACK + defender 'player'). presentBito() sets the final phase.
+            resolveTurn(() => {
+                if (battle.defender === 'enemy') {
+                    discardTable();
+                    battle.defender = 'player';
+                    fireEnemyAbilityHook('onEnemyDefended');
                 } else {
-                    enterPlayerPhase();
+                    fireAllHooks('onDefenseSucceeded');
+                    discardTable();
+                    battle.defender = 'enemy';
                 }
+            }, presentBito);
+        }
+
+        // UI and scheduling only: whose move it is after a bito (unless the round just ended).
+        function presentBito() {
+            if (checkRoundEnd()) return;
+            if (battle.defender === 'player') {
+                scheduleEnemyAI(AI_STANDARD_DELAY_MS);
+            } else {
+                enterPlayerPhase();
             }
         }
 
@@ -1991,14 +2005,15 @@
             if (battle.phase !== BATTLE_PHASES.AI_WAITING && !canAcceptPlayerAction()) return;
             if (battle.table.length === 0) return;
 
-            clearAITimer();
-            beginResolution();
+            resolveTurn(() => {
+                const outcome = applyEnemyTake();
+                audio.playTakeSound();
+                return outcome;
+            }, presentEnemyTakeOutcome);
+        }
 
-            const currentDefender = battle.defender;
-            const { enemyJustDied } = applyEnemyTake();
-            audio.playTakeSound();
-
-            settleTurn(currentDefender);
+        // UI and scheduling only: what happens after the enemy's take was applied and committed.
+        function presentEnemyTakeOutcome({ enemyJustDied }) {
             // The win modal is already up (its close handler opens the shop). Don't
             // let checkRoundEnd() replace it with a round-over modal or advance the phase.
             if (enemyJustDied) return;
@@ -2085,15 +2100,11 @@
 
         // Nothing more to throw in: the player collects the table and the take resolves.
         function finishPlayerTake() {
-            clearAITimer();
-            beginResolution();
-
-            const currentDefender = battle.defender;
-            const outcome = applyPlayerTake();
-
-            battle.defender = 'player';
-            settleTurn(currentDefender);
-            presentPlayerTakeOutcome(outcome);
+            resolveTurn(() => {
+                const outcome = applyPlayerTake();
+                battle.defender = 'player';
+                return outcome;
+            }, presentPlayerTakeOutcome);
         }
 
         function handlePlayerTake() {
@@ -6029,6 +6040,46 @@
                     });
                 });
 
+                it('resolveTurn(): RESOLVING на время mutate, результат mutate уходит в present, present идёт после settleTurn (commit)', () => {
+                    inGameStrict({ phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', table: [testPair(C('a1', 'Hearts', 9), C('d1', 'Hearts', 10))],
+                        heavyBallastAppliedThisTurn: true, isTransferActive: true }, () => {
+                        clearLocalSave();
+                        const order = [];
+                        resolveTurn(() => {
+                            order.push('mutate');
+                            assert.phase(BATTLE_PHASES.RESOLVING);
+                            assert.isFalse(battle.isTransferActive);
+                            assert.isTrue(localStorage.getItem(SAVE_KEY) === null, 'commit ещё не должен был случиться');
+                            return 'result';
+                        }, (result) => {
+                            order.push('present');
+                            assert.equal(result, 'result');
+                            assert.isFalse(battle.heavyBallastAppliedThisTurn, 'к present флаги хода уже сброшены');
+                            assert.isTrue(localStorage.getItem(SAVE_KEY) !== null, 'к present результат уже закоммичен');
+                        });
+                        assert.equal(order.join(), 'mutate,present');
+                    });
+                });
+
+                it('resolveTurn(): снимает запланированный ход ИИ до разрешения (отложенный таймер не сработает поверх хода)', () => {
+                    inGameStrict({ phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', table: [testPair(C('a1', 'Hearts', 9), C('d1', 'Hearts', 10))] }, () => {
+                        battle.aiTimer = setTimeout(() => {}, 60000);
+                        resolveTurn(() => assert.isTrue(battle.aiTimer === null, 'к mutate таймер должен быть снят'), () => {});
+                        assert.equal(battle.aiTimer, null);
+                    });
+                });
+
+                it('В боевом коде beginResolution() и settleTurn() вызываются только из resolveTurn()', () => {
+                    const code = getProductionSource().replace(/\/\/[^\n]*/g, '');
+                    const withoutOwners = code
+                        .replace(/function resolveTurn\([\s\S]*?\n        \}\n/, '')
+                        .replace(/function beginResolution\([\s\S]*?\n        \}\n/, '')
+                        .replace(/function settleTurn\([\s\S]*?\n        \}\n/, '');
+                    assert.isTrue(withoutOwners.length < code.length, 'тела resolveTurn/beginResolution/settleTurn не найдены');
+                    const offenders = withoutOwners.match(/\b(?:beginResolution|settleTurn)\(/g) || [];
+                    assert.equal(offenders.length, 0, 'разрешение хода в обход resolveTurn(): ' + offenders.length);
+                });
+
                 // ---- take: state vs presentation ----
                 it('applyEnemyTake(): враг забирает стол, получает урон, cardsToTake сбрасывается; фаза и добор не трогаются', () => {
                     inGameStrict({ phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', cardsToTake: true,
@@ -8015,6 +8066,22 @@
                 const { inGame } = makeTestFixtures({}, { deck: [] });
                 const game = (runOverrides, battleOverrides, fn) => inGame(battleOverrides, fn, runOverrides);
 
+                // The two situations most hook tests start from. Each equips `relicIds`, builds
+                // the table, runs the take handler, then calls `check`. Overrides win over the defaults.
+                // The enemy collects a one-card table:
+                const enemyTakes = (relicIds, battleOverrides, check, runOverrides) => game(
+                    { relics: relicIds.map(id => ({ id })), ...runOverrides },
+                    { table: [testPair(testCard('x1', 'Hearts', 7))], cardsToTake: true, enemyHP: 50, ...battleOverrides },
+                    () => { handleEnemyTake(); check(); }
+                );
+                // The player, defending, takes the table (enemyHP 100 keeps the enemy alive unless a test says otherwise):
+                const playerTakes = (relicIds, battleOverrides, check, runOverrides) => game(
+                    { relics: relicIds.map(id => ({ id })), ...runOverrides },
+                    { defender: 'player', phase: BATTLE_PHASES.PLAYER_DEFENSE, enemyHP: 100, ...battleOverrides },
+                    () => { handlePlayerTake(); check(); }
+                );
+                const fullHand = (prefix, suit) => Array.from({ length: HAND_SIZE }, (_, i) => ({ id: `${prefix}${i}`, suit, value: 6 + (i % 5) }));
+
                 it('getEnemyDamageExcess капает "лишние" карты на ENEMY_HAND_EXCESS_CAP', () => {
                     assert.equal(getEnemyDamageExcess(4), 0);
                     assert.equal(getEnemyDamageExcess(6), 0);
@@ -8024,8 +8091,8 @@
                 });
 
                 it('mirror_ring (нерф): урон = взятые карты × TAKE_DAMAGE_PER_CARD × MIRROR_RING_MULTIPLIER, БЕЗ учёта уровня/double_penalty', () => {
-                    game(
-                        { floor: 12, playerHP: 100, maxHP: 100, relics: [{ id: 'mirror_ring' }] },
+                    playerTakes(
+                        ['mirror_ring'],
                         {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             enemyHand: [testCard('e1', 'Pikes', 9)],
@@ -8033,18 +8100,15 @@
                                 testPair(testCard('x1', 'Hearts', 6)),
                                 testPair(testCard('x2', 'Hearts', 7)),
                                 testPair(testCard('x3', 'Hearts', 8)),
-                            ],
-                            defender: 'player',
-                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
+                            ]
                         },
                         () => {
-                            handlePlayerTake();
                             // 3 карты × TAKE_DAMAGE_PER_CARD(2) × MIRROR_RING_MULTIPLIER(1) = 6. На этаже 12
                             // (уровень 4, double_penalty) формула, зависящая от уровня, дала бы куда больше:
                             // 3 × 4 × 2 = 24 урона по игроку, отражённые уже без масштабирования уровнем.
                             assert.equal(battle.enemyHP, 100 - 3 * TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER);
                             assert.equal(battle.enemyHP, 94);
-                        }
+                        }, { floor: 12, playerHP: 100, maxHP: 100 }
                     );
                 });
 
@@ -8249,7 +8313,7 @@
                             enemyHand: [testCard('e1', 'Pikes', 6)],
                             defender: 'player',
                             enemyHP: 0, phase: BATTLE_PHASES.AI_WAITING
-                        },
+                       },
                         () => {
                             executeEnemyAI();
                             assert.equal(battle.table.length, 1, 'ИИ должен продолжить ход и выложить карту атаки, даже если enemyHP было 0 ещё до срабатывания хуков');
@@ -8260,17 +8324,14 @@
                 it('spam_mail + salted_wound: враг добирает карту при взятии, урон капается по избытку руки', () => {
                     const enemyHand = [];
                     for (let i = 0; i < 6; i++) enemyHand.push({ id: `e${i}`, suit: 'Pikes', value: 6 });
-                    game(
-                        { relics: [{ id: 'spam_mail' }, { id: 'salted_wound' }] },
+                    enemyTakes(
+                        ['spam_mail', 'salted_wound'],
                         {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             playerHand: [testCard('p1', 'Pikes', 8)],
-                            enemyHand,
-                            table: [testPair(testCard('x1', 'Hearts', 7))], cardsToTake: true,
-                            enemyHP: 50
+                            enemyHand
                         },
                         () => {
-                            handleEnemyTake();
                             // enemyHand: 6 (исходно) + 1 (со стола) + 1 (spam_mail) = 8 → избыток 2
                             assert.equal(battle.enemyHand.length, 8);
                             // урон: 1 карта × TAKE_DAMAGE_PER_CARD(2) + 2 (salted_wound) = 4
@@ -8282,19 +8343,16 @@
                 it('spam_mail: враг добирает именно верхнюю карту колоды, колода уменьшается на одну', () => {
                     // Both hands start full so replenishHands() after the take doesn't
                     // draw from the same deck and blur what spam_mail itself took.
-                    const fullHand = (prefix, suit) => Array.from({ length: HAND_SIZE }, (_, i) => ({ id: `${prefix}${i}`, suit, value: 6 + (i % 5) }));
-                    game(
-                        { relics: [{ id: 'spam_mail' }] },
+                    enemyTakes(
+                        ['spam_mail'],
                         {
                             drawDeck: [testCard('d_bottom', 'Hearts', 6), testCard('d_mid', 'Hearts', 8), testCard('d_top', 'Hearts', 7)],
                             playerHand: fullHand('p', 'Pikes'),
                             enemyHand: fullHand('e', 'Pikes'),
                             trumpCard: testCard('t1', 'Hearts', 6),
-                            table: [testPair(testCard('x1', 'Clubs', 7))], cardsToTake: true,
-                            enemyHP: 50
+                            table: [testPair(testCard('x1', 'Clubs', 7))]
                         },
                         () => {
-                            handleEnemyTake();
                             assert.isTrue(battle.enemyHand.some(c => c.id === 'd_top'), 'Враг должен получить верхнюю карту колоды');
                             assert.isFalse(battle.enemyHand.some(c => c.id === 'd_bottom'), 'Нижняя карта колоды не должна попасть в руку');
                             assert.equal(battle.drawDeck.length, 2);
@@ -8313,17 +8371,15 @@
                         onEnemyTookCards() { handSizeSeen = battle.enemyHand.length; return 0; }
                     };
                     try {
-                        game(
-                            { relics: [{ id: 'spam_mail' }, { id: '__test_order' }] },
+                        enemyTakes(
+                            ['spam_mail', '__test_order'],
                             {
                                 drawDeck: [testCard('d1', 'Hearts', 6)],
                                 playerHand: [testCard('p1', 'Pikes', 8)],
                                 enemyHand: [testCard('e1', 'Pikes', 6)],
-                                table: [testPair(testCard('x1', 'Clubs', 7))], cardsToTake: true,
-                                enemyHP: 50
+                                table: [testPair(testCard('x1', 'Clubs', 7))]
                             },
                             () => {
-                                handleEnemyTake();
                                 // 1 (исходно) + 1 (со стола) + 1 (spam_mail) = 3
                                 assert.equal(handSizeSeen, 3, 'onEnemyTookCards должен видеть руку уже с картой от spam_mail');
                             }
@@ -8337,19 +8393,16 @@
                     // Asserts outcomes only, not which end of drawDeck the card is taken
                     // from: with a single card, any way of taking it gives the same result.
                     const trump = testCard('t1', 'Hearts', 6);
-                    const fullHand = (prefix, suit) => Array.from({ length: HAND_SIZE }, (_, i) => ({ id: `${prefix}${i}`, suit, value: 6 + (i % 5) }));
-                    game(
-                        { relics: [{ id: 'spam_mail' }] },
+                    enemyTakes(
+                        ['spam_mail'],
                         {
                             drawDeck: [trump],
                             playerHand: fullHand('p', 'Pikes'),
                             enemyHand: fullHand('e', 'Pikes'),
                             trumpCard: trump,
-                            table: [testPair(testCard('x1', 'Clubs', 7))], cardsToTake: true,
-                            enemyHP: 50
+                            table: [testPair(testCard('x1', 'Clubs', 7))]
                         },
                         () => {
-                            handleEnemyTake();
                             assert.equal(battle.drawDeck.length, 0, 'Колода должна опустеть');
                             assert.isTrue(battle.enemyHand.some(c => c.id === 't1'), 'Козырная карта должна оказаться в руке врага');
                             assert.equal(battle.trumpSuit, 'Hearts', 'Козырная масть не должна пропасть вместе с картой');
@@ -8359,16 +8412,13 @@
                 });
 
                 it('spam_mail: при пустой колоде враг ничего не добирает и не падает', () => {
-                    game(
-                        { relics: [{ id: 'spam_mail' }] },
+                    enemyTakes(
+                        ['spam_mail'],
                         {
                             playerHand: [testCard('p1', 'Pikes', 8)],
-                            enemyHand: [testCard('e1', 'Pikes', 6)],
-                            table: [testPair(testCard('x1', 'Hearts', 7))], cardsToTake: true,
-                            enemyHP: 50
+                            enemyHand: [testCard('e1', 'Pikes', 6)]
                         },
                         () => {
-                            handleEnemyTake();
                             // 1 (исходно) + 1 (со стола); добирать нечего
                             assert.equal(battle.enemyHand.length, 2);
                             assert.equal(battle.enemyHP, 50 - TAKE_DAMAGE_PER_CARD);
@@ -8386,15 +8436,12 @@
                         onEnemyTookCards() { otherHookCalled = true; return 5; }
                     };
                     try {
-                        game(
-                            { relics: [{ id: 'salted_wound' }, { id: '__test_take' }] },
+                        enemyTakes(
+                            ['salted_wound', '__test_take'],
                             { playerHand: [testCard('p1', 'Pikes', 8)],
-                                enemyHand: Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, suit: 'Pikes', value: 6 })),
-                                table: [testPair(testCard('x1', 'Hearts', 7))], cardsToTake: true,
-                                enemyHP: 50
+                                enemyHand: Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, suit: 'Pikes', value: 6 }))
                             },
                             () => {
-                                handleEnemyTake();
                                 // enemyHand: 6 (исходно) + 1 (со стола) = 7 → избыток 1
                                 // урон: 1 карта × TAKE_DAMAGE_PER_CARD(2) + 1 (salted_wound) + 5 (__test_take) = 8
                                 assert.isTrue(otherHookCalled, 'Второй владелец onEnemyTookCards должен сработать');
@@ -8416,28 +8463,24 @@
                         onPlayerTookCards(ctx) { seenCount = ctx.cardsTakenCount; return true; }
                     };
                     try {
-                        game(
-                            {
-                                playerHP: 100,
-                                maxHP: 100,
-                                relics: [{ id: '__test_player_take' }, { id: 'mirror_ring' }]
-                            },
+                        playerTakes(
+                            ['__test_player_take', 'mirror_ring'],
                             {
                                 drawDeck: [testCard('d1', 'Hearts', 6)],
                                 enemyHand: [testCard('e1', 'Pikes', 9)],
                                 table: [
                                     testPair(testCard('x1', 'Hearts', 6)),
                                     testPair(testCard('x2', 'Hearts', 7)),
-                                ],
-                                defender: 'player',
-                                enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
+                                ]
                             },
                             () => {
-                                handlePlayerTake();
                                 assert.equal(seenCount, 2, 'Хук должен получить число взятых карт в ctx.cardsTakenCount');
                                 // Первый владелец вернул truthy, но mirror_ring стоит вторым и всё равно должен сработать:
                                 // 2 карты × TAKE_DAMAGE_PER_CARD(2) × MIRROR_RING_MULTIPLIER(2) = 8
                                 assert.equal(battle.enemyHP, 100 - 2 * TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER);
+                            }, {
+                                playerHP: 100,
+                                maxHP: 100
                             }
                         );
                     } finally {
@@ -8478,8 +8521,8 @@
                 });
 
                 it('handlePlayerTake: если хук добил врага — ИИ не планируется, фаза остаётся RESOLVING', () => {
-                    game(
-                        { playerHP: 100, maxHP: 100, relics: [{ id: 'mirror_ring' }] },
+                    playerTakes(
+                        ['mirror_ring'],
                         {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Clubs', 10)],
@@ -8487,23 +8530,21 @@
                                 testPair(testCard('x1', 'Hearts', 6)),
                                 testPair(testCard('x2', 'Hearts', 7)),
                             ],
-                            defender: 'player',
-                            enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE
+                            enemyHP: 4
                         },
                         () => {
-                            handlePlayerTake();
                             assert.equal(battle.enemyHP, 0);
                             assert.equal(battle.aiTimer, null, 'ИИ не должен ходить за мёртвого врага под модалкой победы');
                             assert.isTrue(battle.phase !== BATTLE_PHASES.AI_WAITING, 'Фаза не должна переходить в AI_WAITING после победы');
                             const msgBox = getEl('msg-box');
                             closeModal();
-                        }
+                        }, { playerHP: 100, maxHP: 100 }
                     );
                 });
 
                 it('победа приоритетнее: хук добил врага, а взятие было бы смертельным для игрока — поражения нет, HP не тронуто', () => {
-                    game(
-                        { playerHP: 1, maxHP: 100, relics: [{ id: 'mirror_ring' }] },
+                    playerTakes(
+                        ['mirror_ring'],
                         {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Clubs', 10)],
@@ -8511,24 +8552,22 @@
                                 testPair(testCard('x1', 'Hearts', 6)),
                                 testPair(testCard('x2', 'Hearts', 7)),
                             ],
-                            defender: 'player',
-                            enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE
+                            enemyHP: 4
                         },
                         () => {
-                            handlePlayerTake();
                             assert.equal(battle.enemyHP, 0);
                             assert.modalTitle('Победа в Бою!', 'Модалка поражения не должна перекрывать победу');
                             assert.equal(run.playerHP, 1);
                             assert.equal(run.gold, WIN_GOLD_BASE + 1 * WIN_GOLD_PER_FLOOR, 'Награда выдаётся один раз');
                             const msgBox = getEl('msg-box');
                             closeModal();
-                        }
+                        }, { playerHP: 1, maxHP: 100 }
                     );
                 });
 
                 it('победа приоритетнее: safety_rope не тратится и не перекрывает модалку победы, если враг добит тем же взятием', () => {
-                    game(
-                        { playerHP: 1, maxHP: 100, relics: [{ id: 'mirror_ring' }, { id: 'safety_rope' }] },
+                    playerTakes(
+                        ['mirror_ring', 'safety_rope'],
                         {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Clubs', 10)],
@@ -8536,51 +8575,44 @@
                                 testPair(testCard('x1', 'Hearts', 6)),
                                 testPair(testCard('x2', 'Hearts', 7)),
                             ],
-                            defender: 'player',
-                            enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE
+                            enemyHP: 4
                         },
                         () => {
-                            handlePlayerTake();
                             assert.modalTitle('Победа в Бою!');
                             assert.isTrue(hasRelic('safety_rope'), 'Трос не должен расходоваться: смертельный урон не применялся');
                             const msgBox = getEl('msg-box');
                             closeModal();
-                        }
+                        }, { playerHP: 1, maxHP: 100 }
                     );
                 });
 
                 it('handlePlayerTake: если враг жив — ИИ по-прежнему планируется (защита от чрезмерного гарда)', () => {
-                    game(
-                        { playerHP: 100, maxHP: 100, relics: [{ id: 'mirror_ring' }] },
+                    playerTakes(
+                        ['mirror_ring'],
                         {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Clubs', 10)],
                             table: [
                                 testPair(testCard('x1', 'Hearts', 6)),
                                 testPair(testCard('x2', 'Hearts', 7)),
-                            ],
-                            defender: 'player',
-                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
+                            ]
                         },
                         () => {
-                            handlePlayerTake();
                             assert.isTrue(battle.enemyHP > 0);
                             assert.isTrue(battle.aiTimer !== null, 'ИИ должен быть запланирован, пока враг жив');
                             assert.phase(BATTLE_PHASES.AI_WAITING);
-                        }
+                        }, { playerHP: 100, maxHP: 100 }
                     );
                 });
 
                 it('handleEnemyTake: если враг умер от взятия карт — модалку победы не перекрывает round-end модалка, фаза не меняется', () => {
-                    game(
-                        {},
+                    enemyTakes(
+                        [],
                         {
                             enemyHand: [testCard('e1', 'Pikes', 9)],
-                            table: [testPair(testCard('x1', 'Hearts', 7))], cardsToTake: true,
                             enemyHP: TAKE_DAMAGE_PER_CARD, phase: BATTLE_PHASES.AI_WAITING
                         },
                         () => {
-                            handleEnemyTake();
                             assert.equal(battle.enemyHP, 0);
                             // Колода пуста, стол пуст и рука игрока пуста: без гарда checkRoundEnd()
                             // показал бы «Раунд Выигран!» поверх победной модалки и потерял бы её openShop().
@@ -8593,57 +8625,23 @@
                     );
                 });
 
-                it('ace_sleeve: при взятии карт врагом добавляет +ACE_SLEEVE_BONUS_DAMAGE к урону (через хук onEnemyTookCards)', () => {
-                    game(
-                        { relics: [{ id: 'ace_sleeve' }] },
-                        { playerHand: [testCard('p1', 'Pikes', 8)],
-                            enemyHand: [testCard('e1', 'Pikes', 9)],
-                            table: [testPair(testCard('x1', 'Hearts', 7))], cardsToTake: true,
-                            enemyHP: 50
-                        },
-                        () => {
-                            handleEnemyTake();
-                            // урон: 1 карта × TAKE_DAMAGE_PER_CARD + ACE_SLEEVE_BONUS_DAMAGE
-                            assert.equal(battle.enemyHP, 50 - (TAKE_DAMAGE_PER_CARD + ACE_SLEEVE_BONUS_DAMAGE));
-                        }
-                    );
-                });
-
-                it('ace_sleeve + salted_wound: оба бонуса onEnemyTookCards складываются в один урон', () => {
-                    game(
-                        { relics: [{ id: 'ace_sleeve' }, { id: 'salted_wound' }] },
-                        { playerHand: [testCard('p1', 'Pikes', 8)],
-                            enemyHand: Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, suit: 'Pikes', value: 6 })),
-                            table: [testPair(testCard('x1', 'Hearts', 7))], cardsToTake: true,
-                            enemyHP: 50
-                        },
-                        () => {
-                            handleEnemyTake();
-                            // enemyHand: 6 + 1 (со стола) = 7 → избыток 1 → salted_wound: +1 × SALTED_WOUND_DAMAGE_PER_CARD
-                            const expected = TAKE_DAMAGE_PER_CARD + ACE_SLEEVE_BONUS_DAMAGE + SALTED_WOUND_DAMAGE_PER_CARD;
-                            assert.equal(battle.enemyHP, 50 - expected);
-                        }
-                    );
-                });
-
-                it('ace_sleeve: без артефакта бонус не применяется', () => {
-                    game(
-                        {},
-                        { playerHand: [testCard('p1', 'Pikes', 8)],
-                            enemyHand: [testCard('e1', 'Pikes', 9)],
-                            table: [testPair(testCard('x1', 'Hearts', 7))], cardsToTake: true,
-                            enemyHP: 50
-                        },
-                        () => {
-                            handleEnemyTake();
-                            assert.equal(battle.enemyHP, 50 - TAKE_DAMAGE_PER_CARD);
-                        }
-                    );
+                it('ace_sleeve: при взятии карт врагом добавляет +ACE_SLEEVE_BONUS_DAMAGE к урону (через хук onEnemyTookCards); бонусы складываются с salted_wound; без артефакта бонуса нет', () => {
+                    const sixCards = Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, suit: 'Pikes', value: 6 }));
+                    // enemyHand 6 + 1 (со стола) = 7 → избыток 1 → salted_wound: +1 × SALTED_WOUND_DAMAGE_PER_CARD
+                    const cases = [
+                        { name: 'ace_sleeve', relics: ['ace_sleeve'], enemyHand: [testCard('e1', 'Pikes', 9)], damage: TAKE_DAMAGE_PER_CARD + ACE_SLEEVE_BONUS_DAMAGE },
+                        { name: 'ace_sleeve + salted_wound', relics: ['ace_sleeve', 'salted_wound'], enemyHand: sixCards, damage: TAKE_DAMAGE_PER_CARD + ACE_SLEEVE_BONUS_DAMAGE + SALTED_WOUND_DAMAGE_PER_CARD },
+                        { name: 'без артефакта', relics: [], enemyHand: [testCard('e1', 'Pikes', 9)], damage: TAKE_DAMAGE_PER_CARD }
+                    ];
+                    for (const c of cases) {
+                        enemyTakes(c.relics, { playerHand: [testCard('p1', 'Pikes', 8)], enemyHand: c.enemyHand },
+                            () => assert.equal(battle.enemyHP, 50 - c.damage, c.name));
+                    }
                 });
 
                 it('ballast_drop: при взятии карт сбрасывает 2 некозырные карты наименьшего ранга', () => {
-                    game(
-                        { playerHP: 100, maxHP: 100, relics: [{ id: 'ballast_drop' }] },
+                    playerTakes(
+                        ['ballast_drop'],
                         {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             playerHand: [
@@ -8654,43 +8652,37 @@
                             table: [
                                 testPair(testCard('x1', 'Hearts', 6)),
                                 testPair(testCard('x2', 'Pikes', 8)),
-                            ],
-                            defender: 'player',
-                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
+                            ]
                         },
                         () => {
-                            handlePlayerTake();
                             // При взятии двух карт артефакт сбрасывает p1 и p2 из руки.
                             assert.equal(battle.discardPile.filter(c => c.id === 'p1' || c.id === 'p2').length, 2);
                             assert.isFalse(battle.playerHand.some(c => c.id === 'p1' || c.id === 'p2'));
                             assert.isTrue(battle.playerHand.some(c => c.id === 'x1'));
                             assert.isTrue(battle.playerHand.some(c => c.id === 'x2'));
-                        }
+                        }, { playerHP: 100, maxHP: 100 }
                     );
                 });
 
                 it('ballast_drop: не срабатывает, если со стола взята только одна карта', () => {
-                    game(
-                        { playerHP: 100, maxHP: 100, relics: [{ id: 'ballast_drop' }] },
+                    playerTakes(
+                        ['ballast_drop'],
                         {
                             playerHand: [testCard('p1', 'Pikes', 7)],
                             enemyHand: [testCard('e1', 'Pikes', 9)],
-                            table: [testPair(testCard('x1', 'Pikes', 6))],
-                            defender: 'player',
-                            enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
+                            table: [testPair(testCard('x1', 'Pikes', 6))]
                         },
                         () => {
-                            handlePlayerTake();
                             assert.equal(battle.playerHand.length, 2, 'Обе карты должны остаться в руке');
                             assert.equal(battle.discardPile.filter(c => c.id === 'p1' || c.id === 'x1').length, 0,
                                 'Сброс балласта не должен сбрасывать карты при взятии одной карты');
-                        }
+                        }, { playerHP: 100, maxHP: 100 }
                     );
                 });
 
                 it('ballast_drop: не срабатывает, если взятие добило врага через mirror_ring (победа приоритетнее)', () => {
-                    game(
-                        { playerHP: 100, maxHP: 100, relics: [{ id: 'mirror_ring' }, { id: 'ballast_drop' }] },
+                    playerTakes(
+                        ['mirror_ring', 'ballast_drop'],
                         {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             playerHand: [
@@ -8699,17 +8691,15 @@
                             ],
                             enemyHand: [testCard('e1', 'Pikes', 9)],
                             table: [testPair(testCard('x1', 'Hearts', 6))],
-                            defender: 'player',
-                            enemyHP: 1, phase: BATTLE_PHASES.PLAYER_DEFENSE
+                            enemyHP: 1
                         },
                         () => {
-                            handlePlayerTake();
                             assert.equal(battle.enemyHP, 0);
                             assert.equal(battle.discardPile.filter(c => c.id === 'p1' || c.id === 'p2').length, 0, 'Сброс балласта не должен срабатывать после победы');
 
                             const msgBox = getEl('msg-box');
                             closeModal();
-                        }
+                        }, { playerHP: 100, maxHP: 100 }
                     );
                 });
 
@@ -9216,16 +9206,14 @@
                 });
 
                 it('midas_touch: НЕ срабатывает, когда игрок взял карты (handlePlayerTake) или когда успешно отбился враг', () => {
-                    game(
-                        { relics: [{ id: 'midas_touch' }] },
+                    playerTakes(
+                        ['midas_touch'],
                         {
                             playerHand: [testCard('p9', 'Pikes', 8)],
                             table: [testPair(testCard('a1', 'Pikes', 6))],
-                            defender: 'player',
-                            enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
+                            enemyHP: 50
                         },
                         () => {
-                            handlePlayerTake();
                             assert.equal(run.gold, 0, 'Игрок взял карты — это не успешная защита');
                         }
                     );
