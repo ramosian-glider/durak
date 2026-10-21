@@ -3894,6 +3894,14 @@
                     const detail = `ожидалась фаза боя ${expected}, получена: ${battle.phase}`;
                     throw new Error(msg ? `${msg} (${detail})` : detail);
                 }
+            },
+            // The title of the message box that is currently open.
+            modalTitle(expected, msg = '') {
+                assert.equal(getEl('msg-title').innerText, expected, msg);
+            },
+            // No card was lost or duplicated since `before` (a getAllCardIds() snapshot).
+            cardsConserved(before, msg = '') {
+                assert.equal(getAllCardIds().join(), before.join(), msg);
             }
         };
 
@@ -3996,6 +4004,13 @@
         // Builds one battle.table entry: an attack card and, once answered, its defender.
         function testPair(attack, defend = null) {
             return { attack, defend };
+        }
+
+        // The ids of every card in play (deck, discard, both hands, table), sorted:
+        // a snapshot to compare before/after a transition (see assert.cardsConserved).
+        function getAllCardIds() {
+            return [...battle.drawDeck, ...battle.discardPile, ...battle.playerHand, ...battle.enemyHand, ...getTableCards()]
+                .map(c => c.id).sort();
         }
 
         // Production code only: everything before the test infrastructure, which
@@ -4497,7 +4512,7 @@
                             const result = checkRoundEnd();
                             assert.isTrue(result, 'checkRoundEnd() должен сообщить, что раунд завершился');
                             assert.phase(BATTLE_PHASES.ROUND_OVER);
-                            assert.equal(getEl('msg-title').innerText, 'Раунд Проигран!');
+                            assert.modalTitle('Раунд Проигран!');
                             // 2 карты на руках → урон 6 + 2*4 = 14, с 30 HP игрок выживает.
                             assert.equal(run.playerHP, 16);
                             const msgBox = getEl('msg-box');
@@ -4518,7 +4533,7 @@
                             const result = checkRoundEnd();
                             assert.isTrue(result);
                             assert.phase(BATTLE_PHASES.ROUND_OVER);
-                            assert.equal(getEl('msg-title').innerText, 'Поражение!');
+                            assert.modalTitle('Поражение!');
                             // 1 карта на руке → урон 6 + 1*4 = 10, с 5 HP это смертельно.
                             assert.equal(run.playerHP, 0);
                             const msgBox = getEl('msg-box');
@@ -4538,7 +4553,7 @@
                             const result = checkRoundEnd();
                             assert.isTrue(result);
                             assert.phase(BATTLE_PHASES.ROUND_OVER);
-                            assert.equal(getEl('msg-title').innerText, 'Ничья в кону');
+                            assert.modalTitle('Ничья в кону');
                             assert.equal(run.playerHP, 20, 'ничья не должна наносить урон');
                             const msgBox = getEl('msg-box');
                             closeModal();
@@ -5286,7 +5301,7 @@
                         executeEnemyAction({ type: 'transfer', card: battle.enemyHand[0] });
                         assert.equal(battle.enemyHP, 0);
                         assert.phase(BATTLE_PHASES.BATTLE_OVER, 'бой должен остаться в BATTLE_OVER, а не отдать ход игроку');
-                        assert.equal(getEl('msg-title').innerText, 'Победа в Бою!', 'модалка победы не должна замещаться модалкой перевода');
+                        assert.modalTitle('Победа в Бою!', 'модалка победы не должна замещаться модалкой перевода');
                         assert.equal(run.gold, 15 + WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR, 'награда выдаётся ровно один раз');
                         assert.equal(JSON.parse(localStorage.getItem(SAVE_KEY)).battle.phase, BATTLE_PHASES.BATTLE_OVER, 'в сейве — победа, а не живой раунд');
                         getEl('msg-btn').click();
@@ -5306,7 +5321,7 @@
                         assert.equal(battle.enemyHP, 0);
                         assert.phase(BATTLE_PHASES.BATTLE_OVER, 'победа не должна перезаписываться фазой AI_WAITING');
                         assert.isTrue(battle.aiTimer === null, 'после победы ход ИИ планироваться не должен');
-                        assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
+                        assert.modalTitle('Победа в Бою!');
                         assert.equal(run.gold, 15 + WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR, 'награда выдаётся ровно один раз');
                         assert.equal(JSON.parse(localStorage.getItem(SAVE_KEY)).battle.phase, BATTLE_PHASES.BATTLE_OVER);
                     }, relicRun('cascade_transfer'));
@@ -5325,7 +5340,7 @@
                         assert.equal(battle.enemyHP, 0);
                         assert.phase(BATTLE_PHASES.BATTLE_OVER, 'победа не должна перезаписываться фазой AI_WAITING');
                         assert.isTrue(battle.aiTimer === null, 'после победы ход ИИ планироваться не должен');
-                        assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
+                        assert.modalTitle('Победа в Бою!');
                     }, relicRun('sharp_suit'));
                 });
 
@@ -5372,7 +5387,7 @@
                         assert.phase(BATTLE_PHASES.BATTLE_OVER);
                         assert.isTrue(battle.aiTimer === null, 'после победы ход ИИ планироваться не должен');
                         assert.equal(battle.table.length, 0, 'атака врага не должна выкладываться');
-                        assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
+                        assert.modalTitle('Победа в Бою!');
                         assert.equal(run.gold, 15 + WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR, 'награда выдаётся ровно один раз');
                     }, relicRun('heavy_ballast'));
                 });
@@ -5388,7 +5403,7 @@
                         assert.equal(battle.enemyHP, 1);
                         assert.phase(BATTLE_PHASES.PLAYER_DEFENSE);
                         assert.equal(battle.defender, 'player');
-                        assert.equal(getEl('msg-title').innerText, 'Враг Переводит!');
+                        assert.modalTitle('Враг Переводит!');
                     }, relicRun('cascade_transfer'));
                 });
 
@@ -5401,7 +5416,7 @@
                             resumeFromSave();
                             assert.phase(BATTLE_PHASES.BATTLE_OVER);
                             assert.equal(run.gold, 15, 'награда не должна выдаваться повторно');
-                            assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
+                            assert.modalTitle('Победа в Бою!');
                             getEl('msg-btn').click();
                             const shop = getEl('shop-modal');
                             assert.isFalse(shop.classList.contains('hidden'), 'магазин должен открыться');
@@ -5567,28 +5582,16 @@
                 });
 
                 it('Игровые переходы проходят под включёнными инвариантами (take/bito/enemy take)', () => {
-                    preserveLocalSaveAround(() => {
-                        const wasEnabled = battleInvariantChecksEnabled;
-                        battleInvariantChecksEnabled = true;
-                        try {
-                            inGame({
-                                phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', table: openAttack()
-                            }, () => {
-                                try { handlePlayerTake(); } finally { closeUi(); clearAITimer(); }
-                            });
-                            inGame({
-                                phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy',
-                                table: [testPair(testCard('a1', 'Hearts', 9), testCard('a2', 'Hearts', 10))]
-                            }, () => {
-                                try { handleBito(); } finally { closeUi(); clearAITimer(); }
-                            });
-                            inGame({
-                                phase: BATTLE_PHASES.AI_WAITING, defender: 'enemy', cardsToTake: true, table: openAttack()
-                            }, () => {
-                                try { handleEnemyTake(); } finally { closeUi(); clearAITimer(); }
-                            });
-                        } finally { battleInvariantChecksEnabled = wasEnabled; clearLocalSave(); }
-                    });
+                    inGameStrict({
+                        phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', table: openAttack()
+                    }, () => handlePlayerTake());
+                    inGameStrict({
+                        phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy',
+                        table: [testPair(testCard('a1', 'Hearts', 9), testCard('a2', 'Hearts', 10))]
+                    }, () => handleBito());
+                    inGameStrict({
+                        phase: BATTLE_PHASES.AI_WAITING, defender: 'enemy', cardsToTake: true, table: openAttack()
+                    }, () => handleEnemyTake());
                 });
 
                 // ---- Explicit persistence ----
@@ -5642,7 +5645,6 @@
                     playerHand: [C('p1', 'Hearts', 6), C('p2', 'Pikes', 9)],
                     enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 9)], trumpCard: C('d1', 'Hearts', 6)
                 });
-                const allIds = () => [...battle.drawDeck, ...battle.discardPile, ...battle.playerHand, ...battle.enemyHand, ...getTableCards()].map(c => c.id).sort();
 
                 // ---- generic card primitives ----
                 it('removeCard(): по ссылке и по id; отсутствующая карта -> null, массив не меняется', () => {
@@ -5660,35 +5662,35 @@
 
                 it('moveCard(): переносит карту между зонами ровно один раз', () => {
                     inGame({}, () => {
-                        const before = allIds();
+                        const before = getAllCardIds();
                         assert.isTrue(moveCard(battle.playerHand[0], battle.playerHand, battle.discardPile));
                         assert.equal(battle.playerHand.length, 1);
                         assert.equal(battle.discardPile.length, 1);
-                        assert.equal(allIds().join(), before.join(), 'набор карт не должен меняться');
+                        assert.cardsConserved(before, 'набор карт не должен меняться');
                     });
                 });
 
                 it('moveCard(): карты нет в источнике или уже есть в приёмнике -> false, ничего не меняется', () => {
                     inGame({}, () => {
-                        const before = allIds();
+                        const before = getAllCardIds();
                         assert.isFalse(moveCard(C('nope', 'Hearts', 6), battle.playerHand, battle.discardPile), 'нет в источнике');
                         assert.isFalse(moveCard(battle.enemyHand[0], battle.playerHand, battle.discardPile), 'лежит в другой зоне');
                         battle.discardPile.push(battle.playerHand[0]); // дубликат: уже в приёмнике
                         assert.isFalse(moveCard(battle.playerHand[0], battle.playerHand, battle.discardPile), 'уже в приёмнике');
                         assert.equal(battle.playerHand.length, 2);
                         assert.equal(battle.discardPile.length, 1);
-                        assert.equal(before.length, allIds().length - 1);
+                        assert.equal(before.length, getAllCardIds().length - 1);
                     });
                 });
 
                 it('discardHand(): вся рука уходит в сброс, массив руки опустошается на месте', () => {
                     inGame({}, () => {
                         const hand = battle.playerHand;
-                        const before = allIds();
+                        const before = getAllCardIds();
                         discardHand(hand);
                         assert.isTrue(battle.playerHand === hand && hand.length === 0);
                         assert.equal(battle.discardPile.length, 2);
-                        assert.equal(allIds().join(), before.join());
+                        assert.cardsConserved(before);
                     });
                 });
 
@@ -5768,12 +5770,12 @@
 
                 it('discardTable(): в сброс уходят КАРТЫ (а не пары), стол пуст, набор карт цел', () => {
                     inGame({ table: [testPair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10)), testPair(C('a2', 'Hearts', 7))] }, () => {
-                        const before = allIds();
+                        const before = getAllCardIds();
                         discardTable();
                         assert.equal(battle.table.length, 0);
                         assert.equal(battle.discardPile.length, 3);
                         assert.isTrue(battle.discardPile.every(c => typeof c.id === 'string' && typeof c.value === 'number'), 'в сбросе только карты');
-                        assert.equal(allIds().join(), before.join());
+                        assert.cardsConserved(before);
                         assert.equal(getBattleInvariantViolations(battle).length, 0);
                     });
                 });
@@ -5810,23 +5812,16 @@
 
                 // ---- behaviour preserved through the refactored call sites ----
                 it('Полный цикл под инвариантами: атака игрока -> защита врага -> бито — карты не теряются и не дублируются', () => {
-                    preserveLocalSaveAround(() => {
-                        const wasEnabled = battleInvariantChecksEnabled;
-                        battleInvariantChecksEnabled = true;
-                        try {
-                            inGame({ drawDeck: [], playerHand: [C('p1', 'Pikes', 7)], enemyHand: [C('e1', 'Pikes', 10), C('e2', 'Hearts', 9)] }, () => {
-                                const before = allIds();
-                                window.onPlayerCardClick(0);
-                                assert.equal(battle.table.length, 1);
-                                assert.equal(battle.playerHand.length, 0);
-                                clearAITimer();
-                                executeEnemyAI(); // враг бьётся минимальной подходящей картой
-                                assert.equal(battle.table[0].defend.id, 'e1');
-                                assert.equal(battle.enemyHand.length, 1);
-                                assert.equal(allIds().join(), before.join());
-                                clearAITimer();
-                            });
-                        } finally { battleInvariantChecksEnabled = wasEnabled; clearAITimer(); clearLocalSave(); }
+                    inGameStrict({ drawDeck: [], playerHand: [C('p1', 'Pikes', 7)], enemyHand: [C('e1', 'Pikes', 10), C('e2', 'Hearts', 9)] }, () => {
+                        const before = getAllCardIds();
+                        window.onPlayerCardClick(0);
+                        assert.equal(battle.table.length, 1);
+                        assert.equal(battle.playerHand.length, 0);
+                        clearAITimer();
+                        executeEnemyAI(); // враг бьётся минимальной подходящей картой
+                        assert.equal(battle.table[0].defend.id, 'e1');
+                        assert.equal(battle.enemyHand.length, 1);
+                        assert.cardsConserved(before);
                     });
                 });
 
@@ -5850,14 +5845,14 @@
                         enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Hearts', 9), C('e3', 'Hearts', 14)],
                         table: [testPair(C('a1', 'Pikes', 7)), testPair(C('a2', 'Hearts', 9))]
                     }, () => {
-                        const before = allIds();
+                        const before = getAllCardIds();
                         handlePlayerTake();
                         playOutEnemyThrowIn();
                         // номинал 9 есть на столе: e1 и e2 подкинуты, e3 (туз) нет
                         assert.equal(battle.enemyHand.map(c => c.id).join(), 'e3');
                         assert.equal(battle.table.length, 0);
                         assert.equal(battle.playerHand.length, 4 + 4);
-                        assert.equal(allIds().join(), before.join());
+                        assert.cardsConserved(before);
                     });
                 });
 
@@ -6939,6 +6934,26 @@
                     });
                 });
 
+                it('assert.cardsConserved() / assert.modalTitle(): молчат при совпадении и бросают при расхождении', () => {
+                    withIsolatedGameState(makeTestRun(), makeTestBattle({ playerHand: [testCard('p1', 'Pikes', 8)], enemyHand: [testCard('e1', 'Pikes', 9)] }), () => {
+                        const before = getAllCardIds();
+                        assert.cardsConserved(before);
+                        battle.discardPile.push(battle.enemyHand.pop()); // moved, not lost
+                        assert.cardsConserved(before);
+                        battle.discardPile.pop(); // lost
+                        let lost = false;
+                        try { assert.cardsConserved(before); } catch (err) { lost = true; }
+                        assert.isTrue(lost, 'потеря карты должна ловиться');
+
+                        showModal('Заголовок', 'текст');
+                        assert.modalTitle('Заголовок');
+                        let wrong = false;
+                        try { assert.modalTitle('Другой'); } catch (err) { wrong = true; }
+                        closeModal();
+                        assert.isTrue(wrong, 'неверный заголовок должен ловиться');
+                    });
+                });
+
                 it('withTestGame(): включает инварианты на время теста, потом восстанавливает флаг, закрывает модалку и чистит сейв; реальный сейв сохраняется', () => {
                     const wasEnabled = battleInvariantChecksEnabled;
                     const marker = '{"marker":"real-save-sentinel"}';
@@ -6970,7 +6985,6 @@
                     table: [testPair(C('a1', 'Pikes', 7)), testPair(C('a2', 'Hearts', 9))],
                     trumpCard: C('t1', 'Spades', 6)
                 });
-                const allIds = () => [...battle.drawDeck, ...battle.discardPile, ...battle.playerHand, ...battle.enemyHand, ...getTableCards()].map(c => c.id).sort();
 
                 it('handlePlayerTake(): если враг может подкинуть, взятие объявлено, но стол, рука и HP ещё не тронуты', () => {
                     inGameStrict({}, () => {
@@ -6986,7 +7000,7 @@
 
                 it('enemyThrowInStep(): шаг = одна подкинутая карта (с учётом лимита); пустой шаг — игрок забирает стол и получает урон', () => {
                     inGameStrict({}, () => {
-                        const before = allIds();
+                        const before = getAllCardIds();
                         const hpBefore = run.playerHP;
                         handlePlayerTake();
 
@@ -7006,7 +7020,7 @@
                         assert.equal(battle.playerHand.length, 8);
                         assert.equal(run.playerHP, hpBefore - 4 * getCurrentEnemy().level);
                         assert.phase(BATTLE_PHASES.AI_WAITING);
-                        assert.equal(allIds().join(), before.join(), 'ни одна карта не потерялась и не задвоилась');
+                        assert.cardsConserved(before, 'ни одна карта не потерялась и не задвоилась');
                     });
                 });
 
@@ -7996,6 +8010,11 @@
             });
 
             runner.describe('11. Новые артефакты и нерф mirror_ring', (it, assert) => {
+                // Bare run (empty deck: tests deal from the battle's own cards); `runOverrides`
+                // come first because they usually say which relics are equipped.
+                const { inGame } = makeTestFixtures({}, { deck: [] });
+                const game = (runOverrides, battleOverrides, fn) => inGame(battleOverrides, fn, runOverrides);
+
                 it('getEnemyDamageExcess капает "лишние" карты на ENEMY_HAND_EXCESS_CAP', () => {
                     assert.equal(getEnemyDamageExcess(4), 0);
                     assert.equal(getEnemyDamageExcess(6), 0);
@@ -8005,9 +8024,9 @@
                 });
 
                 it('mirror_ring (нерф): урон = взятые карты × TAKE_DAMAGE_PER_CARD × MIRROR_RING_MULTIPLIER, БЕЗ учёта уровня/double_penalty', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ floor: 12, playerHP: 100, maxHP: 100, relics: [{ id: 'mirror_ring' }] }),
-                        makeTestBattle({
+                    game(
+                        { floor: 12, playerHP: 100, maxHP: 100, relics: [{ id: 'mirror_ring' }] },
+                        {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             enemyHand: [testCard('e1', 'Pikes', 9)],
                             table: [
@@ -8017,7 +8036,7 @@
                             ],
                             defender: 'player',
                             enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
-                        }),
+                        },
                         () => {
                             handlePlayerTake();
                             // 3 карты × TAKE_DAMAGE_PER_CARD(2) × MIRROR_RING_MULTIPLIER(1) = 6. На этаже 12
@@ -8030,9 +8049,9 @@
                 });
 
                 it('safety_rope: спасает от смертельного урона один раз за забег, очищает стол и исчезает из инвентаря', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ playerHP: 5, relics: [{ id: 'safety_rope' }] }),
-                        makeTestBattle({ table: [testPair(testCard('a', 'Hearts', 6))] }),
+                    game(
+                        { playerHP: 5, relics: [{ id: 'safety_rope' }] },
+                        { table: [testPair(testCard('a', 'Hearts', 6))] },
                         () => {
                             const first = applyPlayerDamage(100);
                             assert.isTrue(first.savedBySafetyRope);
@@ -8051,12 +8070,12 @@
                 });
 
                 it('safety_rope: после срабатывания снова доступен на продажу в магазине', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ playerHP: 5, gold: 100, relics: [{ id: 'safety_rope' }] }),
-                        makeTestBattle({
+                    game(
+                        { playerHP: 5, gold: 100, relics: [{ id: 'safety_rope' }] },
+                        {
                             defender: 'player',
                             enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
-                        }),
+                        },
                         () => {
                             applyPlayerDamage(100); // срабатывает и потребляет safety_rope
                             assert.isFalse(hasRelic('safety_rope'));
@@ -8081,15 +8100,15 @@
                 });
 
                 it('safety_rope: после срабатывания слот в боевой панели артефактов освобождается', () => {
-                    withIsolatedGameState(
-                        makeBareRun({
+                    game(
+                        {
                             playerHP: 5,
                             relics: [{ id: 'safety_rope', name: 'Страховочный трос', icon: '🪢', desc: 'x', price: 18 }]
-                        }),
-                        makeTestBattle({
+                        },
+                        {
                             defender: 'player',
                             enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
-                        }),
+                        },
                         () => {
                             renderAll();
                             const relicsBar = getEl('relics-bar');
@@ -8103,9 +8122,9 @@
                 });
 
                 it('cascade_transfer: наносит урон один раз за ход, повторный вызов в тот же ход не бьёт снова', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'cascade_transfer' }] }),
-                        makeTestBattle({ enemyHP: 20 }),
+                    game(
+                        { relics: [{ id: 'cascade_transfer' }] },
+                        { enemyHP: 20 },
                         () => {
                             triggerCascadeTransfer();
                             assert.equal(battle.enemyHP, 16); // 20 - CASCADE_TRANSFER_DAMAGE(4)
@@ -8130,9 +8149,9 @@
                     let otherHookCalled = false;
                     RELIC_EFFECTS.__test_transfer = { onTransfer: () => { otherHookCalled = true; } };
                     try {
-                        withIsolatedGameState(
-                            makeBareRun({ relics: [{ id: 'cascade_transfer' }, { id: '__test_transfer' }] }),
-                            makeTestBattle({ enemyHP: 20 }),
+                        game(
+                            { relics: [{ id: 'cascade_transfer' }, { id: '__test_transfer' }] },
+                            { enemyHP: 20 },
                             () => {
                                 triggerCascadeTransfer();
                                 assert.equal(battle.enemyHP, 16, 'cascade_transfer всё ещё должен нанести урон');
@@ -8152,16 +8171,16 @@
                     // so a future refactor of that branch can't silently drop the call
                     // without a test noticing.
                     const transferFloorIndex = ENEMIES.findIndex(e => e.activeAbilities.has('ai_transfer'));
-                    withIsolatedGameState(
-                        makeBareRun({ floor: transferFloorIndex + 1, relics: [{ id: 'cascade_transfer' }] }),
-                        makeTestBattle({
+                    game(
+                        { floor: transferFloorIndex + 1, relics: [{ id: 'cascade_transfer' }] },
+                        {
                             playerHand: [
                                 testCard('p1', 'Pikes', 10),
                                 testCard('p2', 'Pikes', 11)
                             ],
                             enemyHand: [testCard('e1', 'Clubs', 8)],
                             table: [testPair(testCard('a1', 'Clubs', 8))], phase: BATTLE_PHASES.AI_WAITING
-                        }),
+                        },
                         () => {
                             executeEnemyAI();
                             assert.equal(battle.defender, 'player', 'После перевода противником защитником снова становится игрок');
@@ -8173,15 +8192,15 @@
                 it('heavy_ballast: тикает один раз за ход врага, урон капается через getEnemyDamageExcess', () => {
                     const bigEnemyHand = [];
                     for (let i = 0; i < 9; i++) bigEnemyHand.push({ id: `e${i}`, suit: 'Pikes', value: 6 });
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'heavy_ballast' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'heavy_ballast' }] },
+                        {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             enemyHand: bigEnemyHand,
                             trumpCard: testCard('t1', 'Hearts', 6),
                             defender: 'player',
                             enemyHP: 50, phase: BATTLE_PHASES.AI_WAITING
-                        }),
+                        },
                         () => {
                             executeEnemyAI();
                             // 9 карт в руке врага - 6 = 3 избыточных (не капается, т.к. < 4)
@@ -8200,15 +8219,15 @@
                     // the killing blow.
                     const bigEnemyHand = [];
                     for (let i = 0; i < 10; i++) bigEnemyHand.push({ id: `e${i}`, suit: 'Pikes', value: 6 });
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'heavy_ballast' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'heavy_ballast' }] },
+                        {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             enemyHand: bigEnemyHand,
                             trumpCard: testCard('t1', 'Hearts', 6),
                             defender: 'player',
                             enemyHP: 2, phase: BATTLE_PHASES.AI_WAITING
-                        }),
+                        },
                         () => {
                             executeEnemyAI();
                             assert.isTrue(battle.enemyHP <= 0, 'heavy_ballast должен добить врага (2 HP - 4 капированного урона)');
@@ -8224,13 +8243,13 @@
                     // whether it dropped from >0 during this call) and silently break
                     // any fixture/scenario where enemyHP starts at 0 for unrelated
                     // reasons — exactly what broke the "AI закончил подкидывать" test.
-                    withIsolatedGameState(
-                        makeBareRun(),
-                        makeTestBattle({ playerHand: [testCard('p1', 'Hearts', 9)],
+                    game(
+                        {},
+                        { playerHand: [testCard('p1', 'Hearts', 9)],
                             enemyHand: [testCard('e1', 'Pikes', 6)],
                             defender: 'player',
                             enemyHP: 0, phase: BATTLE_PHASES.AI_WAITING
-                        }),
+                        },
                         () => {
                             executeEnemyAI();
                             assert.equal(battle.table.length, 1, 'ИИ должен продолжить ход и выложить карту атаки, даже если enemyHP было 0 ещё до срабатывания хуков');
@@ -8241,15 +8260,15 @@
                 it('spam_mail + salted_wound: враг добирает карту при взятии, урон капается по избытку руки', () => {
                     const enemyHand = [];
                     for (let i = 0; i < 6; i++) enemyHand.push({ id: `e${i}`, suit: 'Pikes', value: 6 });
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'spam_mail' }, { id: 'salted_wound' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'spam_mail' }, { id: 'salted_wound' }] },
+                        {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             playerHand: [testCard('p1', 'Pikes', 8)],
                             enemyHand,
                             table: [testPair(testCard('x1', 'Hearts', 7))], cardsToTake: true,
                             enemyHP: 50
-                        }),
+                        },
                         () => {
                             handleEnemyTake();
                             // enemyHand: 6 (исходно) + 1 (со стола) + 1 (spam_mail) = 8 → избыток 2
@@ -8264,16 +8283,16 @@
                     // Both hands start full so replenishHands() after the take doesn't
                     // draw from the same deck and blur what spam_mail itself took.
                     const fullHand = (prefix, suit) => Array.from({ length: HAND_SIZE }, (_, i) => ({ id: `${prefix}${i}`, suit, value: 6 + (i % 5) }));
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'spam_mail' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'spam_mail' }] },
+                        {
                             drawDeck: [testCard('d_bottom', 'Hearts', 6), testCard('d_mid', 'Hearts', 8), testCard('d_top', 'Hearts', 7)],
                             playerHand: fullHand('p', 'Pikes'),
                             enemyHand: fullHand('e', 'Pikes'),
                             trumpCard: testCard('t1', 'Hearts', 6),
                             table: [testPair(testCard('x1', 'Clubs', 7))], cardsToTake: true,
                             enemyHP: 50
-                        }),
+                        },
                         () => {
                             handleEnemyTake();
                             assert.isTrue(battle.enemyHand.some(c => c.id === 'd_top'), 'Враг должен получить верхнюю карту колоды');
@@ -8294,15 +8313,15 @@
                         onEnemyTookCards() { handSizeSeen = battle.enemyHand.length; return 0; }
                     };
                     try {
-                        withIsolatedGameState(
-                            makeBareRun({ relics: [{ id: 'spam_mail' }, { id: '__test_order' }] }),
-                            makeTestBattle({
+                        game(
+                            { relics: [{ id: 'spam_mail' }, { id: '__test_order' }] },
+                            {
                                 drawDeck: [testCard('d1', 'Hearts', 6)],
                                 playerHand: [testCard('p1', 'Pikes', 8)],
                                 enemyHand: [testCard('e1', 'Pikes', 6)],
                                 table: [testPair(testCard('x1', 'Clubs', 7))], cardsToTake: true,
                                 enemyHP: 50
-                            }),
+                            },
                             () => {
                                 handleEnemyTake();
                                 // 1 (исходно) + 1 (со стола) + 1 (spam_mail) = 3
@@ -8319,16 +8338,16 @@
                     // from: with a single card, any way of taking it gives the same result.
                     const trump = testCard('t1', 'Hearts', 6);
                     const fullHand = (prefix, suit) => Array.from({ length: HAND_SIZE }, (_, i) => ({ id: `${prefix}${i}`, suit, value: 6 + (i % 5) }));
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'spam_mail' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'spam_mail' }] },
+                        {
                             drawDeck: [trump],
                             playerHand: fullHand('p', 'Pikes'),
                             enemyHand: fullHand('e', 'Pikes'),
                             trumpCard: trump,
                             table: [testPair(testCard('x1', 'Clubs', 7))], cardsToTake: true,
                             enemyHP: 50
-                        }),
+                        },
                         () => {
                             handleEnemyTake();
                             assert.equal(battle.drawDeck.length, 0, 'Колода должна опустеть');
@@ -8340,14 +8359,14 @@
                 });
 
                 it('spam_mail: при пустой колоде враг ничего не добирает и не падает', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'spam_mail' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'spam_mail' }] },
+                        {
                             playerHand: [testCard('p1', 'Pikes', 8)],
                             enemyHand: [testCard('e1', 'Pikes', 6)],
                             table: [testPair(testCard('x1', 'Hearts', 7))], cardsToTake: true,
                             enemyHP: 50
-                        }),
+                        },
                         () => {
                             handleEnemyTake();
                             // 1 (исходно) + 1 (со стола); добирать нечего
@@ -8367,13 +8386,13 @@
                         onEnemyTookCards() { otherHookCalled = true; return 5; }
                     };
                     try {
-                        withIsolatedGameState(
-                            makeBareRun({ relics: [{ id: 'salted_wound' }, { id: '__test_take' }] }),
-                            makeTestBattle({ playerHand: [testCard('p1', 'Pikes', 8)],
+                        game(
+                            { relics: [{ id: 'salted_wound' }, { id: '__test_take' }] },
+                            { playerHand: [testCard('p1', 'Pikes', 8)],
                                 enemyHand: Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, suit: 'Pikes', value: 6 })),
                                 table: [testPair(testCard('x1', 'Hearts', 7))], cardsToTake: true,
                                 enemyHP: 50
-                            }),
+                            },
                             () => {
                                 handleEnemyTake();
                                 // enemyHand: 6 (исходно) + 1 (со стола) = 7 → избыток 1
@@ -8397,13 +8416,13 @@
                         onPlayerTookCards(ctx) { seenCount = ctx.cardsTakenCount; return true; }
                     };
                     try {
-                        withIsolatedGameState(
-                            makeBareRun({
+                        game(
+                            {
                                 playerHP: 100,
                                 maxHP: 100,
                                 relics: [{ id: '__test_player_take' }, { id: 'mirror_ring' }]
-                            }),
-                            makeTestBattle({
+                            },
+                            {
                                 drawDeck: [testCard('d1', 'Hearts', 6)],
                                 enemyHand: [testCard('e1', 'Pikes', 9)],
                                 table: [
@@ -8412,7 +8431,7 @@
                                 ],
                                 defender: 'player',
                                 enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
-                            }),
+                            },
                             () => {
                                 handlePlayerTake();
                                 assert.equal(seenCount, 2, 'Хук должен получить число взятых карт в ctx.cardsTakenCount');
@@ -8459,9 +8478,9 @@
                 });
 
                 it('handlePlayerTake: если хук добил врага — ИИ не планируется, фаза остаётся RESOLVING', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ playerHP: 100, maxHP: 100, relics: [{ id: 'mirror_ring' }] }),
-                        makeTestBattle({
+                    game(
+                        { playerHP: 100, maxHP: 100, relics: [{ id: 'mirror_ring' }] },
+                        {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Clubs', 10)],
                             table: [
@@ -8470,7 +8489,7 @@
                             ],
                             defender: 'player',
                             enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE
-                        }),
+                        },
                         () => {
                             handlePlayerTake();
                             assert.equal(battle.enemyHP, 0);
@@ -8483,9 +8502,9 @@
                 });
 
                 it('победа приоритетнее: хук добил врага, а взятие было бы смертельным для игрока — поражения нет, HP не тронуто', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ playerHP: 1, maxHP: 100, relics: [{ id: 'mirror_ring' }] }),
-                        makeTestBattle({
+                    game(
+                        { playerHP: 1, maxHP: 100, relics: [{ id: 'mirror_ring' }] },
+                        {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Clubs', 10)],
                             table: [
@@ -8494,11 +8513,11 @@
                             ],
                             defender: 'player',
                             enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE
-                        }),
+                        },
                         () => {
                             handlePlayerTake();
                             assert.equal(battle.enemyHP, 0);
-                            assert.equal(getEl('msg-title').innerText, 'Победа в Бою!', 'Модалка поражения не должна перекрывать победу');
+                            assert.modalTitle('Победа в Бою!', 'Модалка поражения не должна перекрывать победу');
                             assert.equal(run.playerHP, 1);
                             assert.equal(run.gold, WIN_GOLD_BASE + 1 * WIN_GOLD_PER_FLOOR, 'Награда выдаётся один раз');
                             const msgBox = getEl('msg-box');
@@ -8508,9 +8527,9 @@
                 });
 
                 it('победа приоритетнее: safety_rope не тратится и не перекрывает модалку победы, если враг добит тем же взятием', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ playerHP: 1, maxHP: 100, relics: [{ id: 'mirror_ring' }, { id: 'safety_rope' }] }),
-                        makeTestBattle({
+                    game(
+                        { playerHP: 1, maxHP: 100, relics: [{ id: 'mirror_ring' }, { id: 'safety_rope' }] },
+                        {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Clubs', 10)],
                             table: [
@@ -8519,10 +8538,10 @@
                             ],
                             defender: 'player',
                             enemyHP: 4, phase: BATTLE_PHASES.PLAYER_DEFENSE
-                        }),
+                        },
                         () => {
                             handlePlayerTake();
-                            assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
+                            assert.modalTitle('Победа в Бою!');
                             assert.isTrue(hasRelic('safety_rope'), 'Трос не должен расходоваться: смертельный урон не применялся');
                             const msgBox = getEl('msg-box');
                             closeModal();
@@ -8531,9 +8550,9 @@
                 });
 
                 it('handlePlayerTake: если враг жив — ИИ по-прежнему планируется (защита от чрезмерного гарда)', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ playerHP: 100, maxHP: 100, relics: [{ id: 'mirror_ring' }] }),
-                        makeTestBattle({
+                    game(
+                        { playerHP: 100, maxHP: 100, relics: [{ id: 'mirror_ring' }] },
+                        {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Clubs', 10)],
                             table: [
@@ -8542,7 +8561,7 @@
                             ],
                             defender: 'player',
                             enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
-                        }),
+                        },
                         () => {
                             handlePlayerTake();
                             assert.isTrue(battle.enemyHP > 0);
@@ -8553,19 +8572,19 @@
                 });
 
                 it('handleEnemyTake: если враг умер от взятия карт — модалку победы не перекрывает round-end модалка, фаза не меняется', () => {
-                    withIsolatedGameState(
-                        makeBareRun(),
-                        makeTestBattle({
+                    game(
+                        {},
+                        {
                             enemyHand: [testCard('e1', 'Pikes', 9)],
                             table: [testPair(testCard('x1', 'Hearts', 7))], cardsToTake: true,
                             enemyHP: TAKE_DAMAGE_PER_CARD, phase: BATTLE_PHASES.AI_WAITING
-                        }),
+                        },
                         () => {
                             handleEnemyTake();
                             assert.equal(battle.enemyHP, 0);
                             // Колода пуста, стол пуст и рука игрока пуста: без гарда checkRoundEnd()
                             // показал бы «Раунд Выигран!» поверх победной модалки и потерял бы её openShop().
-                            assert.equal(getEl('msg-title').innerText, 'Победа в Бою!');
+                            assert.modalTitle('Победа в Бою!');
                             // Победа фиксируется фазой BATTLE_OVER; PLAYER_ATTACK означал бы, что enterPlayerPhase() всё же вызвали.
                             assert.phase(BATTLE_PHASES.BATTLE_OVER, 'enterPlayerPhase() не должен вызываться после победы');
                             const msgBox = getEl('msg-box');
@@ -8575,13 +8594,13 @@
                 });
 
                 it('ace_sleeve: при взятии карт врагом добавляет +ACE_SLEEVE_BONUS_DAMAGE к урону (через хук onEnemyTookCards)', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'ace_sleeve' }] }),
-                        makeTestBattle({ playerHand: [testCard('p1', 'Pikes', 8)],
+                    game(
+                        { relics: [{ id: 'ace_sleeve' }] },
+                        { playerHand: [testCard('p1', 'Pikes', 8)],
                             enemyHand: [testCard('e1', 'Pikes', 9)],
                             table: [testPair(testCard('x1', 'Hearts', 7))], cardsToTake: true,
                             enemyHP: 50
-                        }),
+                        },
                         () => {
                             handleEnemyTake();
                             // урон: 1 карта × TAKE_DAMAGE_PER_CARD + ACE_SLEEVE_BONUS_DAMAGE
@@ -8591,13 +8610,13 @@
                 });
 
                 it('ace_sleeve + salted_wound: оба бонуса onEnemyTookCards складываются в один урон', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'ace_sleeve' }, { id: 'salted_wound' }] }),
-                        makeTestBattle({ playerHand: [testCard('p1', 'Pikes', 8)],
+                    game(
+                        { relics: [{ id: 'ace_sleeve' }, { id: 'salted_wound' }] },
+                        { playerHand: [testCard('p1', 'Pikes', 8)],
                             enemyHand: Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, suit: 'Pikes', value: 6 })),
                             table: [testPair(testCard('x1', 'Hearts', 7))], cardsToTake: true,
                             enemyHP: 50
-                        }),
+                        },
                         () => {
                             handleEnemyTake();
                             // enemyHand: 6 + 1 (со стола) = 7 → избыток 1 → salted_wound: +1 × SALTED_WOUND_DAMAGE_PER_CARD
@@ -8608,13 +8627,13 @@
                 });
 
                 it('ace_sleeve: без артефакта бонус не применяется', () => {
-                    withIsolatedGameState(
-                        makeBareRun(),
-                        makeTestBattle({ playerHand: [testCard('p1', 'Pikes', 8)],
+                    game(
+                        {},
+                        { playerHand: [testCard('p1', 'Pikes', 8)],
                             enemyHand: [testCard('e1', 'Pikes', 9)],
                             table: [testPair(testCard('x1', 'Hearts', 7))], cardsToTake: true,
                             enemyHP: 50
-                        }),
+                        },
                         () => {
                             handleEnemyTake();
                             assert.equal(battle.enemyHP, 50 - TAKE_DAMAGE_PER_CARD);
@@ -8623,9 +8642,9 @@
                 });
 
                 it('ballast_drop: при взятии карт сбрасывает 2 некозырные карты наименьшего ранга', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ playerHP: 100, maxHP: 100, relics: [{ id: 'ballast_drop' }] }),
-                        makeTestBattle({
+                    game(
+                        { playerHP: 100, maxHP: 100, relics: [{ id: 'ballast_drop' }] },
+                        {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             playerHand: [
                                 testCard('p1', 'Pikes', 7),
@@ -8638,7 +8657,7 @@
                             ],
                             defender: 'player',
                             enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
-                        }),
+                        },
                         () => {
                             handlePlayerTake();
                             // При взятии двух карт артефакт сбрасывает p1 и p2 из руки.
@@ -8651,15 +8670,15 @@
                 });
 
                 it('ballast_drop: не срабатывает, если со стола взята только одна карта', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ playerHP: 100, maxHP: 100, relics: [{ id: 'ballast_drop' }] }),
-                        makeTestBattle({
+                    game(
+                        { playerHP: 100, maxHP: 100, relics: [{ id: 'ballast_drop' }] },
+                        {
                             playerHand: [testCard('p1', 'Pikes', 7)],
                             enemyHand: [testCard('e1', 'Pikes', 9)],
                             table: [testPair(testCard('x1', 'Pikes', 6))],
                             defender: 'player',
                             enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
-                        }),
+                        },
                         () => {
                             handlePlayerTake();
                             assert.equal(battle.playerHand.length, 2, 'Обе карты должны остаться в руке');
@@ -8670,9 +8689,9 @@
                 });
 
                 it('ballast_drop: не срабатывает, если взятие добило врага через mirror_ring (победа приоритетнее)', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ playerHP: 100, maxHP: 100, relics: [{ id: 'mirror_ring' }, { id: 'ballast_drop' }] }),
-                        makeTestBattle({
+                    game(
+                        { playerHP: 100, maxHP: 100, relics: [{ id: 'mirror_ring' }, { id: 'ballast_drop' }] },
+                        {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             playerHand: [
                                 testCard('p1', 'Pikes', 7),
@@ -8682,7 +8701,7 @@
                             table: [testPair(testCard('x1', 'Hearts', 6))],
                             defender: 'player',
                             enemyHP: 1, phase: BATTLE_PHASES.PLAYER_DEFENSE
-                        }),
+                        },
                         () => {
                             handlePlayerTake();
                             assert.equal(battle.enemyHP, 0);
@@ -8700,13 +8719,13 @@
                 });
 
                 it('coin_magnet: +1$ за каждую сыгранную шестёрку', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'coin_magnet' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'coin_magnet' }] },
+                        {
                             playerHand: [testCard('p1', 'Pikes', 6)],
                             enemyHand: [testCard('e1', 'Pikes', 9)],
                             enemyHP: 50
-                        }),
+                        },
                         () => {
                             onPlayerCardClick(0);
                             assert.equal(run.gold, 1);
@@ -8724,9 +8743,9 @@
                     RELIC_EFFECTS.__test_a = { onTestHook: () => { calls.push('a'); return true; } };
                     RELIC_EFFECTS.__test_b = { onTestHook: () => { calls.push('b'); return true; } };
                     try {
-                        withIsolatedGameState(
-                            makeBareRun({ relics: [{ id: '__test_a' }, { id: '__test_b' }] }),
-                            makeTestBattle(),
+                        game(
+                            { relics: [{ id: '__test_a' }, { id: '__test_b' }] },
+                            {},
                             () => {
                                 fireAllHooks('onTestHook');
                                 assert.equal(calls.join(','), 'a,b', 'fireAllHooks должен вызвать оба обработчика в порядке слотов, не останавливаясь на первом');
@@ -8744,14 +8763,14 @@
                 });
 
                 it('sharp_suit: наносит 1 ед. урона врагу при защите козырной картой', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'sharp_suit' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'sharp_suit' }] },
+                        {
                             playerHand: [testCard('p1', 'Hearts', 9)],
                             table: [testPair(testCard('a1', 'Pikes', 8))],
                             defender: 'player',
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
-                        }),
+                        },
                         () => {
                             onPlayerCardClick(0);
                             assert.equal(battle.enemyHP, 49);
@@ -8760,13 +8779,13 @@
                 });
 
                 it('sharp_suit: НЕ наносит урон при розыгрыше козыря в атаке/подкидке (хук onPlayerDefend стреляет только из ветки защиты)', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'sharp_suit' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'sharp_suit' }] },
+                        {
                             playerHand: [testCard('p1', 'Hearts', 9)],
                             enemyHand: [testCard('e1', 'Pikes', 6)],
                             enemyHP: 50
-                        }),
+                        },
                         () => {
                             onPlayerCardClick(0); // играет козырь в атаку, не в защиту
                             assert.equal(battle.enemyHP, 50, 'sharp_suit не должен наносить урон вне защиты');
@@ -8779,15 +8798,15 @@
                     // isReady()/use*() напрямую, минуя showRelicPopover() и сам
                     // DOM — то есть сам слой попапа был вообще не покрыт тестами.
                     // Этот тест кликает по настоящей кнопке внутри попапа.
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'pocket_discard' }, { id: 'jester_discard' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'pocket_discard' }, { id: 'jester_discard' }] },
+                        {
                             drawDeck: [testCard('d1', 'Hearts', 6), testCard('d2', 'Hearts', 7)],
                             playerHand: [testCard('p1', 'Pikes', 6), testCard('p2', 'Hearts', 10)],
                             enemyHand: [testCard('e1', 'Pikes', 9)],
                             trumpCard: testCard('t1', 'Hearts', 6),
                             enemyHP: 50
-                        }),
+                        },
                         () => {
                             showRelicPopover('pocket_discard');
                             const modal = getEl('msg-box');
@@ -8831,15 +8850,15 @@
                 });
 
                 it('showRelicPopover(): тап по затемнённому фону закрывает попап без активации способности', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'pocket_discard' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'pocket_discard' }] },
+                        {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             playerHand: [testCard('p1', 'Pikes', 6), testCard('p2', 'Hearts', 10)],
                             enemyHand: [testCard('e1', 'Pikes', 9)],
                             trumpCard: testCard('t1', 'Hearts', 6),
                             enemyHP: 50
-                        }),
+                        },
                         () => {
                             showRelicPopover('pocket_discard');
                             const modal = getEl('msg-box');
@@ -8856,11 +8875,11 @@
                 });
 
                 it('showRelicPopover(): пассивный артефакт показывает только описание, без кнопки активации', () => {
-                    withIsolatedGameState(
-                        makeBareRun({
+                    game(
+                        {
                             relics: [{ id: 'ace_sleeve', name: 'Туз в рукаве', icon: '🃏', desc: 'Тестовое описание', price: 12 }]
-                        }),
-                        makeTestBattle(),
+                        },
+                        {},
                         () => {
                             showRelicPopover('ace_sleeve');
                             const modal = getEl('msg-box');
@@ -8877,12 +8896,12 @@
                 });
 
                 it('relics-bar: готовый к активации артефакт подсвечен кольцом (relic-ready-glow), а недоступный — нет', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'pocket_discard' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'pocket_discard' }] },
+                        {
                             playerHand: [testCard('p1', 'Pikes', 6)],
                             enemyHP: 50
-                        }),
+                        },
                         () => {
                             renderAll();
                             const relicsBar = getEl('relics-bar');
@@ -8902,9 +8921,9 @@
                     // ход") переиспользует ту же самую кнопку и раньше не сбрасывал
                     // эти два свойства — диалог открывался с виду рабочим, но кнопка
                     // "ПОНЯТНО"/"ПРОДАТЬ" не реагировала на клик.
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'pocket_discard' }] }),
-                        makeTestBattle(),
+                    game(
+                        { relics: [{ id: 'pocket_discard' }] },
+                        {},
                         () => {
                             // pocket_discard недоступен (нет 6/7 в руке нет вовсе, т.к.
                             // battle тут не настроен под бой) — isReady() === false,
@@ -8935,15 +8954,15 @@
                 });
 
                 it('pocket_discard: разово за раунд сбрасывает 6/7 из руки в отбой', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'pocket_discard' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'pocket_discard' }] },
+                        {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             playerHand: [testCard('p1', 'Pikes', 6), testCard('p2', 'Hearts', 10)],
                             enemyHand: [testCard('e1', 'Pikes', 9)],
                             trumpCard: testCard('t1', 'Hearts', 6),
                             enemyHP: 50
-                        }),
+                        },
                         () => {
                             usePocketDiscard();
                             assert.equal(battle.playerHand.length, 1);
@@ -8959,14 +8978,14 @@
                 });
 
                 it('pocket_discard: isReady() — единый источник условия для рендера кнопки и хендлера', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'pocket_discard' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'pocket_discard' }] },
+                        {
                             playerHand: [testCard('p1', 'Pikes', 8), testCard('p2', 'Hearts', 10)],
                             enemyHand: [testCard('e1', 'Pikes', 9)],
                             trumpCard: testCard('t1', 'Hearts', 6),
                             enemyHP: 50
-                        }),
+                        },
                         () => {
                             // No 6/7 in hand: not ready.
                             assert.isFalse(RELIC_EFFECTS.pocket_discard.isReady(), 'без 6/7 в руке способность недоступна');
@@ -8992,14 +9011,14 @@
                 });
 
                 it('pocket_discard: сброс последней карты руки завершает раунд (когда колода и стол уже пусты)', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ playerHP: 23, gold: 16, relics: [{ id: 'pocket_discard' }] }),
-                        makeTestBattle({
+                    game(
+                        { playerHP: 23, gold: 16, relics: [{ id: 'pocket_discard' }] },
+                        {
                             playerHand: [testCard('p1', 'Hearts', 6)],
                             enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Hearts', 10)],
                             trumpCard: testCard('t1', 'Pikes', 6), trumpSuit: 'Pikes',
                             enemyHP: 6
-                        }),
+                        },
                         () => {
                             usePocketDiscard();
                             assert.equal(battle.playerHand.length, 0, 'последняя карта должна уйти в отбой');
@@ -9008,7 +9027,7 @@
                             // игра зависала на "Ваш ход: Атака" без карт и без доступных
                             // действий (баг из отчёта пользователя).
                             assert.phase(BATTLE_PHASES.ROUND_OVER, 'checkRoundEnd() должен был сработать и завершить раунд');
-                            assert.equal(getEl('msg-title').innerText, 'Раунд Выигран!');
+                            assert.modalTitle('Раунд Выигран!');
                             const msgBox = getEl('msg-box');
                             closeModal();
                         }
@@ -9018,15 +9037,15 @@
                 it('jester_discard: раз за бой пересдаёт руку той же длины из колоды', () => {
                     const drawDeck = [];
                     for (let i = 0; i < 5; i++) drawDeck.push({ id: `d${i}`, suit: 'Hearts', value: 6 + i });
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'jester_discard' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'jester_discard' }] },
+                        {
                             drawDeck,
                             playerHand: [testCard('p1', 'Pikes', 6), testCard('p2', 'Pikes', 7)],
                             enemyHand: [testCard('e1', 'Pikes', 9)],
                             trumpCard: testCard('t1', 'Hearts', 6),
                             enemyHP: 50
-                        }),
+                        },
                         () => {
                             useJesterDiscard();
                             assert.equal(battle.playerHand.length, 2);
@@ -9038,15 +9057,15 @@
                 });
 
                 it('jester_discard: isReady() — единый источник условия для рендера кнопки и хендлера', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'jester_discard' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'jester_discard' }] },
+                        {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             playerHand: [testCard('p1', 'Pikes', 8)],
                             enemyHand: [testCard('e1', 'Pikes', 9)],
                             trumpCard: testCard('t1', 'Hearts', 6),
                             enemyHP: 50
-                        }),
+                        },
                         () => {
                             assert.isTrue(RELIC_EFFECTS.jester_discard.isReady(), 'свой ход атаки, пустой стол, ещё не использовано — доступна');
 
@@ -9069,15 +9088,15 @@
                 });
 
                 it('jester_discard: недостаточно карт в колоде — способность недоступна и не портит руку', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ playerHP: 23, gold: 16, relics: [{ id: 'jester_discard' }] }),
-                        makeTestBattle({
+                    game(
+                        { playerHP: 23, gold: 16, relics: [{ id: 'jester_discard' }] },
+                        {
                             drawDeck: [testCard('d1', 'Pikes', 6)],
                             playerHand: [testCard('p1', 'Hearts', 6), testCard('p2', 'Pikes', 7)],
                             enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Hearts', 10)],
                             trumpCard: testCard('t1', 'Pikes', 6), trumpSuit: 'Pikes',
                             enemyHP: 6
-                        }),
+                        },
                         () => {
                             // Колода (1 карта) меньше руки (2 карты): раньше это
                             // разрешалось и оставляло игрока с урезанной рукой
@@ -9094,9 +9113,9 @@
                 });
 
                 it('sleight_of_hand: раз за бой подменяет карту атаки на столе случайной из колоды', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'sleight_of_hand' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'sleight_of_hand' }] },
+                        {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             playerHand: [testCard('p1', 'Pikes', 12)],
                             enemyHand: [testCard('e1', 'Pikes', 9)],
@@ -9104,7 +9123,7 @@
                             table: [testPair(testCard('a1', 'Pikes', 14))],
                             defender: 'player',
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
-                        }),
+                        },
                         () => {
                             useSleightOfHand();
                             assert.equal(battle.table[0].attack.id, 'd1');
@@ -9116,9 +9135,9 @@
                 });
 
                 it('sleight_of_hand: isReady() — единый источник условия для рендера кнопки и хендлера', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'sleight_of_hand' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'sleight_of_hand' }] },
+                        {
                             drawDeck: [testCard('d1', 'Hearts', 6)],
                             playerHand: [testCard('p1', 'Pikes', 8)],
                             enemyHand: [testCard('e1', 'Pikes', 9)],
@@ -9126,7 +9145,7 @@
                             table: [testPair(testCard('a1', 'Pikes', 14))],
                             defender: 'player',
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
-                        }),
+                        },
                         () => {
                             assert.isTrue(RELIC_EFFECTS.sleight_of_hand.isReady(), 'защита от неотбитой атаки, карты в колоде есть — доступна');
 
@@ -9149,14 +9168,14 @@
                 });
 
                 it('midas_touch: +MIDAS_TOUCH_GOLD_ON_DEFEND один раз за раунд, когда игрок отбил все карты и раунд закончился бито', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'midas_touch' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'midas_touch' }] },
+                        {
                             playerHand: [testCard('p9', 'Pikes', 8)],
                             table: [testPair(testCard('a1', 'Pikes', 6), testCard('d1', 'Pikes', 7)), testPair(testCard('a2', 'Pikes', 10), testCard('d2', 'Pikes', 11))],
                             defender: 'player',
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
-                        }),
+                        },
                         () => {
                             handleBito();
                             assert.equal(run.gold, MIDAS_TOUCH_GOLD_ON_DEFEND, 'Золото должно начислиться один раз за раунд, а не за каждую отбитую карту');
@@ -9165,14 +9184,14 @@
                 });
 
                 it('midas_touch: то же самое, когда бито вызывает ИИ (handleBito(true)), а игрок уже отбил всё', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'midas_touch' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'midas_touch' }] },
+                        {
                             playerHand: [testCard('p9', 'Pikes', 8)],
                             table: [testPair(testCard('a1', 'Pikes', 6), testCard('d1', 'Pikes', 7))],
                             defender: 'player',
                             enemyHP: 50, phase: BATTLE_PHASES.AI_WAITING
-                        }),
+                        },
                         () => {
                             handleBito(true);
                             assert.equal(run.gold, MIDAS_TOUCH_GOLD_ON_DEFEND);
@@ -9181,14 +9200,14 @@
                 });
 
                 it('midas_touch: без артефакта золото не начисляется', () => {
-                    withIsolatedGameState(
-                        makeBareRun(),
-                        makeTestBattle({
+                    game(
+                        {},
+                        {
                             playerHand: [testCard('p9', 'Pikes', 8)],
                             table: [testPair(testCard('a1', 'Pikes', 6), testCard('d1', 'Pikes', 7)), testPair(testCard('a2', 'Pikes', 10), testCard('d2', 'Pikes', 11))],
                             defender: 'player',
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
-                        }),
+                        },
                         () => {
                             handleBito();
                             assert.equal(run.gold, 0);
@@ -9197,26 +9216,26 @@
                 });
 
                 it('midas_touch: НЕ срабатывает, когда игрок взял карты (handlePlayerTake) или когда успешно отбился враг', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'midas_touch' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'midas_touch' }] },
+                        {
                             playerHand: [testCard('p9', 'Pikes', 8)],
                             table: [testPair(testCard('a1', 'Pikes', 6))],
                             defender: 'player',
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
-                        }),
+                        },
                         () => {
                             handlePlayerTake();
                             assert.equal(run.gold, 0, 'Игрок взял карты — это не успешная защита');
                         }
                     );
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'midas_touch' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'midas_touch' }] },
+                        {
                             playerHand: [testCard('p9', 'Pikes', 8)],
                             table: [testPair(testCard('a1', 'Pikes', 6), testCard('d1', 'Pikes', 7))],
                             enemyHP: 50
-                        }),
+                        },
                         () => {
                             handleBito();
                             assert.equal(run.gold, 0, 'Когда отбивается враг, золото не даётся (поведение до этой правки)');
@@ -9225,14 +9244,14 @@
                 });
 
                 it('midas_touch: НЕ срабатывает посреди раунда — отбитие одной карты (onPlayerDefend) золота не даёт', () => {
-                    withIsolatedGameState(
-                        makeBareRun({ relics: [{ id: 'midas_touch' }] }),
-                        makeTestBattle({
+                    game(
+                        { relics: [{ id: 'midas_touch' }] },
+                        {
                             playerHand: [testCard('p9', 'Pikes', 9)],
                             table: [testPair(testCard('a1', 'Pikes', 8))],
                             defender: 'player',
                             enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
-                        }),
+                        },
                         () => {
                             onPlayerCardClick(0);
                             assert.equal(run.gold, 0, 'Золото начисляется только при завершении раунда, а не за каждую карту');
