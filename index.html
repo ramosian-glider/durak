@@ -45,12 +45,18 @@
         .relic-slot-base {
             border-width: 1px;
         }
+        .stat-badge,
+        .btn-icon-header,
+        .relic-slot-base,
+        .section-label,
+        .item-row {
+            display: flex;
+            align-items: center;
+        }
         .stat-badge {
             padding: 0.25rem 0.625rem;
             border-radius: 9999px;
             font-weight: 600;
-            display: flex;
-            align-items: center;
             gap: 0.25rem;
         }
         .stat-badge-emerald { background-color: rgba(2, 44, 34, 0.8); border-color: rgba(15, 118, 110, 0.5); color: #6ee7b7; }
@@ -71,8 +77,6 @@
             width: 1.75rem;
             height: 1.75rem;
             border-radius: 9999px;
-            display: flex;
-            align-items: center;
             justify-content: center;
             font-size: 0.75rem;
             transition-property: color, background-color, border-color, transform, box-shadow;
@@ -154,8 +158,6 @@
             width: 100%;
             height: 2rem;
             border-radius: 0.5rem;
-            display: flex;
-            align-items: center;
             justify-content: center;
         }
         .relic-slot-filled,
@@ -213,11 +215,11 @@
         }
 
         /* Semantic wrappers for repeated Tailwind utility groups. */
-        .section-label { display: flex; align-items: center; justify-content: space-between; padding-inline: 0.25rem; margin-bottom: 0.25rem; font-size: 11px; font-weight: 600; color: rgb(52 211 153 / 0.8); }
+        .section-label { justify-content: space-between; padding-inline: 0.25rem; margin-bottom: 0.25rem; font-size: 11px; font-weight: 600; color: rgb(52 211 153 / 0.8); }
         .relic-bar { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.375rem; background: rgb(0 0 0 / 0.5); padding: 0.375rem; border-radius: 0.75rem; border: 1px solid rgb(6 78 59 / 0.5); }
         .section-title { margin-bottom: 0.5rem; font-size: 0.75rem; font-weight: 700; color: #34d399; text-transform: uppercase; letter-spacing: 0.05em; }
         .muted-text { font-size: 0.75rem; color: #94a3b8; }
-        .item-row { display: flex; align-items: center; gap: 0.625rem; min-width: 0; flex: 1 1 0%; }
+        .item-row { gap: 0.625rem; min-width: 0; flex: 1 1 0%; }
 
         @media (min-width: 640px) {
             .btn-icon-header { width: 2rem; height: 2rem; font-size: 0.875rem; }
@@ -2145,6 +2147,13 @@
             fireAllHooks('onCardPlayed', card);
         }
 
+        function playPlayerAttackCard(card) {
+            playAttackCard(battle.playerHand, card);
+            onPlayerCardPlayed(card);
+            audio.playCardSound();
+            scheduleEnemyAI(AI_STANDARD_DELAY_MS);
+        }
+
         window.onPlayerCardClick = function(index) {
             if (!canAcceptPlayerAction()) return;
             const card = battle.playerHand[index];
@@ -2153,20 +2162,14 @@
                 const maxAllowed = getMaxAllowedAttacks();
 
                 if (battle.table.length === 0) {
-                    playAttackCard(battle.playerHand, card);
-                    onPlayerCardPlayed(card);
-                    audio.playCardSound();
-                    scheduleEnemyAI(AI_STANDARD_DELAY_MS);
+                    playPlayerAttackCard(card);
                 } else {
                     if (battle.table.length >= maxAllowed) {
                         showModal("Лимит карт", "Нельзя подкинуть больше карт, чем есть на руках у защищающегося!");
                         return;
                     }
                     if (isRankOnTable(card.value)) {
-                        playAttackCard(battle.playerHand, card);
-                        onPlayerCardPlayed(card);
-                        audio.playCardSound();
-                        scheduleEnemyAI(AI_STANDARD_DELAY_MS);
+                        playPlayerAttackCard(card);
                     } else {
                         showModal("Недопустимый ход", "Вы можете подкидывать только карты того номинала, что уже есть на столе!");
                     }
@@ -3290,30 +3293,24 @@
 
             const shopList = getEl('shop-relics-list');
             if (shopList) {
-                shopList.innerHTML = '';
-                if (offer.length === 0) {
-                    const emptyText = getShopAvailableRelics().length === 0
-                        ? 'Вы скупили все артефакты.'
-                        : 'Предложение раскуплено. Обновите его, чтобы увидеть новые артефакты.';
-                    shopList.innerHTML = `<div class="muted-text text-center py-3">${emptyText}</div>`;
-                }
-                offer.forEach(relic => {
-                    const item = document.createElement('div');
-                    item.className = "flex items-center justify-between gap-3 p-2.5 bg-slate-900 border border-emerald-800/60 rounded-xl";
-                    item.innerHTML = `
-                        <div class="item-row">
-                            <span class="text-2xl">${relic.icon}</span>
-                            <div class="min-w-0">
-                                <div class="text-xs font-bold text-amber-300">${relic.name}</div>
-                                <div class="text-[10px] text-slate-400 leading-tight">${relic.desc}</div>
+                shopList.innerHTML = offer.length
+                    ? offer.map(relic => `
+                        <div class="flex items-center justify-between gap-3 p-2.5 bg-slate-900 border border-emerald-800/60 rounded-xl">
+                            <div class="item-row">
+                                <span class="text-2xl">${relic.icon}</span>
+                                <div class="min-w-0">
+                                    <div class="text-xs font-bold text-amber-300">${relic.name}</div>
+                                    <div class="text-[10px] text-slate-400 leading-tight">${relic.desc}</div>
+                                </div>
                             </div>
+                            <button class="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-lg shadow border border-amber-300 flex-shrink-0" onclick="buyRelic('${relic.id}')">
+                                ${relic.price}$
+                            </button>
                         </div>
-                        <button class="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-lg shadow border border-amber-300 flex-shrink-0" onclick="buyRelic('${relic.id}')">
-                            ${relic.price}$
-                        </button>
-                    `;
-                    shopList.appendChild(item);
-                });
+                    `).join('')
+                    : `<div class="muted-text text-center py-3">${getShopAvailableRelics().length === 0
+                        ? 'Вы скупили все артефакты.'
+                        : 'Предложение раскуплено. Обновите его, чтобы увидеть новые артефакты.'}</div>`;
             }
 
             renderShopRelicSlots();
@@ -3356,6 +3353,12 @@
             setElText('shop-relic-count', `${run.relics.length}/${MAX_RELICS}`);
         }
 
+        function finishShopAction() {
+            audio.playWinSound();
+            openShop();
+            renderAll();
+        }
+
         window.sellRelic = function(index) {
             const relic = run.relics[index];
             if (!relic) return;
@@ -3367,27 +3370,24 @@
                 () => {
                     run.relics.splice(index, 1);
                     run.gold += sellPrice;
-                    audio.playWinSound();
-                    openShop();
-                    renderAll();
+                    finishShopAction();
                 }
             );
         };
 
         window.buyHeal = function() {
-            if (run.gold >= HEAL_COST) {
-                if (run.playerHP >= run.maxHP) {
-                    showModal("Здоровье полное", "У вас уже максимальный запас здоровья!");
-                    return;
-                }
-                run.gold -= HEAL_COST;
-                run.playerHP = Math.min(run.maxHP, run.playerHP + HEAL_AMOUNT);
-                audio.playWinSound();
-                openShop();
-                renderAll();
-            } else {
+            if (run.gold < HEAL_COST) {
                 showModal("Недостаточно денег", `Нужно ${HEAL_COST} золотых монет для покупки здоровья.`);
+                return;
             }
+            if (run.playerHP >= run.maxHP) {
+                showModal("Здоровье полное", "У вас уже максимальный запас здоровья!");
+                return;
+            }
+
+            run.gold -= HEAL_COST;
+            run.playerHP = Math.min(run.maxHP, run.playerHP + HEAL_AMOUNT);
+            finishShopAction();
         };
 
         window.buyRelic = function(relicId) {
@@ -3399,21 +3399,19 @@
                 showModal("Нет в продаже", "Этого артефакта сейчас нет в предложении магазина.");
                 return;
             }
-
-            if (run.gold >= relic.price) {
-                if (run.relics.length < MAX_RELICS) {
-                    run.gold -= relic.price;
-                    run.relics.push(relic);
-                    // openShop() below drops the bought id from the offer (see ensureShopOffer()).
-                    audio.playWinSound();
-                    openShop();
-                    renderAll();
-                } else {
-                    showModal("Слоты забиты", "Максимум 5 артефактов на руках!");
-                }
-            } else {
+            if (run.gold < relic.price) {
                 showModal("Недостаточно денег", "Побеждайте в боях, чтобы зарабатывать золотые монеты.");
+                return;
             }
+            if (run.relics.length >= MAX_RELICS) {
+                showModal("Слоты забиты", "Максимум 5 артефактов на руках!");
+                return;
+            }
+
+            run.gold -= relic.price;
+            run.relics.push(relic);
+            // openShop() below drops the bought id from the offer (see ensureShopOffer()).
+            finishShopAction();
         };
 
         window.rerollShop = function() {
@@ -3426,11 +3424,10 @@
                 showModal("Недостаточно денег", `Обновление предложения стоит ${SHOP_REROLL_COST}$.`);
                 return;
             }
+
             run.gold -= SHOP_REROLL_COST;
             run.shopOffer = drawShopOffer(getShopAvailableRelics(), SHOP_DRAFT_SIZE, run.shopOffer);
-            audio.playWinSound();
-            openShop();
-            renderAll();
+            finishShopAction();
         };
 
         // ============================================================
@@ -3438,6 +3435,19 @@
         // ------------------------------------------------------------
         // Pure projections of `run` / `battle` onto the DOM. renderAll() is only the order of the parts.
         // ============================================================
+
+        function renderCardFaceHTML(card, compact = false) {
+            const rankClass = compact ? 'text-[9px] font-black leading-none' : 'text-xs font-black leading-none';
+            const suitClass = compact
+                ? 'text-center text-xs font-bold leading-none'
+                : 'text-center text-xl font-bold leading-none select-none';
+
+            return `
+                <div class="${rankClass}">${VALUES[card.value]}</div>
+                <div class="${suitClass}">${SUITS[card.suit]}</div>
+                <div class="${rankClass} self-end transform rotate-180">${VALUES[card.value]}</div>
+            `;
+        }
 
         function renderCardHTML(card, extraClass = '') {
             const color = SUIT_COLORS[card.suit];
@@ -3447,9 +3457,7 @@
             return `
                 <div class="card-base ${cardStyle} ${color} ${extraClass}">
                     ${isTrump ? '<span class="absolute top-0.5 right-0.5 text-[10px] leading-none select-none text-amber-500 font-black" title="Козырь">👑</span>' : ''}
-                    <div class="text-xs font-black leading-none">${VALUES[card.value]}</div>
-                    <div class="text-center text-xl font-bold leading-none select-none">${SUITS[card.suit]}</div>
-                    <div class="text-xs font-black leading-none self-end transform rotate-180">${VALUES[card.value]}</div>
+                    ${renderCardFaceHTML(card)}
                 </div>
             `;
         }
@@ -3512,9 +3520,7 @@
                         eyeCard.className = `w-7 h-10 sm:w-9 sm:h-12 bg-amber-50 border-2 ${isTrump ? 'border-amber-400 ring-2 ring-amber-400/60' : 'border-amber-300'} rounded shadow-md flex flex-col justify-between p-0.5 relative flex-shrink-0 ${color}`;
                         eyeCard.innerHTML = `
                             <span class="absolute -top-1.5 -right-1.5 text-[10px] leading-none bg-black/80 rounded-full p-0.5 border border-amber-400" title="Шулерский глаз">👁️</span>
-                            <div class="text-[9px] font-black leading-none">${VALUES[card.value]}</div>
-                            <div class="text-center text-xs font-bold leading-none">${SUITS[card.suit]}</div>
-                            <div class="text-[9px] font-black leading-none self-end transform rotate-180">${VALUES[card.value]}</div>
+                            ${renderCardFaceHTML(card, true)}
                         `;
                         enemyHandVis.appendChild(eyeCard);
                     } else {
@@ -3782,7 +3788,7 @@
         }
 
         function showModal(title, text, onClose) {
-            openModal({ title, text, confirmLabel: "ПОНЯТНО", onConfirm: onClose });
+            openModal({ title, text, onConfirm: onClose });
         }
 
         // Same message box as showModal, but with a Cancel button shown
