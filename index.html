@@ -665,19 +665,19 @@
         const ALL_RELICS = [
             { id: "ace_sleeve", name: "Туз в рукаве", icon: "🃏", desc: "Заставление врага взять карты наносит +5 ед. дополнительного урона.", price: 12 },
             { id: "midas_touch", name: "Золотое пальто", icon: "🪙", desc: "Получайте +3$ каждый раз, когда успешно отбиваетесь.", price: 10 },
-            { id: "mirror_ring", name: "Зеркальный перстень", icon: "💍", desc: "Когда вы берете карты со стола, враг получает 2 урона за каждую взятую карту.", price: 14 },
-            { id: "cheat_eye", name: "Шулерский глаз", icon: "👁️", desc: "Показывает вам наименьшую карту в руке соперника.", price: 8 },
+            { id: "mirror_ring", name: "Зеркальный перстень", icon: "💍", desc: `Когда вы берёте карты со стола, враг получает ${TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER} ед. урона за каждую взятую карту.`, price: 14 },
+            { id: "cheat_eye", name: "Шулерский глаз", icon: "👁️", desc: "Показывает вам самую старшую карту в руке соперника (козыри считаются старше).", price: 8 },
             { id: "pocket_discard", name: "Карманный сброс", icon: "✂️", desc: "Раз за раунд можно безвозвратно сбросить из руки шестёрку или семёрку прямо в отбой.", price: 7 },
             { id: "spam_mail", name: "Спам-рассылка", icon: "✉️", desc: "Когда враг забирает карты со стола, он дополнительно берёт верхнюю карту из колоды.", price: 9 },
             { id: "heavy_ballast", name: "Тяжёлый балласт", icon: "⚓", desc: "В начале хода врага он получает урон за каждую карту в руке сверх 6 штук (не больше 4 ед.).", price: 13 },
             { id: "ballast_drop", name: "Сброс балласта", icon: "🪂", desc: "При взятии карт со стола вы сразу сбрасываете в отбой 2 некозырные карты наименьшего ранга.", price: 10 },
-            { id: "coin_magnet", name: "Магнит для мелочи", icon: "🧲", desc: "Каждая сыгранная шестёрка (подкинутая или отбитая) приносит +1$.", price: 8 },
+            { id: "coin_magnet", name: "Магнит для мелочи", icon: "🧲", desc: "Каждая шестёрка, сыгранная любым игроком (атака, подкидка, перевод или защита), приносит +1$.", price: 8 },
             { id: "safety_rope", name: "Страховочный трос", icon: "🪢", desc: "При смертельном уроне вы выживаете с 1 HP и стол очищается (срабатывает 1 раз за забег).", price: 18 },
             { id: "jester_discard", name: "Шутовской сброс", icon: "🃏", desc: "Раз за бой на своём ходу атаки можно сбросить всю руку и добрать столько же карт из колоды.", price: 9 },
             { id: "cascade_transfer", name: "Каскадный перевод", icon: "🌊", desc: "Первый перевод карт за ход наносит врагу 4 ед. урона.", price: 11 },
             { id: "sleight_of_hand", name: "Ловкость рук", icon: "🪄", desc: "Раз за бой можно заменить карту, которой враг пошёл на вас, случайной картой из колоды.", price: 12 },
             { id: "salted_wound", name: "Солёная рана", icon: "🧂", desc: "Если враг берёт карты со стола, он получает +1 ед. урона за каждую карту сверх 6 в его руке (не больше 4 ед.).", price: 10 },
-            { id: "sharp_suit", name: "Острая масть", icon: "🗡️", desc: "Каждый раз, когда вы отбиваетесь козырной картой, враг получает 1 ед. урона.", price: 9 }
+            { id: "sharp_suit", name: "Острая масть", icon: "🗡️", desc: `Каждый раз, когда вы играете козырную карту (атака, подкидка, перевод или защита), враг получает ${SHARP_SUIT_DAMAGE} ед. урона.`, price: 9 }
         ];
 
         // --- Enemy ladder ------------------------------------------------------------
@@ -2094,6 +2094,7 @@
             if (battle.phase !== BATTLE_PHASES.ENEMY_THROWING_IN) return;
             const card = getEnemyThrowInCard();
             if (card !== null && playAttackCard(battle.enemyHand, card)) {
+                onEnemyCardPlayed(card);
                 scheduleEnemyThrowIn();
                 return;
             }
@@ -2139,11 +2140,20 @@
             }
         }
 
-        // Fired whenever the player successfully plays a card (attack, toss, or
-        // defend). Single canonical dispatch point for per-card-played relic
-        // effects (currently just coin_magnet) instead of repeating checks at
-        // every play site.
+        // Fired whenever the player successfully plays a card (attack, toss,
+        // transfer, or defend). Single canonical dispatch point for per-card-played
+        // relic effects (currently just coin_magnet) instead of repeating checks at
+        // every play site. Fires 'onCardPlayed' (cards of either side) and then
+        // 'onPlayerCardPlayed' (the player's cards only: sharp_suit). The enemy's
+        // plays go through onEnemyCardPlayed() below, which fires only the former.
         function onPlayerCardPlayed(card) {
+            fireAllHooks('onCardPlayed', card);
+            fireAllHooks('onPlayerCardPlayed', card);
+        }
+
+        // Same as onPlayerCardPlayed(), for a card the ENEMY just played (attack,
+        // throw-in, transfer or defend). Both fire the one 'onCardPlayed' hook.
+        function onEnemyCardPlayed(card) {
             fireAllHooks('onCardPlayed', card);
         }
 
@@ -2204,7 +2214,6 @@
                     if (canBeat(undefendedPair.attack, card)) {
                         playDefenseCard(battle.playerHand, undefendedPair, card);
                         onPlayerCardPlayed(card);
-                        fireAllHooks('onPlayerDefend', card);
                         audio.playCardSound();
 
                         scheduleEnemyAI(AI_QUICK_DELAY_MS);
@@ -2706,6 +2715,7 @@
                 case 'transfer': {
                     const enemyHPBeforeTransfer = battle.enemyHP;
                     playAttackCard(battle.enemyHand, action.card);
+                    onEnemyCardPlayed(action.card);
                     battle.defender = 'player';
                     triggerCascadeTransfer();
                     audio.playCardSound();
@@ -2721,6 +2731,7 @@
                 case 'defend':
                     for (const { pair, card } of action.plays) {
                         playDefenseCard(battle.enemyHand, pair, card);
+                        onEnemyCardPlayed(card);
                         audio.playCardSound();
                     }
                     battle.cardsToTake = !action.complete;
@@ -2733,6 +2744,7 @@
                     // The enemy hand is kept ordered weakest-first as a side effect of leading.
                     battle.enemyHand.sort((a, b) => cardPower(a) - cardPower(b));
                     if (playAttackCard(battle.enemyHand, action.card)) {
+                        onEnemyCardPlayed(action.card);
                         audio.playCardSound();
                     }
                     finishAIPhase();
@@ -2740,6 +2752,7 @@
 
                 case 'throw':
                     playAttackCard(battle.enemyHand, action.card);
+                    onEnemyCardPlayed(action.card);
                     audio.playCardSound();
                     finishAIPhase();
                     break;
@@ -2796,11 +2809,14 @@
             cheat_eye: {
                 // Passive: consulted by renderAll() via queryRelicHook() (no flash), never
                 // fired from game logic. Returns the enemy card to show face-up — their
-                // weakest (by cardPower), the card the AI will lead with — or null.
+                // strongest (by cardPower, so any trump outranks any plain card) — or
+                // null. The weakest card used to be shown, but that only mattered in the
+                // endgame; the top card tells the player what the enemy can still beat
+                // with from the very first round.
                 getRevealedEnemyCard() {
                     if (battle.enemyHand.length === 0) return null;
-                    return battle.enemyHand.reduce((minCard, currentCard) => {
-                        return cardPower(currentCard) < cardPower(minCard) ? currentCard : minCard;
+                    return battle.enemyHand.reduce((maxCard, currentCard) => {
+                        return cardPower(currentCard) > cardPower(maxCard) ? currentCard : maxCard;
                     }, battle.enemyHand[0]);
                 }
             },
@@ -2820,9 +2836,11 @@
                 }
             },
             coin_magnet: {
-                // Called from onPlayerCardPlayed() for every card the player plays
-                // (attack, toss, or defend). Additive — doesn't intercept anything,
-                // so it's dispatched via fireAllHooks() rather than fireHook().
+                // Called from onPlayerCardPlayed() / onEnemyCardPlayed() for every card
+                // either side plays (attack, toss, transfer, or defend). The hook takes
+                // no "who played it" argument on purpose: this relic doesn't care.
+                // Additive — doesn't intercept anything, so it's dispatched via
+                // fireAllHooks() rather than fireHook().
                 onCardPlayed(card) {
                     if (card.value === 6) {
                         changeGold(COIN_MAGNET_GOLD_PER_SIX);
@@ -2831,11 +2849,11 @@
                 }
             },
             sharp_suit: {
-                // Called only from the defend branch of onPlayerCardClick(), not
-                // from attacks/tosses/transfers — sharp_suit specifically cares
-                // about the player beating an attack with a trump card, which
-                // onCardPlayed (fired for every play) can't distinguish on its own.
-                onPlayerDefend(card) {
+                // Called from onPlayerCardPlayed() for every card the PLAYER plays
+                // (attack, toss, transfer or defend) — deliberately not from the shared
+                // onCardPlayed hook, which also fires for the enemy's cards. It used to
+                // trigger only when defending with a trump, which was too rare to matter.
+                onPlayerCardPlayed(card) {
                     if (card.suit === battle.trumpSuit) {
                         damageEnemyHP(SHARP_SUIT_DAMAGE);
                         return true;
@@ -3504,7 +3522,7 @@
             banner.className = `turn-banner-base turn-banner-${state.color}`;
         }
 
-        // The enemy's hand: card backs, plus the one face-up card cheat_eye reveals; and the card count.
+        // The enemy's hand: card backs, plus the one face-up card cheat_eye reveals (the enemy's strongest); and the card count.
         function renderEnemyHand() {
             const enemyHandVis = getEl('enemy-hand-visual');
             if (enemyHandVis) {
@@ -5270,7 +5288,7 @@
                     }
                     assert.equal(
                         [...lethalHooks].sort().join(),
-                        ['onEnemyTurnStart', 'onPlayerDefend', 'onPlayerTookCards', 'onTransfer'].join(),
+                        ['onEnemyTurnStart', 'onPlayerCardPlayed', 'onPlayerTookCards', 'onTransfer'].join(),
                         'новый хук вызывает damageEnemyHP(): проверьте код, который его диспетчеризует (didEnemyJustDie / enterAIWaitingPhase) и добавьте тест в сюит 8h'
                     );
                 });
@@ -6338,14 +6356,14 @@
                     assert.equal(typeof RELIC_EFFECTS.cheat_eye.getRevealedEnemyCard, 'function');
                 });
 
-                it('queryRelicHook(): первый truthy-результат без подсветки; без relic — null; cheat_eye показывает слабейшую карту врага', () => {
+                it('queryRelicHook(): первый truthy-результат без подсветки; без relic — null; cheat_eye показывает старшую карту врага', () => {
                     inGameStrict({ enemyHand: [C('e1', 'Hearts', 8), C('e2', 'Pikes', 9)] }, () => {
                         assert.isTrue(queryRelicHook('getRevealedEnemyCard') === null, 'без cheat_eye ничего не раскрывается');
                     }, { relics: [] });
                     inGameStrict({ enemyHand: [C('e1', 'Hearts', 8), C('e2', 'Pikes', 9)] }, () => {
                         const before = Object.keys(relicHighlightUntil).length;
                         const card = queryRelicHook('getRevealedEnemyCard');
-                        assert.equal(card.id, 'e2', 'Pikes 9 слабее козыря Hearts 8');
+                        assert.equal(card.id, 'e1', 'козырь Hearts 8 старше обычной Pikes 9');
                         assert.equal(Object.keys(relicHighlightUntil).length, before, 'запрос не должен подсвечивать релику');
                     }, { relics: [{ id: 'cheat_eye' }] });
                     inGameStrict({ enemyHand: [] }, () => {
@@ -6427,7 +6445,7 @@
                     });
                 });
 
-                it('renderEnemyHand(): рубашки по числу карт; cheat_eye открывает ровно одну — слабейшую', () => {
+                it('renderEnemyHand(): рубашки по числу карт; cheat_eye открывает ровно одну — старшую', () => {
                     inGameClosingModal({}, () => {
                         renderEnemyHand();
                         assert.equal(getEl('enemy-hand-visual').children.length, 3);
@@ -8263,7 +8281,7 @@
                         }, () => {
                             assert.equal(seenCount, 2, 'Хук должен получить число взятых карт в ctx.cardsTakenCount');
                             // Первый владелец вернул truthy, но mirror_ring стоит вторым и всё равно должен сработать:
-                            // 2 карты × TAKE_DAMAGE_PER_CARD(2) × MIRROR_RING_MULTIPLIER(2) = 8
+                            // 2 карты × TAKE_DAMAGE_PER_CARD(2) × MIRROR_RING_MULTIPLIER(1) = 4
                             assert.equal(battle.enemyHP, 100 - 2 * TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER);
                         }, {
                             playerHP: 100,
@@ -8275,11 +8293,11 @@
                 });
 
                 it('mirror_ring: число в описании совпадает с реальным уроном за карту', () => {
-                    // The description hardcodes the number (like ace_sleeve's "+5"), so
-                    // this fails if either constant changes without the text.
+                    // The description is built from the same two constants, so this
+                    // guards against someone hardcoding the number back in.
                     const relic = ALL_RELICS.find(r => r.id === 'mirror_ring');
                     const perCard = TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER;
-                    assert.isTrue(relic.desc.includes(`${perCard} урона`), `Описание должно называть ${perCard} урона за карту: «${relic.desc}»`);
+                    assert.isTrue(relic.desc.includes(`${perCard} ед. урона`), `Описание должно называть ${perCard} ед. урона за карту: «${relic.desc}»`);
                 });
 
                 it('целостность реестра: каждый ключ RELIC_EFFECTS — существующий артефакт, каждый обработчик — известный хук', () => {
@@ -8289,7 +8307,7 @@
                     // name here too.
                     const KNOWN_HOOKS = [
                         'onTransfer', 'onEnemyTookCards', 'onPlayerTookCards', 'onEnemyTurnStart',
-                        'onCardPlayed', 'onPlayerDefend', 'onLethalDamage', 'onDefenseSucceeded',
+                        'onCardPlayed', 'onPlayerCardPlayed', 'onLethalDamage', 'onDefenseSucceeded',
                         'onPlayerTakePenalty', 'onEnemyCollectedTable',
                         // Passive relic query (cheat_eye) - read via queryRelicHook(), never fired.
                         'getRevealedEnemyCard',
@@ -8457,7 +8475,7 @@
                     assert.isTrue(relic.desc.includes(`${BALLAST_DROP_DISCARD_COUNT} некозырные`), `Описание должно называть ${BALLAST_DROP_DISCARD_COUNT} некозырные карты: «${relic.desc}»`);
                 });
 
-                it('coin_magnet: +1$ за каждую сыгранную шестёрку', () => {
+                it('coin_magnet: +1$ за каждую шестёрку, сыгранную игроком', () => {
                     game({ relics: [{ id: 'coin_magnet' }] }, {
                         playerHand: [testCard('p1', 'Pikes', 6)],
                         enemyHand: [testCard('e1', 'Pikes', 9)],
@@ -8465,6 +8483,50 @@
                     }, () => {
                         onPlayerCardClick(0);
                         assert.equal(run.gold, 1);
+                    });
+                });
+
+                it('coin_magnet: шестёрки врага тоже приносят +1$ — атака, подкидка, перевод и защита', () => {
+                    const enemyActions = [
+                        ['атака', { defender: 'player', table: [] }, card => ({ type: 'attack', card })],
+                        ['подкидка', { defender: 'player', table: [testPair(testCard('a1', 'Clubs', 6), testCard('d1', 'Clubs', 9))] }, card => ({ type: 'throw', card })],
+                        ['перевод', { defender: 'enemy', table: [testPair(testCard('a1', 'Clubs', 6))] }, card => ({ type: 'transfer', card })]
+                    ];
+                    for (const [name, battleOverrides, makeAction] of enemyActions) {
+                        game({ relics: [{ id: 'coin_magnet' }], gold: 0 }, {
+                            phase: BATTLE_PHASES.RESOLVING, enemyHP: 50,
+                            playerHand: [testCard('p1', 'Pikes', 12), testCard('p2', 'Pikes', 13), testCard('p3', 'Pikes', 14)],
+                            enemyHand: [testCard('e1', 'Hearts', 6), testCard('e2', 'Hearts', 9)],
+                            ...battleOverrides
+                        }, () => {
+                            const realRender = window.renderAll; window.renderAll = () => {};
+                            try {
+                                executeEnemyAction(makeAction(battle.enemyHand[0]));
+                                assert.equal(run.gold, COIN_MAGNET_GOLD_PER_SIX, `шестёрка врага (${name}) должна платить`);
+                            } finally { window.renderAll = realRender; clearAITimer(); closeModal(); }
+                        });
+                    }
+                    game({ relics: [{ id: 'coin_magnet' }], gold: 0 }, {
+                        phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', enemyHP: 50,
+                        table: [testPair(testCard('a1', 'Pikes', 5))],
+                        playerHand: [testCard('p1', 'Pikes', 12)],
+                        enemyHand: [testCard('e1', 'Pikes', 6), testCard('e2', 'Hearts', 9)]
+                    }, () => {
+                        const realRender = window.renderAll; window.renderAll = () => {};
+                        try {
+                            executeEnemyAction({ type: 'defend', plays: [{ pair: battle.table[0], card: battle.enemyHand[0] }], complete: true });
+                            assert.equal(run.gold, COIN_MAGNET_GOLD_PER_SIX, 'шестёрка врага (защита) должна платить');
+                        } finally { window.renderAll = realRender; clearAITimer(); closeModal(); }
+                    });
+                    game({ relics: [{ id: 'coin_magnet' }], gold: 0 }, {
+                        phase: BATTLE_PHASES.RESOLVING, defender: 'player', enemyHP: 50,
+                        table: [], enemyHand: [testCard('e1', 'Hearts', 9)]
+                    }, () => {
+                        const realRender = window.renderAll; window.renderAll = () => {};
+                        try {
+                            executeEnemyAction({ type: 'attack', card: battle.enemyHand[0] });
+                            assert.equal(run.gold, 0, 'не-шестёрка врага не платит');
+                        } finally { window.renderAll = realRender; clearAITimer(); closeModal(); }
                     });
                 });
 
@@ -8493,7 +8555,7 @@
                     }
                 });
 
-                it('sharp_suit: наносит 1 ед. урона врагу при защите козырной картой', () => {
+                it('sharp_suit: наносит урон врагу при защите козырной картой', () => {
                     game({ relics: [{ id: 'sharp_suit' }] }, {
                         playerHand: [testCard('p1', 'Hearts', 9)],
                         table: [testPair(testCard('a1', 'Pikes', 8))],
@@ -8501,18 +8563,28 @@
                         enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
                     }, () => {
                         onPlayerCardClick(0);
-                        assert.equal(battle.enemyHP, 49);
+                        assert.equal(battle.enemyHP, 50 - SHARP_SUIT_DAMAGE);
                     });
                 });
 
-                it('sharp_suit: НЕ наносит урон при розыгрыше козыря в атаке/подкидке (хук onPlayerDefend стреляет только из ветки защиты)', () => {
-                    game({ relics: [{ id: 'sharp_suit' }] }, {
-                        playerHand: [testCard('p1', 'Hearts', 9)],
-                        enemyHand: [testCard('e1', 'Pikes', 6)],
-                        enemyHP: 50
-                    }, () => {
-                        onPlayerCardClick(0); // играет козырь в атаку, не в защиту
-                        assert.equal(battle.enemyHP, 50, 'sharp_suit не должен наносить урон вне защиты');
+                it('sharp_suit: наносит урон за козырь в атаке и подкидке, но не за обычную карту; козыри врага не считаются', () => {
+                    const base = { enemyHand: [testCard('e1', 'Pikes', 6), testCard('e2', 'Pikes', 7)], enemyHP: 50 };
+                    game({ relics: [{ id: 'sharp_suit' }] }, { ...base, playerHand: [testCard('p1', 'Hearts', 9)] }, () => {
+                        onPlayerCardClick(0); // козырь в атаке
+                        assert.equal(battle.enemyHP, 50 - SHARP_SUIT_DAMAGE);
+                    });
+                    game({ relics: [{ id: 'sharp_suit' }] }, { ...base, playerHand: [testCard('p1', 'Hearts', 9), testCard('p2', 'Hearts', 10)],
+                        table: [testPair(testCard('a1', 'Clubs', 9), testCard('d1', 'Clubs', 11))] }, () => {
+                        onPlayerCardClick(0); // козырь девятка подкидывается к девятке на столе
+                        assert.equal(battle.enemyHP, 50 - SHARP_SUIT_DAMAGE, 'подкидка козыря тоже считается');
+                    });
+                    game({ relics: [{ id: 'sharp_suit' }] }, { ...base, playerHand: [testCard('p1', 'Pikes', 9)] }, () => {
+                        onPlayerCardClick(0);
+                        assert.equal(battle.enemyHP, 50, 'обычная карта урона не наносит');
+                    });
+                    game({ relics: [{ id: 'sharp_suit' }] }, { ...base, playerHand: [testCard('p1', 'Pikes', 9)] }, () => {
+                        onEnemyCardPlayed(testCard('x1', 'Hearts', 8)); // Hearts — козырь
+                        assert.equal(battle.enemyHP, 50, 'козырь врага не наносит урон');
                     });
                 });
 
@@ -8890,7 +8962,7 @@
                     });
                 });
 
-                it('midas_touch: НЕ срабатывает посреди раунда — отбитие одной карты (onPlayerDefend) золота не даёт', () => {
+                it('midas_touch: НЕ срабатывает посреди раунда — отбитие одной карты золота не даёт', () => {
                     game({ relics: [{ id: 'midas_touch' }] }, {
                         playerHand: [testCard('p9', 'Pikes', 9)],
                         table: [testPair(testCard('a1', 'Pikes', 8))],
