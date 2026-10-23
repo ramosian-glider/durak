@@ -300,8 +300,8 @@
 
     <main class="flex-1 flex flex-col justify-between p-2 max-w-md md:max-w-2xl lg:max-w-4xl mx-auto w-full relative z-10 min-h-0 overflow-hidden">
         <section class="bg-black/40 border border-emerald-900/40 rounded-xl p-2.5 flex items-center justify-between shadow-lg backdrop-blur-sm flex-shrink-0">
-            <div class="flex items-center gap-2.5">
-                <div class="w-10 h-10 rounded-full bg-slate-800 border-2 border-emerald-500 flex items-center justify-center text-xl shadow" id="enemy-avatar">
+            <div class="flex items-center gap-2.5 flex-1 min-w-0">
+                <div class="w-10 h-10 rounded-full bg-slate-800 border-2 border-emerald-500 flex items-center justify-center text-xl shadow flex-shrink-0" id="enemy-avatar">
                     🧔
                 </div>
                 <div>
@@ -316,7 +316,11 @@
                     </div>
                 </div>
             </div>
-            <div id="enemy-hand-visual" class="flex -space-x-4 overflow-hidden py-1">
+            <div class="flex items-center gap-2 flex-shrink-0 ml-2">
+                <div id="enemy-hand-visual" class="flex -space-x-4 overflow-hidden py-1 max-w-[7rem]">
+                </div>
+                <!-- The one face-up card cheat_eye reveals. Lives outside the (clipping) card-back stack so it is never cut off. -->
+                <div id="enemy-revealed-card" class="flex-shrink-0"></div>
             </div>
         </section>
 
@@ -3522,25 +3526,27 @@
             banner.className = `turn-banner-base turn-banner-${state.color}`;
         }
 
-        // The enemy's hand: card backs, plus the one face-up card cheat_eye reveals (the enemy's strongest); and the card count.
+        // The enemy's hand: card backs, plus the one face-up card cheat_eye reveals (the enemy's strongest) in its own slot; and the card count.
         function renderEnemyHand() {
             const enemyHandVis = getEl('enemy-hand-visual');
+            const revealedSlot = getEl('enemy-revealed-card');
+            if (revealedSlot) revealedSlot.innerHTML = '';
             if (enemyHandVis) {
                 enemyHandVis.innerHTML = '';
 
-                const lowestEnemyCard = queryRelicHook('getRevealedEnemyCard');
+                const revealedCard = queryRelicHook('getRevealedEnemyCard');
 
                 for (const card of battle.enemyHand) {
-                    if (lowestEnemyCard && card.id === lowestEnemyCard.id) {
+                    if (revealedCard && card.id === revealedCard.id && revealedSlot) {
                         const color = SUIT_COLORS[card.suit];
                         const isTrump = card.suit === battle.trumpSuit;
                         const eyeCard = document.createElement('div');
-                        eyeCard.className = `w-7 h-10 sm:w-9 sm:h-12 bg-amber-50 border-2 ${isTrump ? 'border-amber-400 ring-2 ring-amber-400/60' : 'border-amber-300'} rounded shadow-md flex flex-col justify-between p-0.5 relative flex-shrink-0 ${color}`;
+                        eyeCard.className = `w-9 h-14 bg-amber-50 border-2 ${isTrump ? 'border-amber-400 ring-2 ring-amber-400/70' : 'border-amber-300'} rounded-md shadow-lg flex flex-col justify-between p-0.5 relative ${color}`;
                         eyeCard.innerHTML = `
-                            <span class="absolute -top-1.5 -right-1.5 text-[10px] leading-none bg-black/80 rounded-full p-0.5 border border-amber-400" title="Шулерский глаз">👁️</span>
-                            ${renderCardFaceHTML(card, true)}
+                            <span class="absolute -top-1.5 -right-1.5 text-[10px] leading-none bg-black/90 rounded-full p-0.5 border border-amber-400" title="Шулерский глаз">👁️</span>
+                            ${renderCardFaceHTML(card)}
                         `;
-                        enemyHandVis.appendChild(eyeCard);
+                        revealedSlot.appendChild(eyeCard);
                     } else {
                         const cardBack = document.createElement('div');
                         cardBack.className = 'w-6 h-9 sm:w-8 sm:h-11 bg-gradient-to-br from-rose-900 to-red-950 border border-white/40 rounded shadow-sm flex-shrink-0';
@@ -6454,8 +6460,9 @@
                     }, { relics: [] });
                     inGameClosingModal({}, () => {
                         renderEnemyHand();
-                        assert.equal(getEl('enemy-hand-visual').children.length, 3);
-                        assert.equal(document.querySelectorAll('#enemy-hand-visual .bg-amber-50').length, 1);
+                        assert.equal(getEl('enemy-hand-visual').children.length, 2, 'рубашки — все карты, кроме открытой');
+                        assert.equal(getEl('enemy-revealed-card').children.length, 1, 'открытая карта лежит в своём слоте, вне обрезаемой стопки');
+                        assert.equal(document.querySelectorAll('#enemy-revealed-card .bg-amber-50').length, 1);
                     }, { relics: [relicOf('cheat_eye')] });
                 });
 
