@@ -168,6 +168,27 @@
             font-size: 1.125rem;
             box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
         }
+        /* Rarity accents: --rarity colours the border of shop cards and filled relic slots.
+           Must stay above .relic-slot-sellable:hover so the sell hint still wins on hover. */
+        .rarity-common { --rarity: #94a3b8; --rarity-glow: transparent; }
+        .rarity-uncommon { --rarity: #38bdf8; --rarity-glow: rgba(56, 189, 248, 0.3); }
+        .rarity-rare { --rarity: #c084fc; --rarity-glow: rgba(192, 132, 252, 0.55); }
+        .relic-slot-filled[class*="rarity-"] {
+            border-color: var(--rarity);
+            box-shadow: 0 0 6px var(--rarity-glow);
+        }
+        .relic-card {
+            border: 1.5px solid var(--rarity);
+            box-shadow: 0 0 8px var(--rarity-glow);
+        }
+        .rarity-tag {
+            margin-left: 0.5rem;
+            color: var(--rarity);
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
         .relic-slot-empty {
             border-style: dashed;
             border-color: rgba(6, 78, 59, 0.6);
@@ -672,24 +693,33 @@
 
         const AI_POST_THROW_DELAY_MS = 700;
 
+        // Artifact rarity. It only changes how often an artifact shows up in the shop
+        // draft (RARITY_DROP_WEIGHTS), never its price or its effect.
+        const RARITY = { COMMON: 'common', UNCOMMON: 'uncommon', RARE: 'rare' };
+
+        // Chance that one draft slot is filled from each tier (the weights sum to 1).
+        const RARITY_DROP_WEIGHTS = { [RARITY.COMMON]: 0.6, [RARITY.UNCOMMON]: 0.3, [RARITY.RARE]: 0.1 };
+
+        const RARITY_LABELS = { [RARITY.COMMON]: 'Обычный', [RARITY.UNCOMMON]: 'Необычный', [RARITY.RARE]: 'Редкий' };
+
         const ALL_RELICS = [
-            { id: "ace_sleeve", name: "Туз в рукаве", icon: "🃏", desc: "Заставление врага взять карты наносит +5 ед. дополнительного урона.", price: 12 },
-            { id: "midas_touch", name: "Золотое пальто", icon: "🪙", desc: "Получайте +3$ каждый раз, когда успешно отбиваетесь.", price: 10 },
-            { id: "mirror_ring", name: "Зеркальный перстень", icon: "💍", desc: `Когда вы берёте карты со стола, враг получает ${TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER} ед. урона за каждую взятую карту.`, price: 14 },
-            { id: "cheat_eye", name: "Шулерский глаз", icon: "👁️", desc: "Показывает вам самую старшую карту в руке соперника (козыри считаются старше).", price: 8 },
-            { id: "pocket_discard", name: "Карманный сброс", icon: "✂️", desc: "Раз за раунд можно безвозвратно сбросить из руки шестёрку или семёрку прямо в отбой.", price: 7 },
-            { id: "spam_mail", name: "Спам-рассылка", icon: "✉️", desc: "Когда враг забирает карты со стола, он дополнительно берёт верхнюю карту из колоды.", price: 9 },
-            { id: "heavy_ballast", name: "Тяжёлый балласт", icon: "⚓", desc: "В начале хода врага он получает урон за каждую карту в руке сверх 6 штук (не больше 4 ед.).", price: 13 },
-            { id: "ballast_drop", name: "Сброс балласта", icon: "🪂", desc: "При взятии карт со стола вы сразу сбрасываете в отбой 2 некозырные карты наименьшего ранга.", price: 10 },
-            { id: "coin_magnet", name: "Магнит для мелочи", icon: "🧲", desc: "Каждая шестёрка, сыгранная любым игроком (атака, подкидка, перевод или защита), приносит +1$.", price: 8 },
-            { id: "safety_rope", name: "Страховочный трос", icon: "🪢", desc: "При смертельном уроне вы выживаете с 1 HP и стол очищается (срабатывает 1 раз за забег).", price: 18 },
-            { id: "jester_discard", name: "Шутовской сброс", icon: "🃏", desc: "Раз за бой на своём ходу атаки можно сбросить всю руку и добрать столько же карт из колоды.", price: 9 },
-            { id: "cascade_transfer", name: "Каскадный перевод", icon: "🌊", desc: "Первый перевод карт за ход наносит врагу 4 ед. урона.", price: 11 },
-            { id: "sleight_of_hand", name: "Ловкость рук", icon: "🪄", desc: "Раз за бой можно заменить карту, которой враг пошёл на вас, случайной картой из колоды.", price: 12 },
-            { id: "salted_wound", name: "Солёная рана", icon: "🧂", desc: "Если враг берёт карты со стола, он получает +1 ед. урона за каждую карту сверх 6 в его руке (не больше 4 ед.).", price: 10 },
-            { id: "sharp_suit", name: "Острая масть", icon: "🗡️", desc: `Каждый раз, когда вы играете козырную карту (атака, подкидка, перевод или защита), враг получает ${SHARP_SUIT_DAMAGE} ед. урона.`, price: 9 },
-            { id: "moonshine_flask", name: "Фляжка с пойлом", icon: "🍶", desc: `Каждый раз, когда вы успешно отбиваетесь, вы восстанавливаете ${FLASK_HEAL_ON_DEFEND} HP.`, price: 12 },
-            { id: "golden_bullet", name: "Золотая пуля", icon: "🔫", desc: `Каждый раз, когда артефакт приносит вам $, враг получает ${GOLDEN_BULLET_DAMAGE} ед. урона.`, price: 8 }
+            { id: "ace_sleeve", rarity: RARITY.RARE, name: "Туз в рукаве", icon: "🃏", desc: "Заставление врага взять карты наносит +5 ед. дополнительного урона.", price: 12 },
+            { id: "midas_touch", rarity: RARITY.UNCOMMON, name: "Золотое пальто", icon: "🪙", desc: "Получайте +3$ каждый раз, когда успешно отбиваетесь.", price: 10 },
+            { id: "mirror_ring", rarity: RARITY.RARE, name: "Зеркальный перстень", icon: "💍", desc: `Когда вы берёте карты со стола, враг получает ${TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER} ед. урона за каждую взятую карту.`, price: 14 },
+            { id: "cheat_eye", rarity: RARITY.COMMON, name: "Шулерский глаз", icon: "👁️", desc: "Показывает вам самую старшую карту в руке соперника (козыри считаются старше).", price: 8 },
+            { id: "pocket_discard", rarity: RARITY.COMMON, name: "Карманный сброс", icon: "✂️", desc: "Раз за раунд можно безвозвратно сбросить из руки шестёрку или семёрку прямо в отбой.", price: 7 },
+            { id: "spam_mail", rarity: RARITY.COMMON, name: "Спам-рассылка", icon: "✉️", desc: "Когда враг забирает карты со стола, он дополнительно берёт верхнюю карту из колоды.", price: 9 },
+            { id: "heavy_ballast", rarity: RARITY.COMMON, name: "Тяжёлый балласт", icon: "⚓", desc: "В начале хода врага он получает урон за каждую карту в руке сверх 6 штук (не больше 4 ед.).", price: 13 },
+            { id: "ballast_drop", rarity: RARITY.RARE, name: "Сброс балласта", icon: "🪂", desc: "При взятии карт со стола вы сразу сбрасываете в отбой 2 некозырные карты наименьшего ранга.", price: 10 },
+            { id: "coin_magnet", rarity: RARITY.COMMON, name: "Магнит для мелочи", icon: "🧲", desc: "Каждая шестёрка, сыгранная любым игроком (атака, подкидка, перевод или защита), приносит +1$.", price: 8 },
+            { id: "safety_rope", rarity: RARITY.RARE, name: "Страховочный трос", icon: "🪢", desc: "При смертельном уроне вы выживаете с 1 HP и стол очищается (срабатывает 1 раз за забег).", price: 18 },
+            { id: "jester_discard", rarity: RARITY.COMMON, name: "Шутовской сброс", icon: "🃏", desc: "Раз за бой на своём ходу атаки можно сбросить всю руку и добрать столько же карт из колоды.", price: 9 },
+            { id: "cascade_transfer", rarity: RARITY.RARE, name: "Каскадный перевод", icon: "🌊", desc: "Первый перевод карт за ход наносит врагу 4 ед. урона.", price: 11 },
+            { id: "sleight_of_hand", rarity: RARITY.UNCOMMON, name: "Ловкость рук", icon: "🪄", desc: "Раз за бой можно заменить карту, которой враг пошёл на вас, случайной картой из колоды.", price: 12 },
+            { id: "salted_wound", rarity: RARITY.UNCOMMON, name: "Солёная рана", icon: "🧂", desc: "Если враг берёт карты со стола, он получает +1 ед. урона за каждую карту сверх 6 в его руке (не больше 4 ед.).", price: 10 },
+            { id: "sharp_suit", rarity: RARITY.UNCOMMON, name: "Острая масть", icon: "🗡️", desc: `Каждый раз, когда вы играете козырную карту (атака, подкидка, перевод или защита), враг получает ${SHARP_SUIT_DAMAGE} ед. урона.`, price: 9 },
+            { id: "moonshine_flask", rarity: RARITY.UNCOMMON, name: "Фляжка с пойлом", icon: "🍶", desc: `Каждый раз, когда вы успешно отбиваетесь, вы восстанавливаете ${FLASK_HEAL_ON_DEFEND} HP.`, price: 12 },
+            { id: "golden_bullet", rarity: RARITY.UNCOMMON, name: "Золотая пуля", icon: "🔫", desc: `Каждый раз, когда артефакт приносит вам $, враг получает ${GOLDEN_BULLET_DAMAGE} ед. урона.`, price: 8 }
         ];
 
         // --- Enemy ladder ------------------------------------------------------------
@@ -3279,8 +3309,8 @@
         // ============================================================
 
         // ---- Shop draft ---------------------------------------------------------
-        // The shop offers SHOP_DRAFT_SIZE random artifacts instead of the whole
-        // catalogue. The offer is kept in run.shopOffer (as ids, so it is saved with
+        // The shop offers SHOP_DRAFT_SIZE random artifacts (weighted by rarity, see
+        // RARITY_DROP_WEIGHTS) instead of the whole catalogue. The offer is kept in run.shopOffer (as ids, so it is saved with
         // the run): closing the game or reopening the shop never redraws it for free,
         // and only a paid reroll or the next floor replaces it. The heal potion is
         // not part of the draft — it is always on sale.
@@ -3300,15 +3330,45 @@
             return copy;
         }
 
-        // Pure: picks up to `count` artifact ids from `pool`. Artifacts listed in
-        // `previousIds` (the offer being replaced) come last, so a reroll shows new
-        // options whenever the pool has enough of them.
+        // The catalogue is the source of truth, so an artifact stored in an old save (no
+        // `rarity` on the saved copy) still shows its real tier. An artifact the catalogue
+        // does not know, or one with an unknown rarity, counts as common.
+        function getRelicRarity(relic) {
+            const rarity = (ALL_RELICS.find(r => r.id === relic.id) ?? relic).rarity;
+            return Object.hasOwn(RARITY_DROP_WEIGHTS, rarity) ? rarity : RARITY.COMMON;
+        }
+
+        // Pure: one weighted pick from `candidates`. The tier is rolled first with
+        // RARITY_DROP_WEIGHTS, restricted to the tiers that still have candidates (their
+        // weights are renormalised), then an artifact of that tier is picked uniformly.
+        function pickRelicByRarity(candidates, rng) {
+            const tiers = Object.keys(RARITY_DROP_WEIGHTS).filter(t => candidates.some(r => getRelicRarity(r) === t));
+            let roll = rng() * tiers.reduce((sum, t) => sum + RARITY_DROP_WEIGHTS[t], 0);
+            let tier = tiers[tiers.length - 1];
+            for (const t of tiers) {
+                if (roll < RARITY_DROP_WEIGHTS[t]) { tier = t; break; }
+                roll -= RARITY_DROP_WEIGHTS[t];
+            }
+            const inTier = candidates.filter(r => getRelicRarity(r) === tier);
+            return inTier[Math.floor(rng() * inTier.length)];
+        }
+
+        // Pure: picks up to `count` artifact ids from `pool`, slot by slot, each slot
+        // weighted by rarity (see pickRelicByRarity). Artifacts listed in `previousIds`
+        // (the offer being replaced) are only used once every new one has been drawn,
+        // so a reroll shows new options whenever the pool has enough of them.
         function drawShopOffer(pool, count, previousIds = [], rng = Math.random) {
-            const fresh = pool.filter(r => !previousIds.includes(r.id));
-            const repeated = pool.filter(r => previousIds.includes(r.id));
-            return [...shuffledCopy(fresh, rng), ...shuffledCopy(repeated, rng)]
-                .slice(0, count)
-                .map(r => r.id);
+            let fresh = pool.filter(r => !previousIds.includes(r.id));
+            let repeated = pool.filter(r => previousIds.includes(r.id));
+            const offer = [];
+            while (offer.length < count && (fresh.length > 0 || repeated.length > 0)) {
+                const fromFresh = fresh.length > 0;
+                const pick = pickRelicByRarity(fromFresh ? fresh : repeated, rng);
+                offer.push(pick.id);
+                if (fromFresh) fresh = fresh.filter(r => r !== pick);
+                else repeated = repeated.filter(r => r !== pick);
+            }
+            return offer;
         }
 
         // The artifacts on offer right now. Draws the first draft of this shop visit
@@ -3369,11 +3429,11 @@
             if (shopList) {
                 shopList.innerHTML = offer.length
                     ? offer.map(relic => `
-                        <div class="flex items-center justify-between gap-3 p-2.5 bg-slate-900 border border-emerald-800/60 rounded-xl">
+                        <div class="relic-card rarity-${getRelicRarity(relic)} flex items-center justify-between gap-3 p-2.5 bg-slate-900 rounded-xl">
                             <div class="item-row">
                                 <span class="text-2xl">${relic.icon}</span>
                                 <div class="min-w-0">
-                                    <div class="text-xs font-bold text-amber-300">${relic.name}</div>
+                                    <div class="text-xs font-bold text-amber-300">${relic.name} <span class="rarity-tag">${RARITY_LABELS[getRelicRarity(relic)]}</span></div>
                                     <div class="text-[10px] text-slate-400 leading-tight">${relic.desc}</div>
                                 </div>
                             </div>
@@ -3403,7 +3463,7 @@
                 const relic = run.relics[i];
                 const slot = document.createElement('div');
                 slot.className = relic
-                    ? `relic-slot-base relic-slot-filled${sellable ? ' relic-slot-sellable' : ''}`
+                    ? `relic-slot-base relic-slot-filled rarity-${getRelicRarity(relic)}${sellable ? ' relic-slot-sellable' : ''}`
                     : 'relic-slot-base relic-slot-empty';
                 slot.innerText = relic?.icon || '+';
                 if (relic) slot.dataset.relicId = relic.id; // anchor for floating change plates
@@ -7301,6 +7361,79 @@
                     assert.equal(small.length, 2, 'из пула в 2 артефакта нельзя выдать больше двух');
                 });
 
+                // Rarity: 0.6 / 0.3 / 0.1 per draft slot.
+                it('Редкость: у каждого артефакта известная редкость, веса выпадения дают 1, в каталоге есть все три группы', () => {
+                    const tiers = Object.values(RARITY);
+                    assert.isTrue(ALL_RELICS.every(r => tiers.includes(r.rarity)), 'у каждого артефакта должна быть редкость: ' + ALL_RELICS.filter(r => !tiers.includes(r.rarity)).map(r => r.id).join());
+                    assert.isTrue(tiers.every(t => ALL_RELICS.some(r => r.rarity === t)), 'каждая группа должна быть непустой');
+                    assert.equal(Object.keys(RARITY_DROP_WEIGHTS).sort().join(), [...tiers].sort().join(), 'вес задан для каждой редкости');
+                    assert.isTrue(Math.abs(Object.values(RARITY_DROP_WEIGHTS).reduce((a, b) => a + b, 0) - 1) < 1e-9, 'веса дают в сумме 1');
+                    assert.equal(RARITY_DROP_WEIGHTS[RARITY.COMMON], 0.6);
+                    assert.equal(RARITY_DROP_WEIGHTS[RARITY.UNCOMMON], 0.3);
+                    assert.equal(RARITY_DROP_WEIGHTS[RARITY.RARE], 0.1);
+                });
+
+                it('Редкость: артефакт без известной редкости считается обычным', () => {
+                    assert.equal(getRelicRarity({ id: 'x' }), RARITY.COMMON);
+                    assert.equal(getRelicRarity({ id: 'x', rarity: 'legendary' }), RARITY.COMMON);
+                    assert.equal(getRelicRarity({ id: 'x', rarity: RARITY.RARE }), RARITY.RARE);
+                });
+
+                it('drawShopOffer: первый слот выпадает из обычных/необычных/редких с вероятностью 0.6 / 0.3 / 0.1', () => {
+                    const rng = makeSeededRng(12345);
+                    const trials = 6000;
+                    const counts = { [RARITY.COMMON]: 0, [RARITY.UNCOMMON]: 0, [RARITY.RARE]: 0 };
+                    for (let i = 0; i < trials; i++) {
+                        const [id] = drawShopOffer(ALL_RELICS, 1, [], rng);
+                        counts[ALL_RELICS.find(r => r.id === id).rarity]++;
+                    }
+                    for (const tier of Object.values(RARITY)) {
+                        const share = counts[tier] / trials;
+                        assert.isTrue(Math.abs(share - RARITY_DROP_WEIGHTS[tier]) < 0.03, `${tier}: доля ${share.toFixed(3)} должна быть около ${RARITY_DROP_WEIGHTS[tier]}`);
+                    }
+                });
+
+                it('drawShopOffer: внутри группы все артефакты равновероятны', () => {
+                    const rng = makeSeededRng(777);
+                    const rares = ALL_RELICS.filter(r => r.rarity === RARITY.RARE);
+                    const counts = Object.fromEntries(rares.map(r => [r.id, 0]));
+                    const trials = 3000;
+                    for (let i = 0; i < trials; i++) counts[drawShopOffer(rares, 1, [], rng)[0]]++;
+                    for (const r of rares) {
+                        assert.isTrue(Math.abs(counts[r.id] / trials - 1 / rares.length) < 0.04, `${r.id}: ${counts[r.id]} из ${trials}`);
+                    }
+                });
+
+                it('drawShopOffer: пустая группа не съедает слот — вес перераспределяется между оставшимися', () => {
+                    const rng = makeSeededRng(99);
+                    const rares = ALL_RELICS.filter(r => r.rarity === RARITY.RARE);
+                    for (let i = 0; i < 200; i++) {
+                        const ids = drawShopOffer(rares, SHOP_DRAFT_SIZE, [], rng);
+                        assert.equal(ids.length, SHOP_DRAFT_SIZE, 'в пуле только редкие — все слоты заполняются ими');
+                        assert.equal(new Set(ids).size, SHOP_DRAFT_SIZE);
+                    }
+                    const mixed = ALL_RELICS.filter(r => r.rarity !== RARITY.COMMON);
+                    const uncommonShare = (() => {
+                        let n = 0;
+                        const trials = 4000;
+                        for (let i = 0; i < trials; i++) {
+                            const [id] = drawShopOffer(mixed, 1, [], rng);
+                            if (ALL_RELICS.find(r => r.id === id).rarity === RARITY.UNCOMMON) n++;
+                        }
+                        return n / trials;
+                    })();
+                    assert.isTrue(Math.abs(uncommonShare - 0.3 / 0.4) < 0.03, `без обычных веса 0.3 и 0.1 нормируются: доля необычных ${uncommonShare.toFixed(3)} ≈ 0.75`);
+                });
+
+                it('drawShopOffer: средний состав предложения из 4 слотов — обычных больше всего, редких меньше всего', () => {
+                    const rng = makeSeededRng(2024);
+                    const total = { [RARITY.COMMON]: 0, [RARITY.UNCOMMON]: 0, [RARITY.RARE]: 0 };
+                    for (let i = 0; i < 2000; i++) {
+                        for (const id of drawShopOffer(ALL_RELICS, SHOP_DRAFT_SIZE, [], rng)) total[ALL_RELICS.find(r => r.id === id).rarity]++;
+                    }
+                    assert.isTrue(total[RARITY.COMMON] > total[RARITY.UNCOMMON] && total[RARITY.UNCOMMON] > total[RARITY.RARE], JSON.stringify(total));
+                });
+
                 it('drawShopOffer: при реролле новые артефакты идут раньше прежних', () => {
                     const previous = ['cheat_eye', 'midas_touch', 'mirror_ring', 'ace_sleeve'];
                     const pool = poolOf(...previous, 'spam_mail', 'coin_magnet');
@@ -7324,6 +7457,32 @@
                         openShop();
                         assert.equal(shownIds().length, SHOP_DRAFT_SIZE);
                         assert.equal(shownIds().join(), run.shopOffer.join(), 'показано ровно то, что лежит в run.shopOffer');
+                    });
+                });
+
+                it('Рамка редкости: карточка в магазине и занятый слот получают цвет своей группы, на карточке есть подпись', () => {
+                    inShop({ gold: 50, relics: [ALL_RELICS.find(r => r.id === 'mirror_ring')] }, () => {
+                        run.shopOffer = ['coin_magnet', 'sharp_suit', 'ace_sleeve'];
+                        openShop();
+                        const cards = Array.from(getEl('shop-relics-list').querySelectorAll('.relic-card'));
+                        assert.equal(cards.length, 3);
+                        cards.forEach((card, i) => {
+                            const relic = ALL_RELICS.find(r => r.id === run.shopOffer[i]);
+                            assert.isTrue(card.classList.contains('rarity-' + relic.rarity), `${relic.id}: рамка должна быть ${relic.rarity}`);
+                            assert.equal(card.querySelector('.rarity-tag').textContent, RARITY_LABELS[relic.rarity], 'подпись нужна, чтобы редкость не зависела только от цвета');
+                        });
+                        const slot = getEl('shop-relic-slots').querySelector('[data-relic-id="mirror_ring"]');
+                        assert.isTrue(slot.classList.contains('rarity-rare'), 'занятый слот окрашивается по редкости артефакта');
+                        assert.isFalse(getEl('shop-relic-slots').querySelector('.relic-slot-empty').className.includes('rarity-'), 'пустой слот без рамки редкости');
+                    });
+                });
+
+                it('Рамка редкости: артефакт из старого сохранения без поля rarity берёт редкость из каталога', () => {
+                    const stale = { id: 'ace_sleeve', name: 'Туз в рукаве', icon: '🃏', desc: 'x', price: 12 };
+                    assert.equal(getRelicRarity(stale), RARITY.RARE);
+                    inShop({ gold: 50, relics: [stale] }, () => {
+                        openShop();
+                        assert.isTrue(getEl('shop-relic-slots').querySelector('[data-relic-id="ace_sleeve"]').classList.contains('rarity-rare'));
                     });
                 });
 
