@@ -586,6 +586,12 @@
 
         const MIRROR_RING_MULTIPLIER = 1;
 
+        // moonshine_flask: HP the player regains each time they successfully defend a table.
+        const FLASK_HEAL_ON_DEFEND = 1;
+
+        // golden_bullet: damage the enemy takes each time an artifact pays the player gold.
+        const GOLDEN_BULLET_DAMAGE = 1;
+
         // How long a relic's slot in the relics bar stays visually highlighted
         // after one of its hooks fires successfully (see highlightRelic()).
         const RELIC_HIGHLIGHT_DURATION_MS = 700;
@@ -681,7 +687,9 @@
             { id: "cascade_transfer", name: "Каскадный перевод", icon: "🌊", desc: "Первый перевод карт за ход наносит врагу 4 ед. урона.", price: 11 },
             { id: "sleight_of_hand", name: "Ловкость рук", icon: "🪄", desc: "Раз за бой можно заменить карту, которой враг пошёл на вас, случайной картой из колоды.", price: 12 },
             { id: "salted_wound", name: "Солёная рана", icon: "🧂", desc: "Если враг берёт карты со стола, он получает +1 ед. урона за каждую карту сверх 6 в его руке (не больше 4 ед.).", price: 10 },
-            { id: "sharp_suit", name: "Острая масть", icon: "🗡️", desc: `Каждый раз, когда вы играете козырную карту (атака, подкидка, перевод или защита), враг получает ${SHARP_SUIT_DAMAGE} ед. урона.`, price: 9 }
+            { id: "sharp_suit", name: "Острая масть", icon: "🗡️", desc: `Каждый раз, когда вы играете козырную карту (атака, подкидка, перевод или защита), враг получает ${SHARP_SUIT_DAMAGE} ед. урона.`, price: 9 },
+            { id: "moonshine_flask", name: "Фляжка с пойлом", icon: "🍶", desc: `Каждый раз, когда вы успешно отбиваетесь, вы восстанавливаете ${FLASK_HEAL_ON_DEFEND} HP.`, price: 12 },
+            { id: "golden_bullet", name: "Золотая пуля", icon: "🔫", desc: `Каждый раз, когда артефакт приносит вам $, враг получает ${GOLDEN_BULLET_DAMAGE} ед. урона.`, price: 8 }
         ];
 
         // --- Enemy ladder ------------------------------------------------------------
@@ -1976,16 +1984,23 @@
                     discardTable();
                     battle.defender = 'player';
                     fireEnemyAbilityHook('onEnemyDefended');
-                } else {
-                    fireAllHooks('onDefenseSucceeded');
-                    discardTable();
-                    battle.defender = 'enemy';
+                    return {};
                 }
+                // An onDefenseSucceeded hook can pay gold (midas_touch) and golden_bullet turns
+                // that gold into damage, so the enemy may die here.
+                const enemyHPBeforeHooks = battle.enemyHP;
+                fireAllHooks('onDefenseSucceeded');
+                const enemyJustDied = didEnemyJustDie(enemyHPBeforeHooks);
+                discardTable();
+                battle.defender = 'enemy';
+                return { enemyJustDied };
             }, presentBito);
         }
 
-        // UI and scheduling only: whose move it is after a bito (unless the round just ended).
-        function presentBito() {
+        // UI and scheduling only: whose move it is after a bito (unless the round just ended
+        // or the enemy died to a hook: the victory modal is already up).
+        function presentBito({ enemyJustDied = false } = {}) {
+            if (enemyJustDied) return;
             if (checkRoundEnd()) return;
             if (battle.defender === 'player') {
                 scheduleEnemyAI(AI_STANDARD_DELAY_MS);
@@ -2422,6 +2437,11 @@
             const applied = Math.max(-run.gold, delta);
             run.gold += applied;
             announceChange('gold', applied);
+            // Only gold an artifact paid out triggers onGoldGained (golden_bullet). A dead
+            // enemy never does: the victory reward itself can be paid inside a relic hook.
+            if (applied > 0 && currentChangeSource?.kind === 'relic' && battle.enemyHP > 0) {
+                fireAllHooks('onGoldGained', { amount: applied });
+            }
             return applied;
         }
 
@@ -2740,17 +2760,22 @@
                     break;
                 }
 
-                case 'defend':
+                case 'defend': {
+                    // coin_magnet pays for the enemy's sixes too and golden_bullet can turn that
+                    // gold into lethal damage: stop at once, the victory modal is already up.
+                    const enemyHPBeforeDefense = battle.enemyHP;
                     for (const { pair, card } of action.plays) {
                         playDefenseCard(battle.enemyHand, pair, card);
                         onEnemyCardPlayed(card);
                         audio.playCardSound();
+                        if (didEnemyJustDie(enemyHPBeforeDefense)) return;
                     }
                     battle.cardsToTake = !action.complete;
                     renderAll();
                     // What happens next depends on the table AFTER the defence.
                     executeEnemyAction(action.complete ? chooseEnemyActionAfterFullDefense() : chooseEnemyTakeOrWait());
                     break;
+                }
 
                 case 'attack':
                     // The enemy hand is kept ordered weakest-first as a side effect of leading.
@@ -2870,6 +2895,25 @@
                         damageEnemyHP(SHARP_SUIT_DAMAGE);
                         return true;
                     }
+                }
+            },
+            moonshine_flask: {
+                // Same trigger as midas_touch: handleBito() with the player as the defender
+                // and every attack beaten, once per round. Heals through healPlayerHP(), so
+                // it never exceeds max HP; it only flashes when HP was actually restored.
+                onDefenseSucceeded() {
+                    return healPlayerHP(FLASK_HEAL_ON_DEFEND) > 0;
+                }
+            },
+            golden_bullet: {
+                // Fired from changeGold() when an ARTIFACT (midas_touch, coin_magnet) just paid
+                // the player gold; the victory reward, shop actions and enemy abilities do
+                // not count. A direct damage source, so it can kill the enemy in the middle of
+                // another handler's action (handleBito, an enemy card play): those call sites
+                // check didEnemyJustDie().
+                onGoldGained() {
+                    damageEnemyHP(GOLDEN_BULLET_DAMAGE);
+                    return true;
                 }
             },
             midas_touch: {
@@ -5275,6 +5319,72 @@
                     }, relicRun('sharp_suit'));
                 });
 
+                // golden_bullet turns artifact gold into damage, so gold payouts became a way to kill
+                // the enemy from three more places: bito, the player's own card play, the enemy's.
+                it('golden_bullet: враг гибнет от пули после золота midas_touch в бито — победа, награда один раз, ход ИИ не запускается', () => {
+                    inGameStrict({
+                        phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', enemyHP: GOLDEN_BULLET_DAMAGE,
+                        table: [testPair(testCard('bx1', 'Pikes', 6), testCard('bx2', 'Pikes', 7))],
+                        playerHand: [testCard('bx3', 'Pikes', 8)]
+                    }, () => {
+                        clearLocalSave();
+                        handleBito();
+                        assert.equal(battle.enemyHP, 0);
+                        assert.phase(BATTLE_PHASES.BATTLE_OVER, 'победа не должна перезаписываться ходом игрока или ИИ');
+                        assert.isTrue(battle.aiTimer === null, 'после победы ход ИИ планироваться не должен');
+                        assert.modalTitle('Победа в Бою!');
+                        assert.equal(run.gold, 15 + MIDAS_TOUCH_GOLD_ON_DEFEND + WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR, 'золото за победу выдаётся ровно один раз, а сама награда пулю не запускает');
+                    }, { relics: [{ id: 'midas_touch' }, { id: 'golden_bullet' }] });
+                });
+
+                it('golden_bullet: враг гибнет от пули за шестёрку игрока (coin_magnet) — победа, ход ИИ не запускается', () => {
+                    inGameStrict({
+                        phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', enemyHP: GOLDEN_BULLET_DAMAGE, table: [],
+                        playerHand: [testCard('p1', 'Pikes', 6), testCard('p2', 'Clubs', 9)]
+                    }, () => {
+                        clearLocalSave();
+                        window.onPlayerCardClick(0);
+                        assert.equal(battle.enemyHP, 0);
+                        assert.phase(BATTLE_PHASES.BATTLE_OVER, 'победа не должна перезаписываться фазой AI_WAITING');
+                        assert.isTrue(battle.aiTimer === null, 'после победы ход ИИ планироваться не должен');
+                        assert.modalTitle('Победа в Бою!');
+                    }, { relics: [{ id: 'coin_magnet' }, { id: 'golden_bullet' }] });
+                });
+
+                it('golden_bullet: враг гибнет от пули за СВОЮ шестёрку в защите (coin_magnet платит и за шестёрки врага) — победа, остальные карты не играются', () => {
+                    inGameStrict({
+                        phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', enemyHP: GOLDEN_BULLET_DAMAGE,
+                        table: [testPair(testCard('a1', 'Pikes', 5)), testPair(testCard('a2', 'Clubs', 5))],
+                        enemyHand: [testCard('e1', 'Pikes', 6), testCard('e2', 'Clubs', 6), testCard('e3', 'Hearts', 12)]
+                    }, () => {
+                        clearLocalSave();
+                        const [first, second] = battle.table;
+                        executeEnemyAction({
+                            type: 'defend', complete: true,
+                            plays: [{ pair: first, card: battle.enemyHand[0] }, { pair: second, card: battle.enemyHand[1] }]
+                        });
+                        assert.equal(battle.enemyHP, 0);
+                        assert.phase(BATTLE_PHASES.BATTLE_OVER);
+                        assert.isTrue(battle.aiTimer === null, 'после победы ход ИИ планироваться не должен');
+                        assert.isTrue(second.defend === null, 'после гибели врага вторая карта защиты не выкладывается');
+                        assert.modalTitle('Победа в Бою!');
+                    }, { relics: [{ id: 'coin_magnet' }, { id: 'golden_bullet' }] });
+                });
+
+                it('golden_bullet: награда за победу, добитую другим артефактом, не запускает пулю (нет двойной награды)', () => {
+                    inGameStrict({
+                        phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', enemyHP: SHARP_SUIT_DAMAGE,
+                        table: [testPair(testCard('a1', 'Pikes', 7))],
+                        playerHand: [testCard('p1', 'Hearts', 9)]
+                    }, () => {
+                        clearLocalSave();
+                        window.onPlayerCardClick(0);
+                        assert.equal(battle.enemyHP, 0);
+                        assert.phase(BATTLE_PHASES.BATTLE_OVER);
+                        assert.equal(run.gold, 15 + WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR, 'награда выдаётся ровно один раз');
+                    }, { relics: [{ id: 'sharp_suit' }, { id: 'midas_touch' }, { id: 'golden_bullet' }] });
+                });
+
                 // Structural safety net for future relics: with invariants on (every strict
                 // test), a commit that leaves a dead enemy in a live phase throws at once.
                 it('Инвариант коммита: враг с 0 HP допустим только в BATTLE_OVER; проверка сейвов его не требует (старые сейвы чинит resumeFromSave)', () => {
@@ -5302,7 +5412,7 @@
                     }
                     assert.equal(
                         [...lethalHooks].sort().join(),
-                        ['onEnemyTurnStart', 'onPlayerCardPlayed', 'onPlayerTookCards', 'onTransfer'].join(),
+                        ['onEnemyTurnStart', 'onGoldGained', 'onPlayerCardPlayed', 'onPlayerTookCards', 'onTransfer'].join(),
                         'новый хук вызывает damageEnemyHP(): проверьте код, который его диспетчеризует (didEnemyJustDie / enterAIWaitingPhase) и добавьте тест в сюит 8h'
                     );
                 });
@@ -8344,7 +8454,7 @@
                     const KNOWN_HOOKS = [
                         'onTransfer', 'onEnemyTookCards', 'onPlayerTookCards', 'onEnemyTurnStart',
                         'onCardPlayed', 'onPlayerCardPlayed', 'onLethalDamage', 'onDefenseSucceeded',
-                        'onPlayerTakePenalty', 'onEnemyCollectedTable',
+                        'onPlayerTakePenalty', 'onEnemyCollectedTable', 'onGoldGained',
                         // Passive relic query (cheat_eye) - read via queryRelicHook(), never fired.
                         'getRevealedEnemyCard',
                         // Active (button-triggered) relic ability hooks — see pocket_discard.
@@ -9007,6 +9117,122 @@
                     }, () => {
                         onPlayerCardClick(0);
                         assert.equal(run.gold, 0, 'Золото начисляется только при завершении раунда, а не за каждую карту');
+                    });
+                });
+            });
+
+            // The two newest artifacts. Their kill paths are covered in suite 8h.
+            runner.describe('11b. Фляжка с пойлом и Золотая пуля', (it, assert) => {
+                // Same bare-run fixture as suite 11 (empty deck; run overrides come first).
+                const { inGame } = makeTestFixtures({}, { deck: [] });
+                const game = (runOverrides, battleOverrides, fn) => inGame(battleOverrides, fn, runOverrides);
+                const playerTakes = (relicIds, battleOverrides, check, runOverrides) => game(
+                    { relics: relicIds.map(id => ({ id })), ...runOverrides },
+                    { defender: 'player', phase: BATTLE_PHASES.PLAYER_DEFENSE, enemyHP: 100, ...battleOverrides },
+                    () => { handlePlayerTake(); check(); }
+                );
+                const defendedTable = () => [
+                    testPair(testCard('bt1', 'Pikes', 6), testCard('bt2', 'Pikes', 7)),
+                    testPair(testCard('bt3', 'Pikes', 10), testCard('bt4', 'Pikes', 11))
+                ];
+                // The enemy keeps cards: an empty enemy hand would end the round and cost the player HP.
+                const enemyCards = () => [testCard('bz1', 'Clubs', 13), testCard('bz2', 'Clubs', 14)];
+                const defending = { playerHand: [testCard('bz9', 'Pikes', 8)], enemyHand: enemyCards(), defender: 'player', enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE };
+
+                it('moonshine_flask: данные артефакта (название, цена 12$) и лечение на FLASK_HEAL_ON_DEFEND', () => {
+                    const relic = ALL_RELICS.find(r => r.id === 'moonshine_flask');
+                    assert.equal(relic.name, 'Фляжка с пойлом');
+                    assert.equal(relic.price, 12);
+                    assert.isTrue(relic.desc.includes(String(FLASK_HEAL_ON_DEFEND)), 'описание берёт число из константы');
+                });
+
+                it('moonshine_flask: лечит один раз за успешную защиту раунда, а не за каждую отбитую карту', () => {
+                    game({ relics: [{ id: 'moonshine_flask' }] }, { ...defending, table: defendedTable() }, () => {
+                        run.playerHP = run.maxHP - 10;
+                        const before = run.playerHP;
+                        handleBito();
+                        assert.equal(run.playerHP, before + FLASK_HEAL_ON_DEFEND);
+                    });
+                });
+
+                it('moonshine_flask: лимита за бой нет — каждая успешная защита лечит снова', () => {
+                    game({ relics: [{ id: 'moonshine_flask' }] }, { ...defending, table: defendedTable() }, () => {
+                        run.playerHP = run.maxHP - 10;
+                        const before = run.playerHP;
+                        handleBito();
+                        battle.table = defendedTable();
+                        battle.defender = 'player';
+                        battle.phase = BATTLE_PHASES.PLAYER_DEFENSE;
+                        handleBito();
+                        assert.equal(run.playerHP, before + 2 * FLASK_HEAL_ON_DEFEND);
+                    });
+                });
+
+                it('moonshine_flask: не лечит выше максимума HP', () => {
+                    game({ relics: [{ id: 'moonshine_flask' }] }, { ...defending, table: defendedTable() }, () => {
+                        run.playerHP = run.maxHP;
+                        handleBito();
+                        assert.equal(run.playerHP, run.maxHP);
+                    });
+                });
+
+                it('moonshine_flask: НЕ лечит, когда игрок взял карты или когда отбился враг; без артефакта HP не меняется', () => {
+                    playerTakes(['moonshine_flask'], { table: [testPair(testCard('a1', 'Pikes', 6))] }, () => {
+                        assert.isTrue(run.playerHP < 20, 'взятие карт не лечит: штраф за взятие остаётся');
+                    }, { playerHP: 20 });
+                    game({ relics: [{ id: 'moonshine_flask' }] }, {
+                        playerHand: [testCard('bz9', 'Pikes', 8)], enemyHand: enemyCards(),
+                        table: [testPair(testCard('bz3', 'Pikes', 6), testCard('bz4', 'Pikes', 7))], enemyHP: 50
+                    }, () => {
+                        run.playerHP = run.maxHP - 10;
+                        handleBito();
+                        assert.equal(run.playerHP, run.maxHP - 10, 'когда отбивается враг, игрок не лечится');
+                    });
+                    game({}, { ...defending, table: defendedTable() }, () => {
+                        run.playerHP = run.maxHP - 10;
+                        handleBito();
+                        assert.equal(run.playerHP, run.maxHP - 10, 'без артефакта лечения нет');
+                    });
+                });
+
+                it('golden_bullet: данные артефакта (название, цена 8$)', () => {
+                    const relic = ALL_RELICS.find(r => r.id === 'golden_bullet');
+                    assert.equal(relic.name, 'Золотая пуля');
+                    assert.equal(relic.price, 8);
+                });
+
+                it('golden_bullet: золото midas_touch превращается в GOLDEN_BULLET_DAMAGE урона за каждое начисление', () => {
+                    game({ relics: [{ id: 'midas_touch' }, { id: 'golden_bullet' }] }, { ...defending, table: defendedTable() }, () => {
+                        handleBito();
+                        assert.equal(run.gold, MIDAS_TOUCH_GOLD_ON_DEFEND, 'золото начисляется как обычно');
+                        assert.equal(battle.enemyHP, 50 - GOLDEN_BULLET_DAMAGE, 'одно начисление — один удар, а не удар за каждый доллар');
+                    });
+                });
+
+                it('golden_bullet: каждая шестёрка coin_magnet (своя и вражеская) бьёт врага', () => {
+                    game({ relics: [{ id: 'coin_magnet' }, { id: 'golden_bullet' }] }, { enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK }, () => {
+                        onPlayerCardPlayed(testCard('p1', 'Pikes', 6));
+                        assert.equal(battle.enemyHP, 50 - GOLDEN_BULLET_DAMAGE);
+                        onEnemyCardPlayed(testCard('e1', 'Clubs', 6));
+                        assert.equal(battle.enemyHP, 50 - 2 * GOLDEN_BULLET_DAMAGE);
+                        onPlayerCardPlayed(testCard('p2', 'Pikes', 9));
+                        assert.equal(battle.enemyHP, 50 - 2 * GOLDEN_BULLET_DAMAGE, 'не шестёрка — золота нет, урона нет');
+                    });
+                });
+
+                it('golden_bullet: без источника золота в артефактах пуля молчит, а золото вне артефактов её не запускает', () => {
+                    game({ relics: [{ id: 'golden_bullet' }] }, { ...defending, table: defendedTable() }, () => {
+                        handleBito();
+                        assert.equal(battle.enemyHP, 50, 'нет midas_touch / coin_magnet — нет золота — нет урона');
+                        changeGold(7);
+                        assert.equal(battle.enemyHP, 50, 'золото не от артефакта (магазин, награда) пулю не запускает');
+                    });
+                });
+
+                it('golden_bullet: потеря золота и золото при 0 HP врага урона не наносят', () => {
+                    game({ relics: [{ id: 'golden_bullet' }], gold: 10 }, { enemyHP: 50 }, () => {
+                        changeGold(-4);
+                        assert.equal(battle.enemyHP, 50);
                     });
                 });
             });
