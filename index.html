@@ -1286,6 +1286,14 @@
                 return;
             }
 
+            // A draw is saved as ROUND_OVER with both hands, the draw deck and
+            // the table empty. Recreate its modal so the player can continue into
+            // the next round; otherwise restoring leaves the run stuck with no cards.
+            if (battle.phase === BATTLE_PHASES.ROUND_OVER && getRoundResult()?.type === 'draw') {
+                presentRoundResult({ type: 'draw' });
+                return;
+            }
+
             // If the game was saved while the AI was thinking — restart it
             if (battle.phase === BATTLE_PHASES.AI_WAITING) {
                 scheduleEnemyAI(AI_STANDARD_DELAY_MS);
@@ -5344,6 +5352,27 @@
                             const shop = getEl('shop-modal');
                             assert.isFalse(shop.classList.contains('hidden'), 'магазин должен открыться');
                         });
+                    });
+                });
+
+                it('resumeFromSave(): ничья восстанавливает окно продолжения и запускает следующий раунд', () => {
+                    inGameStrict({
+                        phase: BATTLE_PHASES.ROUND_OVER,
+                        drawDeck: [], table: [], playerHand: [], enemyHand: [],
+                        enemyHP: 5
+                    }, () => {
+                        clearLocalSave();
+                        saveGameState();
+                        assert.isTrue(loadGameState(), 'сохранение ничьей должно загружаться');
+
+                        resumeFromSave();
+                        assert.modalTitle('Ничья в кону');
+                        assert.equal(battle.playerHand.length, 0, 'до подтверждения новый раунд не начинается');
+
+                        getEl('msg-btn').click();
+                        assert.phase(BATTLE_PHASES.PLAYER_ATTACK);
+                        assert.isTrue(battle.playerHand.length > 0, 'после подтверждения карты должны быть розданы');
+                        assert.isTrue(battle.enemyHand.length > 0, 'противник тоже должен получить карты');
                     });
                 });
 
