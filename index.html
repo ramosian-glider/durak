@@ -4428,35 +4428,19 @@ function runGameUnitTests() {
         withFieldSnapshot({ battle: ['trumpSuit'] }, () => {
             battle.trumpSuit = 'Hearts';
 
-            it('Карта той же масти и старшего достоинства побивает атаку', () => {
-                const attack = { suit: 'Pikes', value: 8 };
-                const defend = { suit: 'Pikes', value: 10 };
-                assert.isTrue(canBeat(attack, defend));
-            });
-
-            it('Карта той же масти и младшего достоинства НЕ побивает атаку', () => {
-                const attack = { suit: 'Pikes', value: 10 };
-                const defend = { suit: 'Pikes', value: 8 };
-                assert.isFalse(canBeat(attack, defend));
-            });
-
-            it('Козырь побивает некозырную карту любой величины', () => {
-                const attack = { suit: 'Pikes', value: 14 };
-                const defend = { suit: 'Hearts', value: 6 };
-                assert.isTrue(canBeat(attack, defend));
-            });
-
-            it('Старший козырь побивает младший козырь', () => {
-                const attack = { suit: 'Hearts', value: 9 };
-                const defend = { suit: 'Hearts', value: 12 };
-                assert.isTrue(canBeat(attack, defend));
-            });
-
-            it('Некозырная карта другой масти НЕ побивает атаку', () => {
-                const attack = { suit: 'Pikes', value: 7 };
-                const defend = { suit: 'Tiles', value: 10 };
-                assert.isFalse(canBeat(attack, defend));
-            });
+            const cases = [ // [название, [масть, значение] атаки, [масть, значение] защиты, побивает ли]
+                ['Карта той же масти и старшего достоинства побивает атаку', ['Pikes', 8], ['Pikes', 10], true],
+                ['Карта той же масти и младшего достоинства НЕ побивает атаку', ['Pikes', 10], ['Pikes', 8], false],
+                ['Козырь побивает некозырную карту любой величины', ['Pikes', 14], ['Hearts', 6], true],
+                ['Старший козырь побивает младший козырь', ['Hearts', 9], ['Hearts', 12], true],
+                ['Некозырная карта другой масти НЕ побивает атаку', ['Pikes', 7], ['Tiles', 10], false]
+            ];
+            for (const [title, [as, av], [ds, dv], expected] of cases) {
+                it(title, () => {
+                    const result = canBeat({ suit: as, value: av }, { suit: ds, value: dv });
+                    if (expected) assert.isTrue(result); else assert.isFalse(result);
+                });
+            }
         });
     });
 
@@ -6673,11 +6657,8 @@ function runGameUnitTests() {
         it('renderHeader(): HP, золото, этаж, HP врага', () => {
             inGameClosingModal({ enemyHP: 17 }, () => {
                 renderHeader();
-                assert.equal(text('player-hp-display'), '21/30');
-                assert.equal(text('player-gold-display'), '42$');
-                assert.equal(text('shop-hp-display'), '21/30');
-                assert.equal(text('floor-display'), '2');
-                assert.equal(text('enemy-hp'), '17');
+                const expected = { 'player-hp-display': '21/30', 'player-gold-display': '42$', 'shop-hp-display': '21/30', 'floor-display': '2', 'enemy-hp': '17' };
+                for (const [id, value] of Object.entries(expected)) assert.equal(text(id), value, id);
             }, { playerHP: 21, maxHP: 30, gold: 42, floor: 2 });
         });
 
@@ -7697,22 +7678,13 @@ function runGameUnitTests() {
 
     runner.describe('10. Уровень соперника, урон при взятии и бонус HP за босса', (it, assert) => {
         it('Уровень растёт на 1 после каждого босса и общий для филлеров перед ним', () => {
-            // Этажи 1-3: боевая группа Трактирщика (level 1)
-            assert.equal(ENEMIES[0].level, 1);
-            assert.equal(ENEMIES[1].level, 1);
-            assert.equal(ENEMIES[2].level, 1);
-            assert.isTrue(ENEMIES[2].isBoss);
-            // Этажи 4-6: боевая группа Фаворита Казино (level 2)
-            assert.equal(ENEMIES[3].level, 2);
-            assert.equal(ENEMIES[5].level, 2);
-            assert.isTrue(ENEMIES[5].isBoss);
-            // Этажи 7-9: боевая группа Синдиката (level 3)
-            assert.equal(ENEMIES[6].level, 3);
-            assert.equal(ENEMIES[8].level, 3);
-            // Этажи 10-12: боевая группа финального босса (level 4)
-            assert.equal(ENEMIES[9].level, 4);
-            assert.equal(ENEMIES[11].level, 4);
-            assert.isTrue(ENEMIES[11].isBoss);
+            // [индекс врага, level, босс?]: этажи 1-3 — группа Трактирщика, 4-6 — Фаворита Казино,
+            // 7-9 — Синдиката, 10-12 — финального босса
+            const expected = [[0, 1], [1, 1], [2, 1, true], [3, 2], [5, 2, true], [6, 3], [8, 3], [9, 4], [11, 4, true]];
+            for (const [index, level, isBoss] of expected) {
+                assert.equal(ENEMIES[index].level, level, 'этаж ' + (index + 1));
+                if (isBoss) assert.isTrue(ENEMIES[index].isBoss, 'этаж ' + (index + 1) + ' — босс');
+            }
         });
 
         // The player, defending, takes a table of three cards; the enemy stays alive.
@@ -8302,11 +8274,10 @@ function runGameUnitTests() {
         const fullHand = (prefix, suit) => testCards(prefix, suit, HAND_SIZE, i => 6 + (i % 5));
 
         it('getEnemyDamageExcess капает "лишние" карты на ENEMY_HAND_EXCESS_CAP', () => {
-            assert.equal(getEnemyDamageExcess(4), 0);
-            assert.equal(getEnemyDamageExcess(6), 0);
-            assert.equal(getEnemyDamageExcess(8), 2);
-            assert.equal(getEnemyDamageExcess(10), 4);
-            assert.equal(getEnemyDamageExcess(20), 4); // не растёт дальше кэпа
+            // [взято карт, "лишних" карт]; дальше кэпа (20 карт) значение не растёт
+            for (const [taken, excess] of [[4, 0], [6, 0], [8, 2], [10, 4], [20, 4]]) {
+                assert.equal(getEnemyDamageExcess(taken), excess, 'взято карт: ' + taken);
+            }
         });
 
         it('mirror_ring (нерф): урон = взятые карты × TAKE_DAMAGE_PER_CARD × MIRROR_RING_MULTIPLIER, БЕЗ учёта уровня/double_penalty', () => {
@@ -9073,6 +9044,15 @@ function runGameUnitTests() {
             });
         });
 
+        // Прогоняет цепочку состояний: каждый шаг — [сообщение, мутация состояния, ожидаемое isReady()].
+        const expectReadySteps = (relicId, steps) => {
+            for (const [message, mutate, expected] of steps) {
+                mutate();
+                const ready = RELIC_EFFECTS[relicId].isReady();
+                if (expected) assert.isTrue(ready, message); else assert.isFalse(ready, message);
+            }
+        };
+
         it('pocket_discard: isReady() — единый источник условия для рендера кнопки и хендлера', () => {
             game({ relics: [{ id: 'pocket_discard' }] }, {
                 playerHand: [testCard('p1', 'Pikes', 8), testCard('p2', 'Hearts', 10)],
@@ -9080,25 +9060,14 @@ function runGameUnitTests() {
                 trumpCard: testCard('t1', 'Hearts', 6),
                 enemyHP: 50
             }, () => {
-                // No 6/7 in hand: not ready.
-                assert.isFalse(RELIC_EFFECTS.pocket_discard.isReady(), 'без 6/7 в руке способность недоступна');
-
-                battle.playerHand.push(testCard('p3', 'Pikes', 6));
-                assert.isTrue(RELIC_EFFECTS.pocket_discard.isReady(), 'с 6/7 в руке и неиспользованным зарядом способность доступна');
-
-                battle.pocketDiscardUsedThisRound = true;
-                assert.isFalse(RELIC_EFFECTS.pocket_discard.isReady(), 'уже использовано в этом раунде — недоступна');
-
-                battle.pocketDiscardUsedThisRound = false;
-                battle.phase = BATTLE_PHASES.RESOLVING;
-                assert.isFalse(RELIC_EFFECTS.pocket_discard.isReady(), 'нельзя использовать вне фазы принятия действий игрока');
-
-                battle.phase = BATTLE_PHASES.PLAYER_DEFENSE;
-                battle.defender = 'player';
-                assert.isFalse(RELIC_EFFECTS.pocket_discard.isReady(), 'нельзя сбрасывать карту, пока защищаешься от атаки соперника');
-
-                battle.defender = 'enemy';
-                assert.isTrue(RELIC_EFFECTS.pocket_discard.isReady(), 'на своём ходу атаки способность снова доступна');
+                expectReadySteps('pocket_discard', [
+                    ['без 6/7 в руке способность недоступна', () => {}, false],
+                    ['с 6/7 в руке и неиспользованным зарядом способность доступна', () => battle.playerHand.push(testCard('p3', 'Pikes', 6)), true],
+                    ['уже использовано в этом раунде — недоступна', () => { battle.pocketDiscardUsedThisRound = true; }, false],
+                    ['нельзя использовать вне фазы принятия действий игрока', () => { battle.pocketDiscardUsedThisRound = false; battle.phase = BATTLE_PHASES.RESOLVING; }, false],
+                    ['нельзя сбрасывать карту, пока защищаешься от атаки соперника', () => { battle.phase = BATTLE_PHASES.PLAYER_DEFENSE; battle.defender = 'player'; }, false],
+                    ['на своём ходу атаки способность снова доступна', () => { battle.defender = 'enemy'; }, true]
+                ]);
             });
         });
 
@@ -9146,22 +9115,13 @@ function runGameUnitTests() {
                 trumpCard: testCard('t1', 'Hearts', 6),
                 enemyHP: 50
             }, () => {
-                assert.isTrue(RELIC_EFFECTS.jester_discard.isReady(), 'свой ход атаки, пустой стол, ещё не использовано — доступна');
-
-                battle.table = [testPair(testCard('a1', 'Pikes', 6))];
-                assert.isFalse(RELIC_EFFECTS.jester_discard.isReady(), 'на столе уже есть карты — недоступна');
-                battle.table = [];
-
-                battle.defender = 'player';
-                assert.isFalse(RELIC_EFFECTS.jester_discard.isReady(), 'нельзя пересдавать руку, защищаясь от атаки соперника');
-                battle.defender = 'enemy';
-
-                battle.jesterDiscardUsedThisBattle = true;
-                assert.isFalse(RELIC_EFFECTS.jester_discard.isReady(), 'уже использовано в этом бою — недоступна');
-                battle.jesterDiscardUsedThisBattle = false;
-
-                battle.drawDeck = [];
-                assert.isFalse(RELIC_EFFECTS.jester_discard.isReady(), 'в колоде меньше карт, чем в руке — недоступна');
+                expectReadySteps('jester_discard', [
+                    ['свой ход атаки, пустой стол, ещё не использовано — доступна', () => {}, true],
+                    ['на столе уже есть карты — недоступна', () => { battle.table = [testPair(testCard('a1', 'Pikes', 6))]; }, false],
+                    ['нельзя пересдавать руку, защищаясь от атаки соперника', () => { battle.table = []; battle.defender = 'player'; }, false],
+                    ['уже использовано в этом бою — недоступна', () => { battle.defender = 'enemy'; battle.jesterDiscardUsedThisBattle = true; }, false],
+                    ['в колоде меньше карт, чем в руке — недоступна', () => { battle.jesterDiscardUsedThisBattle = false; battle.drawDeck = []; }, false]
+                ]);
             });
         });
 
@@ -9214,22 +9174,13 @@ function runGameUnitTests() {
                 defender: 'player',
                 enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
             }, () => {
-                assert.isTrue(RELIC_EFFECTS.sleight_of_hand.isReady(), 'защита от неотбитой атаки, карты в колоде есть — доступна');
-
-                battle.sleightOfHandUsedThisBattle = true;
-                assert.isFalse(RELIC_EFFECTS.sleight_of_hand.isReady(), 'уже использовано в этом бою — недоступна');
-                battle.sleightOfHandUsedThisBattle = false;
-
-                battle.defender = 'enemy';
-                assert.isFalse(RELIC_EFFECTS.sleight_of_hand.isReady(), 'нельзя использовать на своём ходу атаки');
-                battle.defender = 'player';
-
-                battle.table = [testPair(testCard('a1', 'Pikes', 14), testCard('d0', 'Pikes', 8))];
-                assert.isFalse(RELIC_EFFECTS.sleight_of_hand.isReady(), 'все атаки на столе уже отбиты — нечего подменять');
-                battle.table = [testPair(testCard('a1', 'Pikes', 14))];
-
-                battle.drawDeck = [];
-                assert.isFalse(RELIC_EFFECTS.sleight_of_hand.isReady(), 'в колоде нет карт для подмены — недоступна');
+                expectReadySteps('sleight_of_hand', [
+                    ['защита от неотбитой атаки, карты в колоде есть — доступна', () => {}, true],
+                    ['уже использовано в этом бою — недоступна', () => { battle.sleightOfHandUsedThisBattle = true; }, false],
+                    ['нельзя использовать на своём ходу атаки', () => { battle.sleightOfHandUsedThisBattle = false; battle.defender = 'enemy'; }, false],
+                    ['все атаки на столе уже отбиты — нечего подменять', () => { battle.defender = 'player'; battle.table = [testPair(testCard('a1', 'Pikes', 14), testCard('d0', 'Pikes', 8))]; }, false],
+                    ['в колоде нет карт для подмены — недоступна', () => { battle.table = [testPair(testCard('a1', 'Pikes', 14))]; battle.drawDeck = []; }, false]
+                ]);
             });
         });
 
