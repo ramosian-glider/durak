@@ -1137,10 +1137,10 @@ const I18N = {
         "doc.title": "Trump Durak - Roguelike",
         "splash.title": "TRUMP DURAK",
         "splash.blurb": "Fight your way through every floor of the dungeon, drop the bosses, grab some crooked relics and stack a killer combo!",
-        "splash.continue": "▶ CONTINUE RUN",
+        "splash.continue": "▶ CONTINUE GAME",
         "splash.newGame": "▶ NEW GAME",
-        "splash.newRun": "SCRAP THE RUN (NEW GAME)",
-        "splash.hint": "🔊 Tap to kick off the ride",
+        "splash.newRun": "NEW GAME",
+        "splash.hint": "🔊 Tap to begin your adventure",
         "hdr.sound": "Toggle sound",
         "hdr.menu": "Main menu",
         "save.saved": "Saved",
@@ -1149,8 +1149,8 @@ const I18N = {
         "enemy.quirk": "Quirk: {desc}",
         "hud.relics": "CROOKED RELICS (JOKERS)",
         "btn.take": "TAKE",
-        "btn.bito": "BITO",
-        "btn.bitoTook": "BITO (Foe took)",
+        "btn.bito": "END TURN",
+        "btn.bitoTook": "END TURN",
         "btn.transfer": "TRANSFER",
         "btn.cancel": "CANCEL",
         "btn.ok": "GOT IT",
@@ -1195,16 +1195,16 @@ const I18N = {
         "card.trump": "Trump",
         "deck.trump": "Trump:",
         "deck.count": "×{n}",
-        "banner.enemyTakes": "Foe is taking cards! (Hit BITO)",
+        "banner.enemyTakes": "The opponent is taking cards. Click “End Turn”.",
         "banner.attack": "Your move: Attack",
-        "banner.throwingIn": "You're taking cards... Foe is piling on",
-        "banner.transfer": "Pick a card to Transfer!",
+        "banner.throwingIn": "You're taking cards... The opponent is throwing in cards.",
+        "banner.transfer": "Choose a card to transfer the attack!",
         "banner.defend": "Foe's move: Defend yourself!",
-        "modal.battleWon": "Fight Won!",
+        "modal.battleWon": "Victory!",
         "modal.alreadyWon": "You already took this one down and cashed out. Swing by the shop before the next fight.",
         "modal.drawTitle": "Dead Heat",
         "modal.drawText": "The deck's dry and both hands are empty! Reshuffling...",
-        "modal.roundWonTitle": "Round Won!",
+        "modal.roundWonTitle": "You won the round!",
         "modal.roundWonText": "You ditched all your cards first! The other guy's left holding the bag and eats {n} damage.",
         "modal.roundLostTitle": "Round Lost!",
         "modal.roundLostText": "Foe dumped their hand first! You're the Durak with {cards} cards left and ate {n} damage.{note}",
@@ -1219,7 +1219,7 @@ const I18N = {
         "modal.badMoveTitle": "Illegal Move",
         "modal.badMoveText": "You can only throw in ranks that are already on the table!",
         "modal.wrongCardTitle": "Wrong Card",
-        "modal.wrongCardText": "To transfer you gotta pick a card of rank {rank}.",
+        "modal.wrongCardText": "To transfer the attack, choose a card of rank {rank}.",
         "modal.cantBeatTitle": "Can't Beat That",
         "modal.cantBeatText": "That card doesn't cover the attack! You need a higher card of the same suit, or a trump.",
         "modal.reward": "You took the foe down! Scored +{n}$",
@@ -10281,7 +10281,7 @@ function runGameUnitTests() {
                 assert.equal(readStoredLanguage(), 'en');
                 assert.equal(document.documentElement.lang, 'en');
                 assert.equal(document.title, t('doc.title'));
-                assert.equal(getEl('btn-new-run').textContent, 'SCRAP THE RUN (NEW GAME)');
+                assert.equal(getEl('btn-new-run').textContent, 'NEW GAME');
                 assert.equal(getEl('btn-toggle-audio').title, 'Toggle sound');
                 assert.equal(getEl('btn-lang-en').getAttribute('aria-pressed'), 'true');
                 assert.equal(getEl('btn-lang-ru').getAttribute('aria-pressed'), 'false');
@@ -10322,8 +10322,8 @@ function runGameUnitTests() {
                     renderTurnBanner();
                     assert.equal(getEl('turn-banner').innerText, t('banner.attack'));
                     battle.cardsToTake = true; renderTurnBanner(); renderActionButtons();
-                    assert.equal(getEl('turn-banner').innerText, 'Foe is taking cards! (Hit BITO)');
-                    assert.equal(getEl('btn-action').innerText, 'BITO (Foe took)');
+                    assert.equal(getEl('turn-banner').innerText, 'The opponent is taking cards. Click “End Turn”.');
+                    assert.equal(getEl('btn-action').innerText, 'END TURN');
                     assert.equal(getEl('btn-transfer').innerText, 'TRANSFER');
                     renderHeader();
                     assert.isTrue(getEl('boss-ability-badge').innerText.startsWith('Quirk: '), 'quirk badge is localized');
