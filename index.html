@@ -1205,12 +1205,12 @@ const I18N = {
         "modal.drawTitle": "Dead Heat",
         "modal.drawText": "The deck's dry and both hands are empty! Reshuffling...",
         "modal.roundWonTitle": "You won the round!",
-        "modal.roundWonText": "You ditched all your cards first! The other guy's left holding the bag and eats {n} damage.",
+        "modal.roundWonText": "You emptied your hand first! The other guy's left holding the bag and eats {n} damage.",
         "modal.roundLostTitle": "Round Lost!",
-        "modal.roundLostText": "Foe dumped their hand first! You're the Durak with {cards} cards left and ate {n} damage.{note}",
+        "modal.roundLostText": "Foe emptied their hand first! You're the Durak with {cards} cards left and ate {n} damage.{note}",
         "modal.roundLostRope": " The Safety Rope saved your hide with 1 HP left!",
         "modal.defeatTitle": "Busted!",
-        "modal.defeatRound": "Foe dumped their hand first. You ate {n} damage and went down.",
+        "modal.defeatRound": "Foe emptied their hand first. You ate {n} damage and went down.",
         "modal.defeatHp": "You're out of HP. Run's over.",
         "modal.ropeTitle": "Safety Rope Held!",
         "modal.ropeText": "Somehow you're still breathing with 1 HP. The table's cleared.",
@@ -1235,7 +1235,7 @@ const I18N = {
         "transfer.mixed": "You can only transfer cards of the same rank!",
         "transfer.handSmall": "The foe doesn't have enough cards to take a transfer!",
         "transfer.noMatch": "You don't have a rank {rank} card to transfer.",
-        "relic.pocket_discard.action": "✂️ Dump a 6/7 (Pocket Dump)",
+        "relic.pocket_discard.action": "✂️ Discard a 6/7 (Pocket Dump)",
         "relic.jester_discard.action": "🃏 Redeal your hand (Jester's Dump)",
         "relic.sleight_of_hand.action": "🪄 Swap a card (Sleight of Hand)",
         "relic.ace_sleeve.name": "Ace Up the Sleeve",
@@ -1247,19 +1247,19 @@ const I18N = {
         "relic.cheat_eye.name": "Hustler's Eye",
         "relic.cheat_eye.desc": "Shows you the highest card in the foe's hand (trumps count as higher).",
         "relic.pocket_discard.name": "Pocket Dump",
-        "relic.pocket_discard.desc": "Once a round you can ditch a six or a seven from your hand straight into the discard pile for good.",
+        "relic.pocket_discard.desc": "Once a round you can discard a six or a seven from your hand straight into the discard pile for good.",
         "relic.spam_mail.name": "Spam Mail",
         "relic.spam_mail.desc": "When the foe takes cards off the table, it also draws the top card of the deck.",
         "relic.heavy_ballast.name": "Heavy Ballast",
         "relic.heavy_ballast.desc": "At the start of the foe's turn it takes damage for every card in hand beyond 6 (max 4 damage).",
         "relic.ballast_drop.name": "Ballast Drop",
-        "relic.ballast_drop.desc": "When you take cards from the table, you instantly dump the 2 lowest-rank non-trump cards into the discard.",
+        "relic.ballast_drop.desc": "When you take cards from the table, you instantly discard the 2 lowest-rank non-trump cards.",
         "relic.coin_magnet.name": "Coin Magnet",
         "relic.coin_magnet.desc": "Every six played by anyone (attack, throw-in, transfer or defense) brings in +1$.",
         "relic.safety_rope.name": "Safety Rope",
         "relic.safety_rope.desc": "On lethal damage you survive with 1 HP and the table gets cleared (works once per run).",
         "relic.jester_discard.name": "Jester's Dump",
-        "relic.jester_discard.desc": "Once per fight, on your attacking turn, you can toss your whole hand and draw the same number of cards from the deck.",
+        "relic.jester_discard.desc": "Once per fight, on your attacking turn, you can discard your whole hand and draw the same number of cards from the deck.",
         "relic.cascade_transfer.name": "Cascade Transfer",
         "relic.cascade_transfer.desc": "The first card transfer each turn deals 4 damage to the foe.",
         "relic.sleight_of_hand.name": "Sleight of Hand",
@@ -2697,7 +2697,7 @@ function discardLowestNonTrumpCards(hand, count) {
     }
 }
 
-// Fired whenever the player successfully plays a card (attack, toss,
+// Fired whenever the player successfully plays a card (attack, throw-in,
 // transfer, or defend). Single canonical dispatch point for per-card-played
 // relic effects (currently just coin_magnet) instead of repeating checks at
 // every play site. Fires 'onCardPlayed' (cards of either side) and then
@@ -3157,23 +3157,23 @@ function applyEnemyAbilityModifier(hookName, value, ctx) {
 //   { type: 'defend', plays, complete }     enemy beats pairs: plays = [{ pair, card }];
 //                                           complete = false if it ran out of answers
 //   { type: 'attack', card }                enemy leads with its weakest card
-//   { type: 'throw', card }                 enemy tosses `card` onto the table
+//   { type: 'throw', card }                 enemy throws in `card` onto the table
 //   { type: 'check_round' }                 enemy is out of cards: see if the round ended
 
 // The enemy has just been left holding (or is about to take) the table: if
-// the player has nothing more to toss in — or may not — it collects now,
+// the player has nothing more to throw in — or may not — it collects now,
 // otherwise it waits for the player. Also the answer once a defence fell short.
 function chooseEnemyTakeOrWait() {
     const maxAllowed = getMaxAllowedAttacks();
-    const playerHasTossCard = battle.playerHand.some(c => isRankOnTable(c.value));
-    if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !playerHasTossCard) {
+    const playerHasThrowInCard = battle.playerHand.some(c => isRankOnTable(c.value));
+    if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !playerHasThrowInCard) {
         return { type: 'take', delay: AI_STANDARD_DELAY_MS };
     }
     return { type: 'wait' };
 }
 
 // After the enemy beat every attack on the table: it ends the round only if the
-// player has no cards or the table is full — otherwise the player may still toss in.
+// player has no cards or the table is full — otherwise the player may still throw in.
 // (maxAllowed is unchanged by the defence itself: each defending card leaves the
 // enemy hand and adds a defended pair, so hand length + defended pairs stays put.)
 function chooseEnemyActionAfterFullDefense() {
@@ -3208,8 +3208,8 @@ function chooseEnemyDefenderAction() {
     const openPairs = getOpenAttacks();
     if (openPairs.length === 0) {
         const maxAllowed = getMaxAllowedAttacks();
-        const playerHasTossCard = battle.playerHand.some(c => isRankOnTable(c.value));
-        if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !playerHasTossCard) {
+        const playerHasThrowInCard = battle.playerHand.some(c => isRankOnTable(c.value));
+        if (battle.playerHand.length === 0 || battle.table.length >= maxAllowed || !playerHasThrowInCard) {
             return { type: 'bito', delay: AI_QUICK_DELAY_MS };
         }
         return { type: 'wait' };
@@ -3404,7 +3404,7 @@ const RELIC_EFFECTS = {
     },
     coin_magnet: {
         // Called from onPlayerCardPlayed() / onEnemyCardPlayed() for every card
-        // either side plays (attack, toss, transfer, or defend). The hook takes
+        // either side plays (attack, throw-in, transfer, or defend). The hook takes
         // no "who played it" argument on purpose: this relic doesn't care.
         // Additive — doesn't intercept anything, so it's dispatched via
         // fireAllHooks() rather than fireHook().
@@ -3417,7 +3417,7 @@ const RELIC_EFFECTS = {
     },
     sharp_suit: {
         // Called from onPlayerCardPlayed() for every card the PLAYER plays
-        // (attack, toss, transfer or defend) — deliberately not from the shared
+        // (attack, throw-in, transfer or defend) — deliberately not from the shared
         // onCardPlayed hook, which also fires for the enemy's cards. It used to
         // trigger only when defending with a trump, which was too rare to matter.
         onPlayerCardPlayed(card) {
@@ -3565,7 +3565,7 @@ const RELIC_EFFECTS = {
         }
     },
     pocket_discard: {
-        // Once per round, permanently bin a 6 or 7 from hand. Not fired
+        // Once per round, permanently discard a 6 or 7 from hand. Not fired
         // from a game-event call site like the hooks above — it's a
         // player-triggered ability rendered as a button by
         // showRelicPopover() and executed by usePocketDiscard(). Both of
@@ -3587,7 +3587,7 @@ const RELIC_EFFECTS = {
     },
     jester_discard: {
         // Once per battle, on the player's own attacking turn with an
-        // empty table, bin the whole hand and redraw the same number of
+        // empty table, discard the whole hand and redraw the same number of
         // cards. Same active-ability shape as pocket_discard above.
         //
         // Requires the draw deck to hold at least a full hand's worth of
@@ -3743,7 +3743,7 @@ function useActiveRelic(id, effectFn) {
     if (result === 'checkRound') checkRoundEnd();
 }
 
-// pocket_discard: once per round, permanently bin a 6 or 7 from hand.
+// pocket_discard: once per round, permanently discard a 6 or 7 from hand.
 // Auto-picks the first matching card (lowest value first) rather than
 // prompting, to keep the interaction one tap.
 function usePocketDiscard() {
@@ -3763,7 +3763,7 @@ function usePocketDiscard() {
 }
 
 // jester_discard: once per battle, on your own attacking turn with an
-// empty table, bin your whole hand and redraw the same number of cards.
+// empty table, discard your whole hand and redraw the same number of cards.
 // isReady() guarantees the deck has enough cards for a full redraw, so
 // this always returns the same hand size it started with.
 function useJesterDiscard() {
@@ -5465,7 +5465,7 @@ function runGameUnitTests() {
                 trumpCard: testCard('t1', 'Spades', 6), trumpSuit: 'Spades'
             }, () => {
                 clearLocalSave();
-                window.onPlayerCardClick(0); // player throws the 6 of Hearts onto the empty table
+                window.onPlayerCardClick(0); // player attacks with the 6 of Hearts on the empty table
                 clearAITimer(); // don't let the fixture's scheduled AI turn fire
 
                 // Nothing "reloads the page" in a unit test, so simulate it the
