@@ -246,6 +246,10 @@
             .btn-action-base { font-size: 0.875rem; }
             .card-base { width: 4rem; height: 6rem; }
         }
+        .lang-switch { position: absolute; top: 1rem; left: 1rem; display: flex; gap: 0.25rem; }
+        .lang-btn { padding: 0.15rem 0.55rem; border-radius: 0.5rem; border: 1px solid rgba(100, 116, 139, 0.6);
+            background: rgba(15, 23, 42, 0.7); color: #94a3b8; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.05em; }
+        .lang-btn[aria-pressed="true"] { background: #f59e0b; border-color: #f59e0b; color: #0f172a; }
     </style>
     <!-- Tailwind CSS 3.4 compiled once and inlined (no CDN at runtime). Regenerate it after adding
          new utility classes: see 'Tailwind build' in the file map comment of the script. -->
@@ -260,12 +264,16 @@
 
     <div id="splash-screen" class="fixed inset-0 z-40 felt-bg flex flex-col items-center justify-center p-4 text-center">
         <div class="max-w-md w-full bg-black/80 border-2 border-amber-500/60 rounded-3xl p-6 sm:p-8 backdrop-blur-md shadow-2xl flex flex-col items-center gap-5 relative">
-            <button id="btn-splash-tests" class="hidden absolute top-4 right-4 btn-icon-header btn-icon-indigo" title="Запустить юнит-тесты">
+            <div class="lang-switch" role="group" aria-label="Language">
+                <button id="btn-lang-ru" class="lang-btn" data-lang="ru" aria-pressed="true">RU</button>
+                <button id="btn-lang-en" class="lang-btn" data-lang="en" aria-pressed="false">EN</button>
+            </div>
+            <button id="btn-splash-tests" class="hidden absolute top-4 right-4 btn-icon-header btn-icon-indigo" title="Run unit tests">
                 🧪
             </button>
             <div class="text-5xl sm:text-6xl animate-bounce">👑</div>
             <div>
-                <h1 class="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 tracking-wider">
+                <h1 class="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 tracking-wider" data-i18n="splash.title">
                     КОЗЫРНОЙ ДУРАК
                 </h1>
                 <p class="text-xs sm:text-sm font-semibold text-emerald-400 mt-1 uppercase tracking-widest">
@@ -273,7 +281,7 @@
                 </p>
             </div>
             
-            <p class="text-xs text-slate-300 leading-relaxed px-2">
+            <p class="text-xs text-slate-300 leading-relaxed px-2" data-i18n="splash.blurb">
                 Пройдите все этажи подземелья, побеждайте боссов, покупайте шулерские артефакты и собирайте мощную комбинацию!
             </p>
 
@@ -281,13 +289,13 @@
                 <button id="btn-start-game" class="w-full py-3.5 bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-base rounded-2xl shadow-xl border border-yellow-300 active:scale-95 transition flex items-center justify-center gap-2">
                     <span>▶ ПРОДОЛЖИТЬ / ИГРАТЬ</span>
                 </button>
-                <button id="btn-new-run" class="w-full py-2.5 bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-slate-600/50 transition">
+                <button id="btn-new-run" class="w-full py-2.5 bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-slate-600/50 transition" data-i18n="splash.newRun">
                     СБРОСИТЬ ЗАБЕГ (НОВАЯ ИГРА)
                 </button>
             </div>
             
             <div class="flex items-center gap-2 text-[11px] text-slate-400">
-                <span>🔊 Нажмите, чтобы начать путешествие</span>
+                <span data-i18n="splash.hint">🔊 Нажмите, чтобы начать путешествие</span>
             </div>
         </div>
     </div>
@@ -309,13 +317,13 @@
                 <span class="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
                 <span id="save-status-text">Сохранено</span>
             </div>
-            <button id="btn-run-tests" class="hidden btn-icon-header btn-icon-indigo" title="Запустить юнит-тесты">
+            <button id="btn-run-tests" class="hidden btn-icon-header btn-icon-indigo" title="Run unit tests">
                 🧪
             </button>
-            <button id="btn-toggle-audio" class="btn-icon-header btn-icon-slate" title="Переключить звук">
+            <button id="btn-toggle-audio" class="btn-icon-header btn-icon-slate" title="Переключить звук" data-i18n-title="hdr.sound">
                 <span id="audio-icon">🔊</span>
             </button>
-            <button id="btn-open-menu" class="btn-icon-header btn-icon-slate" title="Главное меню">
+            <button id="btn-open-menu" class="btn-icon-header btn-icon-slate" title="Главное меню" data-i18n-title="hdr.menu">
                 ⚙️
             </button>
         </div>
@@ -332,7 +340,7 @@
                     <div class="flex items-center gap-2 text-xs mt-0.5">
                         <span class="text-sky-300 font-medium">Lvl: <span id="enemy-level">1</span></span>
                         <span class="text-rose-400 font-medium">| HP: <span id="enemy-hp">20</span></span>
-                        <span class="text-slate-400">| Карт: <span id="enemy-card-count" class="text-amber-300 font-semibold">6</span></span>
+                        <span class="text-slate-400">| <span data-i18n="enemy.cards">Карт:</span> <span id="enemy-card-count" class="text-amber-300 font-semibold">6</span></span>
                     </div>
                     <div id="boss-ability-badge" class="mt-1 text-[10px] font-semibold text-amber-300 bg-amber-950/60 border border-amber-600/40 px-2 py-0.5 rounded-md inline-block">
                         Особенность: Нет
@@ -351,7 +359,7 @@
             <div id="deck-container" class="absolute left-3 top-3 flex items-center z-20">
             </div>
 
-            <div id="turn-banner" class="turn-banner-base turn-banner-amber">
+            <div id="turn-banner" class="turn-banner-base turn-banner-amber" data-i18n="banner.attack">
                 Ваш ход: Атака
             </div>
 
@@ -361,7 +369,7 @@
 
         <section class="mb-1 flex-shrink-0">
             <div class="section-label">
-                <span>ШУЛЕРСКИЕ АРТЕФАКТЫ (JOKERS)</span>
+                <span data-i18n="hud.relics">ШУЛЕРСКИЕ АРТЕФАКТЫ (JOKERS)</span>
                 <span id="relic-count">0/5</span>
             </div>
             <div id="relics-bar" class="relic-bar">
@@ -373,13 +381,13 @@
             </div>
 
             <div class="grid grid-cols-3 gap-2">
-                <button id="btn-action" class="btn-action-base btn-action-emerald">
+                <button id="btn-action" class="btn-action-base btn-action-emerald" data-i18n="btn.bito">
                     БИТО
                 </button>
-                <button id="btn-transfer" class="btn-action-base btn-action-indigo">
+                <button id="btn-transfer" class="btn-action-base btn-action-indigo" data-i18n="btn.transfer">
                     ПЕРЕВОД
                 </button>
-                <button id="btn-take" class="btn-action-base btn-action-rose">
+                <button id="btn-take" class="btn-action-base btn-action-rose" data-i18n="btn.take">
                     ВЗЯТЬ
                 </button>
             </div>
@@ -388,15 +396,15 @@
 
     <div id="shop-modal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 hidden flex-col justify-between p-4 max-w-md mx-auto">
         <div class="text-center py-2 border-b border-amber-500/30">
-            <h2 class="text-xl font-extrabold text-amber-400 tracking-wide">ВОРОВСКОЙ ПРИТОН</h2>
-            <p class="muted-text">Покупайте артефакты перед следующим боссом</p>
+            <h2 class="text-xl font-extrabold text-amber-400 tracking-wide" data-i18n="shop.title">ВОРОВСКОЙ ПРИТОН</h2>
+            <p class="muted-text" data-i18n="shop.subtitle">Покупайте артефакты перед следующим боссом</p>
             <div class="mt-2 flex items-center justify-center gap-2">
                 <div class="inline-flex items-center gap-1.5 bg-rose-950/80 border border-rose-700/50 px-3 py-1 rounded-full text-xs">
-                    <span class="text-rose-400 font-bold">❤️ Здоровье:</span>
+                    <span class="text-rose-400 font-bold" data-i18n="shop.health">❤️ Здоровье:</span>
                     <span id="shop-hp-display" class="font-extrabold text-rose-200">30/30</span>
                 </div>
                 <div class="inline-flex items-center gap-1.5 bg-amber-950/80 border border-amber-700/50 px-3 py-1 rounded-full text-xs">
-                    <span class="text-amber-400 font-bold">🪙 Золото:</span>
+                    <span class="text-amber-400 font-bold" data-i18n="shop.gold">🪙 Золото:</span>
                     <span id="shop-gold-display" class="font-extrabold text-amber-200">15$</span>
                 </div>
             </div>
@@ -404,23 +412,23 @@
 
         <div class="px-1 pt-2 pb-1 border-b border-amber-500/30">
             <div class="section-label">
-                <span>ВАШИ АРТЕФАКТЫ</span>
+                <span data-i18n="shop.yourRelics">ВАШИ АРТЕФАКТЫ</span>
                 <span id="shop-relic-count">0/5</span>
             </div>
             <div id="shop-relic-slots" class="relic-bar">
             </div>
-            <p class="text-[10px] text-slate-500 mt-1 px-1">Нажмите на артефакт, чтобы продать его за полцены</p>
+            <p class="text-[10px] text-slate-500 mt-1 px-1" data-i18n="shop.sellHint">Нажмите на артефакт, чтобы продать его за полцены</p>
         </div>
 
         <div class="flex-1 overflow-y-auto py-3 flex flex-col gap-4">
             <div>
-                <h3 class="section-title">Услуги лекаря</h3>
+                <h3 class="section-title" data-i18n="shop.doctor">Услуги лекаря</h3>
                 <div id="shop-heal-list" class="grid grid-cols-1 gap-2 mb-4">
                 </div>
             </div>
             <div>
                 <div class="flex items-center justify-between gap-2 mb-2">
-                    <h3 class="section-title !mb-0">Шулерские Артефакты</h3>
+                    <h3 class="section-title !mb-0" data-i18n="shop.relics">Шулерские Артефакты</h3>
                     <button id="btn-shop-reroll" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 font-black text-[11px] rounded-lg border border-amber-500/50 active:scale-95 transition flex-shrink-0" onclick="rerollShop()">
                         🎲 Обновить
                     </button>
@@ -430,7 +438,7 @@
             </div>
         </div>
 
-        <button id="btn-next-floor" class="w-full py-3 bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-black text-sm rounded-xl shadow-lg border border-yellow-300 active:scale-95 transition">
+        <button id="btn-next-floor" class="w-full py-3 bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-black text-sm rounded-xl shadow-lg border border-yellow-300 active:scale-95 transition" data-i18n="shop.next">
             СЛЕДУЮЩИЙ ЭТАЖ ➔
         </button>
     </div>
@@ -456,13 +464,13 @@
                 <div class="flex items-center gap-3">
                     <span class="text-3xl">🧪</span>
                     <div>
-                        <h2 class="text-xl font-black text-indigo-300 tracking-wide">Панель Юнит-Тестирования</h2>
-                        <p class="muted-text">Автоматическая проверка логики и игровых механик</p>
+                        <h2 class="text-xl font-black text-indigo-300 tracking-wide">Unit Test Panel</h2>
+                        <p class="muted-text">Automated check of game logic and mechanics</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
                     <button id="btn-close-tests" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-600 transition">
-                        ✕ Закрыть
+                        ✕ Close
                     </button>
                 </div>
             </div>
@@ -470,15 +478,15 @@
             <div class="grid grid-cols-3 gap-3">
                 <div class="bg-slate-900 border border-slate-800 p-3 rounded-2xl text-center">
                     <div class="text-2xl font-black text-slate-200" id="test-stat-total">0</div>
-                    <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Всего тестов</div>
+                    <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total tests</div>
                 </div>
                 <div class="bg-emerald-950/50 border border-emerald-600/40 p-3 rounded-2xl text-center">
                     <div class="text-2xl font-black text-emerald-400" id="test-stat-passed">0</div>
-                    <div class="text-[11px] font-bold text-emerald-300 uppercase tracking-wider">Успешно</div>
+                    <div class="text-[11px] font-bold text-emerald-300 uppercase tracking-wider">Passed</div>
                 </div>
                 <div class="bg-rose-950/50 border border-rose-600/40 p-3 rounded-2xl text-center">
                     <div class="text-2xl font-black text-rose-400" id="test-stat-failed">0</div>
-                    <div class="text-[11px] font-bold text-rose-300 uppercase tracking-wider">Провалено</div>
+                    <div class="text-[11px] font-bold text-rose-300 uppercase tracking-wider">Failed</div>
                 </div>
             </div>
 
@@ -494,19 +502,20 @@
 // --- File map (top to bottom) ---
 //   1. CONSTANTS AND STATIC DATA
 //   2. DOM HELPERS
-//   3. AUDIO
-//   4. GAME STATE
-//   5. BATTLE INVARIANTS
-//   6. PERSISTENCE
-//   7. CARD / TABLE PRIMITIVES
-//   8. RULES (PURE FUNCTIONS)
-//   9. BATTLE STATE TRANSITIONS
-//  10. ENEMY AI
-//  11. RELICS
-//  12. SHOP
-//  13. RENDERING
-//  14. MODALS AND POPOVERS
-//  15. EVENT BINDINGS
+//   3. LOCALIZATION
+//   4. AUDIO
+//   5. GAME STATE
+//   6. BATTLE INVARIANTS
+//   7. PERSISTENCE
+//   8. CARD / TABLE PRIMITIVES
+//   9. RULES (PURE FUNCTIONS)
+//  10. BATTLE STATE TRANSITIONS
+//  11. ENEMY AI
+//  12. RELICS
+//  13. SHOP
+//  14. RENDERING
+//  15. MODALS AND POPOVERS
+//  16. EVENT BINDINGS
 //  then, after the production code: the TEST FRAMEWORK, TEST HELPERS and the TESTS.
 // Tailwind build: the utility CSS lives in <style id="tailwind-inline"> in the <head>. After using a
 // utility class that is not in the page yet, rebuild it with Tailwind CLI 3.4 (`tailwindcss -i input.css
@@ -526,8 +535,9 @@
 
 // --- Code conventions ---
 // - Comments: English only.
-// - User-facing strings (UI text, test names/labels shown in the test panel) stay
-//   in Russian, since the game itself is Russian-language.
+// - User-facing strings live in the I18N tables (ru + en) and are read with t(key, params);
+//   never hardcode UI text in the game code. Static markup uses data-i18n / data-i18n-title.
+//   Tests run in Russian (see runGameUnitTests); test names and messages are English.
 // -------------------------
 
 const SAVE_KEY = 'fools_deck_local_run';
@@ -556,7 +566,11 @@ const SUITS = { Pikes: '♠', Hearts: '♥', Tiles: '♦', Clovers: '♣' };
 
 const SUIT_COLORS = { Pikes: 'text-slate-900', Clovers: 'text-slate-900', Hearts: 'text-rose-600', Tiles: 'text-rose-600' };
 
-const VALUES = { 6:'6', 7:'7', 8:'8', 9:'9', 10:'10', 11:'В', 12:'Д', 13:'К', 14:'Т' };
+const VALUES = {
+    6: '6', 7: '7', 8: '8', 9: '9', 10: '10',
+    get 11() { return t('rank.11'); }, get 12() { return t('rank.12'); },
+    get 13() { return t('rank.13'); }, get 14() { return t('rank.14'); }
+};
 
 const MIN_CARD_VALUE = 6;
 
@@ -706,27 +720,53 @@ const RARITY = { COMMON: 'common', UNCOMMON: 'uncommon', RARE: 'rare' };
 // Chance that one draft slot is filled from each tier (the weights sum to 1).
 const RARITY_DROP_WEIGHTS = { [RARITY.COMMON]: 0.6, [RARITY.UNCOMMON]: 0.3, [RARITY.RARE]: 0.1 };
 
-const RARITY_LABELS = { [RARITY.COMMON]: 'Обычный', [RARITY.UNCOMMON]: 'Необычный', [RARITY.RARE]: 'Редкий' };
+const RARITY_LABELS = {};
+Object.values(RARITY).forEach(tier => Object.defineProperty(RARITY_LABELS, tier, { get: () => t('rarity.' + tier), enumerable: true }));
 
 const ALL_RELICS = [
-    { id: "ace_sleeve", rarity: RARITY.RARE, name: "Туз в рукаве", icon: "🃏", desc: "Заставление врага взять карты наносит +5 ед. дополнительного урона.", price: 12 },
-    { id: "midas_touch", rarity: RARITY.UNCOMMON, name: "Золотое пальто", icon: "🪙", desc: "Получайте +3$ каждый раз, когда успешно отбиваетесь.", price: 10 },
-    { id: "mirror_ring", rarity: RARITY.RARE, name: "Зеркальный перстень", icon: "💍", desc: `Когда вы берёте карты со стола, враг получает ${TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER} ед. урона за каждую взятую карту.`, price: 14 },
-    { id: "cheat_eye", rarity: RARITY.COMMON, name: "Шулерский глаз", icon: "👁️", desc: "Показывает вам самую старшую карту в руке соперника (козыри считаются старше).", price: 8 },
-    { id: "pocket_discard", rarity: RARITY.COMMON, name: "Карманный сброс", icon: "✂️", desc: "Раз за раунд можно безвозвратно сбросить из руки шестёрку или семёрку прямо в отбой.", price: 7 },
-    { id: "spam_mail", rarity: RARITY.COMMON, name: "Спам-рассылка", icon: "✉️", desc: "Когда враг забирает карты со стола, он дополнительно берёт верхнюю карту из колоды.", price: 9 },
-    { id: "heavy_ballast", rarity: RARITY.COMMON, name: "Тяжёлый балласт", icon: "⚓", desc: "В начале хода врага он получает урон за каждую карту в руке сверх 6 штук (не больше 4 ед.).", price: 13 },
-    { id: "ballast_drop", rarity: RARITY.RARE, name: "Сброс балласта", icon: "🪂", desc: "При взятии карт со стола вы сразу сбрасываете в отбой 2 некозырные карты наименьшего ранга.", price: 10 },
-    { id: "coin_magnet", rarity: RARITY.COMMON, name: "Магнит для мелочи", icon: "🧲", desc: "Каждая шестёрка, сыгранная любым игроком (атака, подкидка, перевод или защита), приносит +1$.", price: 8 },
-    { id: "safety_rope", rarity: RARITY.RARE, name: "Страховочный трос", icon: "🪢", desc: "При смертельном уроне вы выживаете с 1 HP и стол очищается (срабатывает 1 раз за забег).", price: 18 },
-    { id: "jester_discard", rarity: RARITY.COMMON, name: "Шутовской сброс", icon: "🃏", desc: "Раз за бой на своём ходу атаки можно сбросить всю руку и добрать столько же карт из колоды.", price: 9 },
-    { id: "cascade_transfer", rarity: RARITY.RARE, name: "Каскадный перевод", icon: "🌊", desc: "Первый перевод карт за ход наносит врагу 4 ед. урона.", price: 11 },
-    { id: "sleight_of_hand", rarity: RARITY.UNCOMMON, name: "Ловкость рук", icon: "🪄", desc: "Раз за бой можно заменить карту, которой враг пошёл на вас, случайной картой из колоды.", price: 12 },
-    { id: "salted_wound", rarity: RARITY.UNCOMMON, name: "Солёная рана", icon: "🧂", desc: "Если враг берёт карты со стола, он получает +1 ед. урона за каждую карту сверх 6 в его руке (не больше 4 ед.).", price: 10 },
-    { id: "sharp_suit", rarity: RARITY.UNCOMMON, name: "Острая масть", icon: "🗡️", desc: `Каждый раз, когда вы играете козырную карту (атака, подкидка, перевод или защита), враг получает ${SHARP_SUIT_DAMAGE} ед. урона.`, price: 9 },
-    { id: "moonshine_flask", rarity: RARITY.UNCOMMON, name: "Фляжка с пойлом", icon: "🍶", desc: `Каждый раз, когда вы успешно отбиваетесь, вы восстанавливаете ${FLASK_HEAL_ON_DEFEND} HP.`, price: 12 },
-    { id: "golden_bullet", rarity: RARITY.UNCOMMON, name: "Золотая пуля", icon: "🔫", desc: `Каждый раз, когда артефакт приносит вам $, враг получает ${GOLDEN_BULLET_DAMAGE} ед. урона.`, price: 8 }
+    { id: "ace_sleeve", rarity: RARITY.RARE, icon: "🃏", price: 12 },
+    { id: "midas_touch", rarity: RARITY.UNCOMMON, icon: "🪙", price: 10 },
+    { id: "mirror_ring", rarity: RARITY.RARE, icon: "💍", price: 14 },
+    { id: "cheat_eye", rarity: RARITY.COMMON, icon: "👁️", price: 8 },
+    { id: "pocket_discard", rarity: RARITY.COMMON, icon: "✂️", price: 7 },
+    { id: "spam_mail", rarity: RARITY.COMMON, icon: "✉️", price: 9 },
+    { id: "heavy_ballast", rarity: RARITY.COMMON, icon: "⚓", price: 13 },
+    { id: "ballast_drop", rarity: RARITY.RARE, icon: "🪂", price: 10 },
+    { id: "coin_magnet", rarity: RARITY.COMMON, icon: "🧲", price: 8 },
+    { id: "safety_rope", rarity: RARITY.RARE, icon: "🪢", price: 18 },
+    { id: "jester_discard", rarity: RARITY.COMMON, icon: "🃏", price: 9 },
+    { id: "cascade_transfer", rarity: RARITY.RARE, icon: "🌊", price: 11 },
+    { id: "sleight_of_hand", rarity: RARITY.UNCOMMON, icon: "🪄", price: 12 },
+    { id: "salted_wound", rarity: RARITY.UNCOMMON, icon: "🧂", price: 10 },
+    { id: "sharp_suit", rarity: RARITY.UNCOMMON, icon: "🗡️", price: 9 },
+    { id: "moonshine_flask", rarity: RARITY.UNCOMMON, icon: "🍶", price: 12 },
+    { id: "golden_bullet", rarity: RARITY.UNCOMMON, icon: "🔫", price: 8 }
 ];
+
+// Numbers that are interpolated into a relic description (the text itself is in I18N).
+const RELIC_DESC_PARAMS = {
+    mirror_ring: () => ({ n: TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER }),
+    sharp_suit: () => ({ n: SHARP_SUIT_DAMAGE }),
+    moonshine_flask: () => ({ n: FLASK_HEAL_ON_DEFEND }),
+    golden_bullet: () => ({ n: GOLDEN_BULLET_DAMAGE })
+};
+
+// Relic text is looked up by id, so a relic saved in one language is shown in the current one.
+function getRelicName(relic) {
+    return t(`relic.${relic.id}.name`);
+}
+
+function getRelicDesc(relic) {
+    const params = RELIC_DESC_PARAMS[relic.id];
+    return t(`relic.${relic.id}.desc`, params ? params() : undefined);
+}
+
+// name/desc stay readable on the catalogue entries but are not enumerable data, so copying a
+// relic into a run (and into its save) never freezes a language into it.
+ALL_RELICS.forEach(relic => Object.defineProperties(relic, {
+    name: { get: () => getRelicName(relic) },
+    desc: { get: () => getRelicDesc(relic) }
+}));
 
 // --- Enemy ladder ------------------------------------------------------------
 // Everything you need to edit when adding/removing/swapping enemies lives in
@@ -739,22 +779,34 @@ const ALL_RELICS = [
 // carry its own abilityId/abilityDesc (the effect itself lives in
 // ENEMY_ABILITY_EFFECTS); without one the filler is a plain opponent. A filler
 // ability is never permanent: it is active on that one enemy only.
+// An enemy's name/abilityDesc are looked up when they are read (see I18N: enemy.<key>.name and
+// enemy.<key>.ability, filled with abilityParams), so the ladder never freezes a language in.
+function localizeEnemy(enemy) {
+    return Object.defineProperties(enemy, {
+        name: { get: () => t(`enemy.${enemy.key}.name`), enumerable: true },
+        abilityDesc: {
+            get: () => (enemy.abilityId === 'none' ? t('enemy.plain.ability') : t(`enemy.${enemy.key}.ability`, enemy.abilityParams)),
+            enumerable: true
+        }
+    });
+}
+
 const FILLER_POOL = [
-    { name: "Начинающий Шулер", avatar: "🙂" }, // plain on purpose: the first fight teaches the basics
-    { name: "Уличный Мошенник", avatar: "🧔",
-      abilityId: "swindle", abilityDesc: `Когда вы берёте карты, вы теряете ${SWINDLE_GOLD_LOSS}$` },
-    { name: "Карточный Жучок", avatar: "🧑‍🦱",
-      abilityId: "lucky_start", abilityDesc: "В начале раунда меняет слабую карту на сильную из колоды" },
-    { name: "Барный Хитрец", avatar: "🍻",
-      abilityId: "hearty", abilityDesc: `Восстанавливает ${HEARTY_REGEN_ON_DEFENSE} HP за каждую успешную защиту` },
-    { name: "Ловкий Карманник", avatar: "🧤",
-      abilityId: "pickpocket", abilityDesc: `Награда за победу меньше на ${Math.round(PICKPOCKET_REWARD_CUT * 100)}%` },
-    { name: "Азартный Игрок", avatar: "🎲",
-      abilityId: "all_in", abilityDesc: `Когда вы берёте карты, вы теряете ещё ${ALL_IN_EXTRA_TAKE_DAMAGE} HP` },
-    { name: "Матёрый Катала", avatar: "🎰",
-      abilityId: "stacked_deck", abilityDesc: "В начале раунда меняет слабую карту на козырь из колоды" },
-    { name: "Теневой Подручный", avatar: "🕶️",
-      abilityId: "thick_skin", abilityDesc: `Каждый удар по нему слабее на ${THICK_SKIN_DAMAGE_REDUCTION} (но не меньше 1)` },
+    { key: "rookie", avatar: "🙂" }, // plain on purpose: the first fight teaches the basics
+    { key: "swindler", avatar: "🧔",
+      abilityId: "swindle", abilityParams: { n: SWINDLE_GOLD_LOSS } },
+    { key: "grifter", avatar: "🧑‍🦱",
+      abilityId: "lucky_start" },
+    { key: "slicker", avatar: "🍻",
+      abilityId: "hearty", abilityParams: { n: HEARTY_REGEN_ON_DEFENSE } },
+    { key: "pickpocket", avatar: "🧤",
+      abilityId: "pickpocket", abilityParams: { n: Math.round(PICKPOCKET_REWARD_CUT * 100) } },
+    { key: "gambler", avatar: "🎲",
+      abilityId: "all_in", abilityParams: { n: ALL_IN_EXTRA_TAKE_DAMAGE } },
+    { key: "shark", avatar: "🎰",
+      abilityId: "stacked_deck" },
+    { key: "henchman", avatar: "🕶️",
+      abilityId: "thick_skin", abilityParams: { n: THICK_SKIN_DAMAGE_REDUCTION } },
 ];
 
 // Named bosses, in the order they appear. Each one can specify:
@@ -766,24 +818,24 @@ const FILLER_POOL = [
 //                     difficulty ratchet, not a one-off mechanic).
 const BOSS_ROSTER = [
     {
-        name: "Карточный Трактирщик", hp: 30, avatar: "🍺",
-        abilityId: "no_transfer", abilityDesc: "Запрет на Перевод карт",
+        key: "innkeeper", hp: 30, avatar: "🍺",
+        abilityId: "no_transfer",
         fillersBefore: 2, fillerHpRange: [12, 18],
     },
     {
-        name: "Фаворит Казино", hp: 40, avatar: "🎩",
-        abilityId: "ai_transfer", abilityDesc: "Умеет Переводить ваши атаки",
+        key: "casino", hp: 40, avatar: "🎩",
+        abilityId: "ai_transfer",
         fillersBefore: 2, fillerHpRange: [24, 32],
         permanentAbility: true, // с этого момента переводить умеют все противники
     },
     {
-        name: "Основатель Синдиката", hp: 55, avatar: "🕵️",
-        abilityId: "aggressive_throw", abilityDesc: "Агрессивно подкидывает до 8 карт",
+        key: "syndicate", hp: 55, avatar: "🕵️",
+        abilityId: "aggressive_throw",
         fillersBefore: 2, fillerHpRange: [38, 46],
     },
     {
-        name: "Тень (Финальный БОСС)", hp: 75, avatar: "👑",
-        abilityId: "double_penalty", abilityDesc: "Удвоенный урон игроку при взятии карт",
+        key: "shadow", hp: 75, avatar: "👑",
+        abilityId: "double_penalty",
         fillersBefore: 2, fillerHpRange: [50, 62],
     },
 ];
@@ -808,20 +860,20 @@ function buildEnemyLadder(bossRoster, fillerPool) {
             fillerCursor++;
             const t = fillersBefore > 1 ? i / (fillersBefore - 1) : 1;
             const hp = Math.round(hpFrom + (hpTo - hpFrom) * t);
-            ladder.push({
-                name: template.name, avatar: template.avatar, hp,
+            ladder.push(localizeEnemy({
+                key: template.key, avatar: template.avatar, hp,
                 abilityId: template.abilityId || "none",
-                abilityDesc: template.abilityDesc || "Стандартный противник",
+                abilityParams: template.abilityParams,
                 level,
-            });
+            }));
         }
 
-        ladder.push({
-            name: boss.name, hp: boss.hp, avatar: boss.avatar,
-            abilityId: boss.abilityId, abilityDesc: boss.abilityDesc,
+        ladder.push(localizeEnemy({
+            key: boss.key, hp: boss.hp, avatar: boss.avatar,
+            abilityId: boss.abilityId,
             isBoss: true, permanentAbility: !!boss.permanentAbility,
             level,
-        });
+        }));
 
         level++;
     });
@@ -865,12 +917,13 @@ const ACTIVE_BATTLE_PHASES = Object.freeze([
     BATTLE_PHASES.RESOLVING
 ]);
 
+// reason -> [title key, text key] (text null: the caller builds it). Looked up with t() when shown.
 const TRANSFER_BLOCK_MESSAGES = {
-    boss_block: ["Перевод заблокирован", "Трактирщик запрещает переводить карты на этом этаже!"],
-    already_defending: ["Перевод невозможен", "Нельзя переводить ход, если вы уже начали отбиваться!"],
-    mixed_ranks: ["Перевод невозможен", "Переводить можно только карты одинакового достоинства!"],
-    no_matching_card: ["Перевод невозможен", null],
-    enemy_hand_too_small: ["Перевод невозможен", "У противника недостаточно карт на руках, чтобы принять перевод!"]
+    boss_block: ['transfer.blockedTitle', 'transfer.boss'],
+    already_defending: ['transfer.impossibleTitle', 'transfer.defending'],
+    mixed_ranks: ['transfer.impossibleTitle', 'transfer.mixed'],
+    no_matching_card: ['transfer.impossibleTitle', null],
+    enemy_hand_too_small: ['transfer.impossibleTitle', 'transfer.handSmall']
 };
 
 // The active (button-triggered) relic abilities. Each has an
@@ -902,6 +955,409 @@ function setVisible(el, visible, displayClass = null) {
 function bindClick(id, handler) {
     const el = getEl(id);
     if (el) el.onclick = handler;
+}
+
+// ============================================================
+// LOCALIZATION
+// ------------------------------------------------------------
+// All user-facing text lives in I18N (a flat key -> string table per language) and is read
+// through t(). Texts are looked up when they are drawn and never stored in saves, so switching
+// the language only needs a repaint. Static markup is localized via data-i18n / data-i18n-title.
+// ============================================================
+
+const LANG_KEY = 'fools_deck_lang';
+const SUPPORTED_LANGUAGES = ['ru', 'en'];
+
+const I18N = {
+    ru: {
+        "doc.title": "Козырной Дурак - Roguelike",
+        "splash.title": "КОЗЫРНОЙ ДУРАК",
+        "splash.blurb": "Пройдите все этажи подземелья, побеждайте боссов, покупайте шулерские артефакты и собирайте мощную комбинацию!",
+        "splash.continue": "▶ ПРОДОЛЖИТЬ ИГРУ",
+        "splash.newGame": "▶ НОВАЯ ИГРА",
+        "splash.newRun": "СБРОСИТЬ ЗАБЕГ (НОВАЯ ИГРА)",
+        "splash.hint": "🔊 Нажмите, чтобы начать путешествие",
+        "hdr.sound": "Переключить звук",
+        "hdr.menu": "Главное меню",
+        "save.saved": "Сохранено",
+        "save.session": "Сессия",
+        "enemy.cards": "Карт:",
+        "enemy.quirk": "Особенность: {desc}",
+        "hud.relics": "ШУЛЕРСКИЕ АРТЕФАКТЫ (JOKERS)",
+        "btn.take": "ВЗЯТЬ",
+        "btn.bito": "БИТО",
+        "btn.bitoTook": "БИТО (Враг взял)",
+        "btn.transfer": "ПЕРЕВОД",
+        "btn.cancel": "ОТМЕНА",
+        "btn.ok": "ПОНЯТНО",
+        "btn.close": "ЗАКРЫТЬ",
+        "btn.sell": "ПРОДАТЬ",
+        "shop.title": "ВОРОВСКОЙ ПРИТОН",
+        "shop.subtitle": "Покупайте артефакты перед следующим боссом",
+        "shop.health": "❤️ Здоровье:",
+        "shop.gold": "🪙 Золото:",
+        "shop.yourRelics": "ВАШИ АРТЕФАКТЫ",
+        "shop.sellHint": "Нажмите на артефакт, чтобы продать его за полцены",
+        "shop.doctor": "Услуги лекаря",
+        "shop.relics": "Шулерские Артефакты",
+        "shop.reroll": "🎲 Обновить · {n}$",
+        "shop.next": "СЛЕДУЮЩИЙ ЭТАЖ ➔",
+        "shop.healTitle": "Принять лекарство (+{n} HP)",
+        "shop.healText": "Восстановить до {n} здоровья (до макс. {max})",
+        "shop.soldAll": "Вы скупили все артефакты.",
+        "shop.soldOut": "Предложение раскуплено. Обновите его, чтобы увидеть новые артефакты.",
+        "shop.slotTitle": "{name}: {desc} (продать за {price}$)",
+        "shop.sellTitle": "Продать артефакт?",
+        "shop.sellText": "Продать «{name}» за {price}$? Слот освободится для новой покупки.",
+        "shop.noMoneyTitle": "Недостаточно денег",
+        "shop.noMoneyHeal": "Нужно {n} золотых монет для покупки здоровья.",
+        "shop.noMoneyRelic": "Побеждайте в боях, чтобы зарабатывать золотые монеты.",
+        "shop.noMoneyReroll": "Обновление предложения стоит {n}$.",
+        "shop.fullHpTitle": "Здоровье полное",
+        "shop.fullHpText": "У вас уже максимальный запас здоровья!",
+        "shop.notOfferedTitle": "Нет в продаже",
+        "shop.notOfferedText": "Этого артефакта сейчас нет в предложении магазина.",
+        "shop.slotsFullTitle": "Слоты забиты",
+        "shop.slotsFullText": "Максимум {n} артефактов на руках!",
+        "shop.noRerollTitle": "Нечего обновлять",
+        "shop.noRerollText": "Все доступные артефакты уже в предложении.",
+        "rank.11": "В",
+        "rank.12": "Д",
+        "rank.13": "К",
+        "rank.14": "Т",
+        "rarity.common": "Обычный",
+        "rarity.uncommon": "Необычный",
+        "rarity.rare": "Редкий",
+        "card.trump": "Козырь",
+        "deck.trump": "Козырь:",
+        "deck.count": "{n} шт",
+        "banner.enemyTakes": "Соперник забирает карты! (Жмите БИТО)",
+        "banner.attack": "Ваш ход: Атака",
+        "banner.throwingIn": "Вы берёте карты... Соперник подкидывает",
+        "banner.transfer": "Выберите карту для Перевода!",
+        "banner.defend": "Ход соперника: Защищайтесь!",
+        "modal.battleWon": "Победа в Бою!",
+        "modal.alreadyWon": "Вы уже одолели этого соперника, награда получена. Загляните в магазин перед следующим боем.",
+        "modal.drawTitle": "Ничья в кону",
+        "modal.drawText": "Колода и карты обоих игроков закончились! Перемешиваем колоду...",
+        "modal.roundWonTitle": "Раунд Выигран!",
+        "modal.roundWonText": "Вы первыми скинули все карты! Противник остается в дураках и получает {n} ед. урона.",
+        "modal.roundLostTitle": "Раунд Проигран!",
+        "modal.roundLostText": "Соперник первым скинул все карты! Вы остались в дураках с {cards} картами и получили {n} ед. урона.{note}",
+        "modal.roundLostRope": " Страховочный трос спас вас, оставив 1 HP!",
+        "modal.defeatTitle": "Поражение!",
+        "modal.defeatRound": "Соперник первым скинул все карты. Вы получили {n} ед. урона и погибли.",
+        "modal.defeatHp": "Вы потеряли всё здоровье. Забег окончен.",
+        "modal.ropeTitle": "Страховочный трос сработал!",
+        "modal.ropeText": "Вы чудом остались в живых с 1 HP. Стол очищен.",
+        "modal.limitTitle": "Лимит карт",
+        "modal.limitText": "Нельзя подкинуть больше карт, чем есть на руках у защищающегося!",
+        "modal.badMoveTitle": "Недопустимый ход",
+        "modal.badMoveText": "Вы можете подкидывать только карты того номинала, что уже есть на столе!",
+        "modal.wrongCardTitle": "Неверная карта",
+        "modal.wrongCardText": "Для перевода необходимо выбрать карту номинала {rank}.",
+        "modal.cantBeatTitle": "Нельзя отбить",
+        "modal.cantBeatText": "Эта карта не покрывает атакующего! Нужна карта той же масти старше или козырь.",
+        "modal.reward": "Вы одолели соперника! Получено +{n}$",
+        "modal.rewardBoss": " и +{n} к максимальному здоровью за победу над боссом!",
+        "modal.enemyTransferTitle": "Враг Переводит!",
+        "modal.enemyTransferText": "{name} переводит атаку обратно на вас!",
+        "modal.runWonTitle": "ПОБЕДА В ЗАБЕГЕ!",
+        "modal.runWonText": "Вы прошли все этажи подземелья и стали Легендой Дурака!",
+        "transfer.blockedTitle": "Перевод заблокирован",
+        "transfer.impossibleTitle": "Перевод невозможен",
+        "transfer.boss": "Трактирщик запрещает переводить карты на этом этаже!",
+        "transfer.defending": "Нельзя переводить ход, если вы уже начали отбиваться!",
+        "transfer.mixed": "Переводить можно только карты одинакового достоинства!",
+        "transfer.handSmall": "У противника недостаточно карт на руках, чтобы принять перевод!",
+        "transfer.noMatch": "У вас нет карты достоинства {rank} для перевода.",
+        "relic.pocket_discard.action": "✂️ Сбросить 6/7 (Карманный сброс)",
+        "relic.jester_discard.action": "🃏 Пересдать руку (Шутовской сброс)",
+        "relic.sleight_of_hand.action": "🪄 Подменить карту (Ловкость рук)",
+        "relic.ace_sleeve.name": "Туз в рукаве",
+        "relic.ace_sleeve.desc": "Заставление врага взять карты наносит +5 ед. дополнительного урона.",
+        "relic.midas_touch.name": "Золотое пальто",
+        "relic.midas_touch.desc": "Получайте +3$ каждый раз, когда успешно отбиваетесь.",
+        "relic.mirror_ring.name": "Зеркальный перстень",
+        "relic.mirror_ring.desc": "Когда вы берёте карты со стола, враг получает {n} ед. урона за каждую взятую карту.",
+        "relic.cheat_eye.name": "Шулерский глаз",
+        "relic.cheat_eye.desc": "Показывает вам самую старшую карту в руке соперника (козыри считаются старше).",
+        "relic.pocket_discard.name": "Карманный сброс",
+        "relic.pocket_discard.desc": "Раз за раунд можно безвозвратно сбросить из руки шестёрку или семёрку прямо в отбой.",
+        "relic.spam_mail.name": "Спам-рассылка",
+        "relic.spam_mail.desc": "Когда враг забирает карты со стола, он дополнительно берёт верхнюю карту из колоды.",
+        "relic.heavy_ballast.name": "Тяжёлый балласт",
+        "relic.heavy_ballast.desc": "В начале хода врага он получает урон за каждую карту в руке сверх 6 штук (не больше 4 ед.).",
+        "relic.ballast_drop.name": "Сброс балласта",
+        "relic.ballast_drop.desc": "При взятии карт со стола вы сразу сбрасываете в отбой 2 некозырные карты наименьшего ранга.",
+        "relic.coin_magnet.name": "Магнит для мелочи",
+        "relic.coin_magnet.desc": "Каждая шестёрка, сыгранная любым игроком (атака, подкидка, перевод или защита), приносит +1$.",
+        "relic.safety_rope.name": "Страховочный трос",
+        "relic.safety_rope.desc": "При смертельном уроне вы выживаете с 1 HP и стол очищается (срабатывает 1 раз за забег).",
+        "relic.jester_discard.name": "Шутовской сброс",
+        "relic.jester_discard.desc": "Раз за бой на своём ходу атаки можно сбросить всю руку и добрать столько же карт из колоды.",
+        "relic.cascade_transfer.name": "Каскадный перевод",
+        "relic.cascade_transfer.desc": "Первый перевод карт за ход наносит врагу 4 ед. урона.",
+        "relic.sleight_of_hand.name": "Ловкость рук",
+        "relic.sleight_of_hand.desc": "Раз за бой можно заменить карту, которой враг пошёл на вас, случайной картой из колоды.",
+        "relic.salted_wound.name": "Солёная рана",
+        "relic.salted_wound.desc": "Если враг берёт карты со стола, он получает +1 ед. урона за каждую карту сверх 6 в его руке (не больше 4 ед.).",
+        "relic.sharp_suit.name": "Острая масть",
+        "relic.sharp_suit.desc": "Каждый раз, когда вы играете козырную карту (атака, подкидка, перевод или защита), враг получает {n} ед. урона.",
+        "relic.moonshine_flask.name": "Фляжка с пойлом",
+        "relic.moonshine_flask.desc": "Каждый раз, когда вы успешно отбиваетесь, вы восстанавливаете {n} HP.",
+        "relic.golden_bullet.name": "Золотая пуля",
+        "relic.golden_bullet.desc": "Каждый раз, когда артефакт приносит вам $, враг получает {n} ед. урона.",
+        "enemy.plain.ability": "Стандартный противник",
+        "enemy.rookie.name": "Начинающий Шулер",
+        "enemy.swindler.name": "Уличный Мошенник",
+        "enemy.swindler.ability": "Когда вы берёте карты, вы теряете {n}$",
+        "enemy.grifter.name": "Карточный Жучок",
+        "enemy.grifter.ability": "В начале раунда меняет слабую карту на сильную из колоды",
+        "enemy.slicker.name": "Барный Хитрец",
+        "enemy.slicker.ability": "Восстанавливает {n} HP за каждую успешную защиту",
+        "enemy.pickpocket.name": "Ловкий Карманник",
+        "enemy.pickpocket.ability": "Награда за победу меньше на {n}%",
+        "enemy.gambler.name": "Азартный Игрок",
+        "enemy.gambler.ability": "Когда вы берёте карты, вы теряете ещё {n} HP",
+        "enemy.shark.name": "Матёрый Катала",
+        "enemy.shark.ability": "В начале раунда меняет слабую карту на козырь из колоды",
+        "enemy.henchman.name": "Теневой Подручный",
+        "enemy.henchman.ability": "Каждый удар по нему слабее на {n} (но не меньше 1)",
+        "enemy.innkeeper.name": "Карточный Трактирщик",
+        "enemy.innkeeper.ability": "Запрет на Перевод карт",
+        "enemy.casino.name": "Фаворит Казино",
+        "enemy.casino.ability": "Умеет Переводить ваши атаки",
+        "enemy.syndicate.name": "Основатель Синдиката",
+        "enemy.syndicate.ability": "Агрессивно подкидывает до 8 карт",
+        "enemy.shadow.name": "Тень (Финальный БОСС)",
+        "enemy.shadow.ability": "Удвоенный урон игроку при взятии карт",
+    },
+    en: {
+        "doc.title": "Trump Durak - Roguelike",
+        "splash.title": "TRUMP DURAK",
+        "splash.blurb": "Fight your way through every floor of the dungeon, drop the bosses, grab some crooked relics and stack a killer combo!",
+        "splash.continue": "▶ CONTINUE RUN",
+        "splash.newGame": "▶ NEW GAME",
+        "splash.newRun": "SCRAP THE RUN (NEW GAME)",
+        "splash.hint": "🔊 Tap to kick off the ride",
+        "hdr.sound": "Toggle sound",
+        "hdr.menu": "Main menu",
+        "save.saved": "Saved",
+        "save.session": "Session",
+        "enemy.cards": "Cards:",
+        "enemy.quirk": "Quirk: {desc}",
+        "hud.relics": "CROOKED RELICS (JOKERS)",
+        "btn.take": "TAKE",
+        "btn.bito": "BITO",
+        "btn.bitoTook": "BITO (Foe took)",
+        "btn.transfer": "TRANSFER",
+        "btn.cancel": "CANCEL",
+        "btn.ok": "GOT IT",
+        "btn.close": "CLOSE",
+        "btn.sell": "PAWN",
+        "shop.title": "THIEVES' DEN",
+        "shop.subtitle": "Stock up on relics before the next boss",
+        "shop.health": "❤️ Health:",
+        "shop.gold": "🪙 Cash:",
+        "shop.yourRelics": "YOUR RELICS",
+        "shop.sellHint": "Tap a relic to pawn it for half price",
+        "shop.doctor": "Back-alley doc",
+        "shop.relics": "Crooked Relics",
+        "shop.reroll": "🎲 Reroll · {n}$",
+        "shop.next": "NEXT FLOOR ➔",
+        "shop.healTitle": "Take the medicine (+{n} HP)",
+        "shop.healText": "Patch up to {n} health (max {max})",
+        "shop.soldAll": "You cleaned out the whole shelf.",
+        "shop.soldOut": "Sold out. Reroll to see fresh relics.",
+        "shop.slotTitle": "{name}: {desc} (pawn for {price}$)",
+        "shop.sellTitle": "Pawn this relic?",
+        "shop.sellText": "Pawn “{name}” for {price}$? The slot frees up for a new buy.",
+        "shop.noMoneyTitle": "Not Enough Cash",
+        "shop.noMoneyHeal": "You need {n} gold coins to buy healing.",
+        "shop.noMoneyRelic": "Win some fights to earn gold coins.",
+        "shop.noMoneyReroll": "A reroll costs {n}$.",
+        "shop.fullHpTitle": "Already Full HP",
+        "shop.fullHpText": "You're already at max health!",
+        "shop.notOfferedTitle": "Not on the Shelf",
+        "shop.notOfferedText": "That relic isn't in the shop right now.",
+        "shop.slotsFullTitle": "Slots Full",
+        "shop.slotsFullText": "Max {n} relics on hand!",
+        "shop.noRerollTitle": "Nothing to Reroll",
+        "shop.noRerollText": "Every available relic is already on offer.",
+        "rank.11": "J",
+        "rank.12": "Q",
+        "rank.13": "K",
+        "rank.14": "A",
+        "rarity.common": "Common",
+        "rarity.uncommon": "Uncommon",
+        "rarity.rare": "Rare",
+        "card.trump": "Trump",
+        "deck.trump": "Trump:",
+        "deck.count": "×{n}",
+        "banner.enemyTakes": "Foe is taking cards! (Hit BITO)",
+        "banner.attack": "Your move: Attack",
+        "banner.throwingIn": "You're taking cards... Foe is piling on",
+        "banner.transfer": "Pick a card to Transfer!",
+        "banner.defend": "Foe's move: Defend yourself!",
+        "modal.battleWon": "Fight Won!",
+        "modal.alreadyWon": "You already took this one down and cashed out. Swing by the shop before the next fight.",
+        "modal.drawTitle": "Dead Heat",
+        "modal.drawText": "The deck's dry and both hands are empty! Reshuffling...",
+        "modal.roundWonTitle": "Round Won!",
+        "modal.roundWonText": "You ditched all your cards first! The other guy's left holding the bag and eats {n} damage.",
+        "modal.roundLostTitle": "Round Lost!",
+        "modal.roundLostText": "Foe dumped their hand first! You're the Durak with {cards} cards left and ate {n} damage.{note}",
+        "modal.roundLostRope": " The Safety Rope saved your hide with 1 HP left!",
+        "modal.defeatTitle": "Busted!",
+        "modal.defeatRound": "Foe dumped their hand first. You ate {n} damage and went down.",
+        "modal.defeatHp": "You're out of HP. Run's over.",
+        "modal.ropeTitle": "Safety Rope Held!",
+        "modal.ropeText": "Somehow you're still breathing with 1 HP. The table's cleared.",
+        "modal.limitTitle": "Card Limit",
+        "modal.limitText": "You can't throw in more cards than the defender is holding!",
+        "modal.badMoveTitle": "Illegal Move",
+        "modal.badMoveText": "You can only throw in ranks that are already on the table!",
+        "modal.wrongCardTitle": "Wrong Card",
+        "modal.wrongCardText": "To transfer you gotta pick a card of rank {rank}.",
+        "modal.cantBeatTitle": "Can't Beat That",
+        "modal.cantBeatText": "That card doesn't cover the attack! You need a higher card of the same suit, or a trump.",
+        "modal.reward": "You took the foe down! Scored +{n}$",
+        "modal.rewardBoss": " and +{n} max HP for dropping a boss!",
+        "modal.enemyTransferTitle": "Foe Transfers!",
+        "modal.enemyTransferText": "{name} passes the attack right back at you!",
+        "modal.runWonTitle": "RUN WON!",
+        "modal.runWonText": "You cleared every floor of the dungeon and became a Durak Legend!",
+        "transfer.blockedTitle": "Transfer Blocked",
+        "transfer.impossibleTitle": "No Transfer",
+        "transfer.boss": "The Innkeeper doesn't allow transfers on this floor!",
+        "transfer.defending": "You can't transfer once you've started defending!",
+        "transfer.mixed": "You can only transfer cards of the same rank!",
+        "transfer.handSmall": "The foe doesn't have enough cards to take a transfer!",
+        "transfer.noMatch": "You don't have a rank {rank} card to transfer.",
+        "relic.pocket_discard.action": "✂️ Dump a 6/7 (Pocket Dump)",
+        "relic.jester_discard.action": "🃏 Redeal your hand (Jester's Dump)",
+        "relic.sleight_of_hand.action": "🪄 Swap a card (Sleight of Hand)",
+        "relic.ace_sleeve.name": "Ace Up the Sleeve",
+        "relic.ace_sleeve.desc": "Making the foe take cards deals +5 bonus damage.",
+        "relic.midas_touch.name": "Gilded Coat",
+        "relic.midas_touch.desc": "Pocket +3$ every time you defend clean.",
+        "relic.mirror_ring.name": "Mirror Ring",
+        "relic.mirror_ring.desc": "When you take cards from the table, the foe eats {n} damage for every card you took.",
+        "relic.cheat_eye.name": "Hustler's Eye",
+        "relic.cheat_eye.desc": "Shows you the highest card in the foe's hand (trumps count as higher).",
+        "relic.pocket_discard.name": "Pocket Dump",
+        "relic.pocket_discard.desc": "Once a round you can ditch a six or a seven from your hand straight into the discard pile for good.",
+        "relic.spam_mail.name": "Spam Mail",
+        "relic.spam_mail.desc": "When the foe takes cards off the table, it also draws the top card of the deck.",
+        "relic.heavy_ballast.name": "Heavy Ballast",
+        "relic.heavy_ballast.desc": "At the start of the foe's turn it takes damage for every card in hand beyond 6 (max 4 damage).",
+        "relic.ballast_drop.name": "Ballast Drop",
+        "relic.ballast_drop.desc": "When you take cards from the table, you instantly dump the 2 lowest-rank non-trump cards into the discard.",
+        "relic.coin_magnet.name": "Coin Magnet",
+        "relic.coin_magnet.desc": "Every six played by anyone (attack, throw-in, transfer or defense) brings in +1$.",
+        "relic.safety_rope.name": "Safety Rope",
+        "relic.safety_rope.desc": "On lethal damage you survive with 1 HP and the table gets cleared (works once per run).",
+        "relic.jester_discard.name": "Jester's Dump",
+        "relic.jester_discard.desc": "Once per fight, on your attacking turn, you can toss your whole hand and draw the same number of cards from the deck.",
+        "relic.cascade_transfer.name": "Cascade Transfer",
+        "relic.cascade_transfer.desc": "The first card transfer each turn deals 4 damage to the foe.",
+        "relic.sleight_of_hand.name": "Sleight of Hand",
+        "relic.sleight_of_hand.desc": "Once per fight, swap the card the foe just led at you with a random card from the deck.",
+        "relic.salted_wound.name": "Salted Wound",
+        "relic.salted_wound.desc": "If the foe takes cards from the table, it takes +1 damage for every card above 6 in its hand (max 4 damage).",
+        "relic.sharp_suit.name": "Sharp Suit",
+        "relic.sharp_suit.desc": "Every time you play a trump card (attack, throw-in, transfer or defense), the foe takes {n} damage.",
+        "relic.moonshine_flask.name": "Moonshine Flask",
+        "relic.moonshine_flask.desc": "Every time you defend successfully, you patch up {n} HP.",
+        "relic.golden_bullet.name": "Golden Bullet",
+        "relic.golden_bullet.desc": "Every time a relic brings you $, the foe takes {n} damage.",
+        "enemy.plain.ability": "Plain old opponent",
+        "enemy.rookie.name": "Rookie Sharp",
+        "enemy.swindler.name": "Street Hustler",
+        "enemy.swindler.ability": "Whenever you take cards, you lose {n}$",
+        "enemy.grifter.name": "Card Grifter",
+        "enemy.grifter.ability": "Swaps a weak card for a strong one from the deck at the start of the round",
+        "enemy.slicker.name": "Barroom Slicker",
+        "enemy.slicker.ability": "Heals {n} HP for every successful defense",
+        "enemy.pickpocket.name": "Slick Pickpocket",
+        "enemy.pickpocket.ability": "Victory reward is {n}% smaller",
+        "enemy.gambler.name": "Hot-Shot Gambler",
+        "enemy.gambler.ability": "Whenever you take cards, you lose {n} more HP",
+        "enemy.shark.name": "Seasoned Card Shark",
+        "enemy.shark.ability": "Swaps a weak card for a trump from the deck at the start of the round",
+        "enemy.henchman.name": "Shadow Henchman",
+        "enemy.henchman.ability": "Every hit on it is {n} weaker (but never below 1)",
+        "enemy.innkeeper.name": "Card Innkeeper",
+        "enemy.innkeeper.ability": "No card Transfers allowed",
+        "enemy.casino.name": "Casino Favorite",
+        "enemy.casino.ability": "Can Transfer your attacks right back",
+        "enemy.syndicate.name": "Syndicate Kingpin",
+        "enemy.syndicate.ability": "Throws in up to 8 cards, no mercy",
+        "enemy.shadow.name": "The Shadow (Final BOSS)",
+        "enemy.shadow.ability": "Double damage to you whenever you take cards",
+    }
+};
+
+let currentLang = 'ru';
+let lastSaveStatusKey = 'save.saved';
+
+// Looks the key up in the current language, falls back to Russian, then to the key itself.
+// "{name}" placeholders are filled from params.
+function t(key, params) {
+    let text = I18N[currentLang][key];
+    if (text === undefined) text = I18N.ru[key];
+    if (text === undefined) return key;
+    if (!params) return text;
+    return text.replace(/\{(\w+)\}/g, (match, name) => (name in params ? params[name] : match));
+}
+
+function readStoredLanguage() {
+    try {
+        const stored = localStorage.getItem(LANG_KEY);
+        return SUPPORTED_LANGUAGES.includes(stored) ? stored : 'ru';
+    } catch (err) {
+        return 'ru';
+    }
+}
+
+// Re-localizes everything that is plain markup: <title>, data-i18n texts, data-i18n-title tooltips,
+// the language buttons' pressed state and the autosave indicator.
+function applyStaticTranslations() {
+    document.documentElement.lang = currentLang;
+    document.title = t('doc.title');
+    document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+    document.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = t(el.dataset.i18nTitle); });
+    document.querySelectorAll('[data-lang]').forEach(btn => btn.setAttribute('aria-pressed', String(btn.dataset.lang === currentLang)));
+    updateSaveStatus(lastSaveStatusKey);
+    updateStartButtonForSavedRun();
+}
+
+// Repaints the dynamic screens (battle, and the shop when it is open) in the current language.
+function refreshLocalizedScreens() {
+    try {
+        renderAll();
+        const shopModal = getEl('shop-modal');
+        if (shopModal && !shopModal.classList.contains('hidden')) openShop();
+    } catch (err) {
+        console.warn('Could not repaint after a language change:', err);
+    }
+}
+
+// Returns false (and changes nothing) for an unknown language.
+function setLanguage(lang, { persist = true, render = true } = {}) {
+    if (!SUPPORTED_LANGUAGES.includes(lang)) return false;
+    currentLang = lang;
+    if (persist) {
+        try {
+            localStorage.setItem(LANG_KEY, lang);
+        } catch (err) {
+            console.warn('Language choice was not saved:', err);
+        }
+    }
+    applyStaticTranslations();
+    if (render) refreshLocalizedScreens();
+    return true;
 }
 
 // ============================================================
@@ -1323,7 +1779,7 @@ function syncEnemyDisplay() {
     setElText('enemy-level', enemyData.level);
     const avatarEl = getEl('enemy-avatar');
     if (avatarEl) avatarEl.innerText = enemyData.avatar;
-    setElText('boss-ability-badge', `Особенность: ${enemyData.abilityDesc}`);
+    setElText('boss-ability-badge', t('enemy.quirk', { desc: enemyData.abilityDesc }));
 }
 
 function startFloorBattle() {
@@ -1361,7 +1817,7 @@ function resumeFromSave() {
             setBattlePhase(BATTLE_PHASES.BATTLE_OVER);
             commitBattleState({ render: false });
         }
-        showModal("Победа в Бою!", "Вы уже одолели этого соперника, награда получена. Загляните в магазин перед следующим боем.", () => {
+        showModal(t('modal.battleWon'), t('modal.alreadyWon'), () => {
             openShop();
         });
         return;
@@ -1527,8 +1983,9 @@ function getBattleInvariantViolations(b) {
 // (BATTLE_SAVED_FIELDS allow-list); validate* decide whether a stored save is usable.
 // ============================================================
 
-function updateSaveStatus(text) {
-    setElText('save-status-text', text);
+function updateSaveStatus(statusKey) {
+    lastSaveStatusKey = statusKey;
+    setElText('save-status-text', t(statusKey));
 }
 
 /**
@@ -1558,10 +2015,10 @@ function serializeGameState() {
 function saveGameState() {
     try {
         localStorage.setItem(SAVE_KEY, JSON.stringify(serializeGameState()));
-        updateSaveStatus("Сохранено");
+        updateSaveStatus('save.saved');
     } catch (err) {
         console.warn("Local storage unavailable:", err);
-        updateSaveStatus("Сессия");
+        updateSaveStatus('save.session');
     }
 }
 
@@ -1982,12 +2439,12 @@ function applyRoundResult(result) {
 function presentRoundResult(outcome) {
     switch (outcome.type) {
         case 'draw':
-            showModal("Ничья в кону", "Колода и карты обоих игроков закончились! Перемешиваем колоду...", () => {
+            showModal(t('modal.drawTitle'), t('modal.drawText'), () => {
                 startNewRound();
             });
             break;
         case 'player_win':
-            showModal("Раунд Выигран!", `Вы первыми скинули все карты! Противник остается в дураках и получает ${outcome.damage} ед. урона.`, () => {
+            showModal(t('modal.roundWonTitle'), t('modal.roundWonText', { n: outcome.damage }), () => {
                 withChangeSource({ kind: 'table' }, () => damageEnemyHP(outcome.damage));
                 if (battle.enemyHP > 0) {
                     startNewRound();
@@ -1996,10 +2453,10 @@ function presentRoundResult(outcome) {
             break;
         case 'enemy_win':
             if (outcome.isDefeated) {
-                presentPlayerDefeat(`Соперник первым скинул все карты. Вы получили ${outcome.damage} ед. урона и погибли.`);
+                presentPlayerDefeat(t('modal.defeatRound', { n: outcome.damage }));
             } else {
-                const safetyNote = outcome.savedBySafetyRope ? " Страховочный трос спас вас, оставив 1 HP!" : "";
-                showModal("Раунд Проигран!", `Соперник первым скинул все карты! Вы остались в дураках с ${outcome.cardsLeft} картами и получили ${outcome.damage} ед. урона.${safetyNote}`, () => {
+                const safetyNote = outcome.savedBySafetyRope ? t('modal.roundLostRope') : "";
+                showModal(t('modal.roundLostTitle'), t('modal.roundLostText', { cards: outcome.cardsLeft, n: outcome.damage, note: safetyNote }), () => {
                     startNewRound();
                 });
             }
@@ -2011,7 +2468,7 @@ function presentRoundResult(outcome) {
 // defeat modal, which returns to the splash screen.
 function presentPlayerDefeat(text) {
     clearLocalSave();
-    showModal("Поражение!", text, () => {
+    showModal(t('modal.defeatTitle'), text, () => {
         showSplashScreen();
     });
 }
@@ -2165,11 +2622,11 @@ function presentPlayerTakeOutcome({ enemyJustDied, isDefeated, savedBySafetyRope
     if (enemyJustDied) return;
 
     if (isDefeated) {
-        presentPlayerDefeat("Вы потеряли всё здоровье. Забег окончен.");
+        presentPlayerDefeat(t('modal.defeatHp'));
         return;
     }
     if (savedBySafetyRope) {
-        showModal("Страховочный трос сработал!", "Вы чудом остались в живых с 1 HP. Стол очищен.");
+        showModal(t('modal.ropeTitle'), t('modal.ropeText'));
     }
     if (!checkRoundEnd()) {
         scheduleEnemyAI(AI_TAKE_RESOLVE_DELAY_MS);
@@ -2275,13 +2732,13 @@ window.onPlayerCardClick = function(index) {
             playPlayerAttackCard(card);
         } else {
             if (battle.table.length >= maxAllowed) {
-                showModal("Лимит карт", "Нельзя подкинуть больше карт, чем есть на руках у защищающегося!");
+                showModal(t('modal.limitTitle'), t('modal.limitText'));
                 return;
             }
             if (isRankOnTable(card.value)) {
                 playPlayerAttackCard(card);
             } else {
-                showModal("Недопустимый ход", "Вы можете подкидывать только карты того номинала, что уже есть на столе!");
+                showModal(t('modal.badMoveTitle'), t('modal.badMoveText'));
             }
         }
     } else {
@@ -2289,7 +2746,7 @@ window.onPlayerCardClick = function(index) {
             const requiredRank = battle.table[0].attack.value;
             if (card.value === requiredRank) {
                 if (battle.enemyHand.length < battle.table.length + 1) {
-                    showModal("Перевод невозможен", "У противника недостаточно карт на руках, чтобы принять перевод!");
+                    showModal(t('transfer.impossibleTitle'), t('transfer.handSmall'));
                     battle.isTransferActive = false;
                     renderAll();
                     return;
@@ -2304,7 +2761,7 @@ window.onPlayerCardClick = function(index) {
                 scheduleEnemyAI(AI_STANDARD_DELAY_MS);
                 return;
             } else {
-                showModal("Неверная карта", `Для перевода необходимо выбрать карту номинала ${VALUES[requiredRank]}.`);
+                showModal(t('modal.wrongCardTitle'), t('modal.wrongCardText', { rank: VALUES[requiredRank] }));
                 return;
             }
         }
@@ -2318,7 +2775,7 @@ window.onPlayerCardClick = function(index) {
 
                 scheduleEnemyAI(AI_QUICK_DELAY_MS);
             } else {
-                showModal("Нельзя отбить", "Эта карта не покрывает атакующего! Нужна карта той же масти старше или козырь.");
+                showModal(t('modal.cantBeatTitle'), t('modal.cantBeatText'));
             }
         }
     }
@@ -2331,11 +2788,11 @@ function grantVictoryRewards() {
     const goldReward = applyEnemyAbilityModifier('modifyVictoryGold', WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR);
     changeGold(goldReward);
 
-    let rewardText = `Вы одолели соперника! Получено +${goldReward}$`;
+    let rewardText = t('modal.reward', { n: goldReward });
     if (getCurrentEnemy().isBoss) {
         run.maxHP += BOSS_MAX_HP_BONUS;
         healPlayerHP(BOSS_MAX_HP_BONUS);
-        rewardText += ` и +${BOSS_MAX_HP_BONUS} к максимальному здоровью за победу над боссом!`;
+        rewardText += t('modal.rewardBoss', { n: BOSS_MAX_HP_BONUS });
     }
     return rewardText;
 }
@@ -2352,7 +2809,7 @@ function winBattle() {
     // shop pending", never as a live round against a 0-HP enemy.
     setBattlePhase(BATTLE_PHASES.BATTLE_OVER);
     commitBattleState({ render: false });
-    showModal("Победа в Бою!", rewardText, () => {
+    showModal(t('modal.battleWon'), rewardText, () => {
         openShop();
     });
 }
@@ -2828,7 +3285,7 @@ function executeEnemyAction(action) {
             // already up (its close handler opens the shop). Don't cover it with
             // the transfer modal or hand the turn to the player.
             if (didEnemyJustDie(enemyHPBeforeTransfer)) break;
-            showModal("Враг Переводит!", `${getCurrentEnemy().name} переводит атаку обратно на вас!`);
+            showModal(t('modal.enemyTransferTitle'), t('modal.enemyTransferText', { name: getCurrentEnemy().name }));
             finishAIPhase();
             break;
         }
@@ -3125,7 +3582,7 @@ const RELIC_EFFECTS = {
                 && battle.defender === 'enemy'
                 && battle.playerHand.some(isPocketDiscardCard);
         },
-        label: '✂️ Сбросить 6/7 (Карманный сброс)',
+        get label() { return t('relic.pocket_discard.action'); },
         onUse: () => usePocketDiscard()
     },
     jester_discard: {
@@ -3143,7 +3600,7 @@ const RELIC_EFFECTS = {
                 && battle.defender === 'enemy' && battle.table.length === 0
                 && battle.drawDeck.length >= battle.playerHand.length;
         },
-        label: '🃏 Пересдать руку (Шутовской сброс)',
+        get label() { return t('relic.jester_discard.action'); },
         onUse: () => useJesterDiscard()
     },
     sleight_of_hand: {
@@ -3163,7 +3620,7 @@ const RELIC_EFFECTS = {
                 && hasOpenAttacks()
                 && battle.drawDeck.length > 0;
         },
-        label: '🪄 Подменить карту (Ловкость рук)',
+        get label() { return t('relic.sleight_of_hand.action'); },
         onUse: () => useSleightOfHand()
     }
 };
@@ -3447,8 +3904,8 @@ function openShop() {
                         <div class="item-row">
                             <span class="text-2xl">❤️</span>
                             <div class="min-w-0">
-                                <div class="text-xs font-bold text-rose-300">Принять лекарство (+${HEAL_AMOUNT} HP)</div>
-                                <div class="text-[10px] text-slate-400 leading-tight">Восстановить до ${HEAL_AMOUNT} здоровья (до макс. ${run.maxHP})</div>
+                                <div class="text-xs font-bold text-rose-300">${t('shop.healTitle', { n: HEAL_AMOUNT })}</div>
+                                <div class="text-[10px] text-slate-400 leading-tight">${t('shop.healText', { n: HEAL_AMOUNT, max: run.maxHP })}</div>
                             </div>
                         </div>
                         <button class="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-lg shadow border border-rose-400 active:scale-95 transition flex-shrink-0" onclick="buyHeal()">
@@ -3463,7 +3920,7 @@ function openShop() {
     const rerollBtn = getEl('btn-shop-reroll');
     if (rerollBtn) {
         const rerollPossible = canRerollShop();
-        rerollBtn.innerText = `🎲 Обновить · ${SHOP_REROLL_COST}$`;
+        rerollBtn.innerText = t('shop.reroll', { n: SHOP_REROLL_COST });
         rerollBtn.disabled = !rerollPossible;
         rerollBtn.classList.toggle('opacity-40', !rerollPossible);
     }
@@ -3476,8 +3933,8 @@ function openShop() {
                             <div class="item-row">
                                 <span class="text-2xl">${relic.icon}</span>
                                 <div class="min-w-0">
-                                    <div class="text-xs font-bold text-amber-300">${relic.name} <span class="rarity-tag">${RARITY_LABELS[getRelicRarity(relic)]}</span></div>
-                                    <div class="text-[10px] text-slate-400 leading-tight">${relic.desc}</div>
+                                    <div class="text-xs font-bold text-amber-300">${getRelicName(relic)} <span class="rarity-tag">${RARITY_LABELS[getRelicRarity(relic)]}</span></div>
+                                    <div class="text-[10px] text-slate-400 leading-tight">${getRelicDesc(relic)}</div>
                                 </div>
                             </div>
                             <button class="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-lg shadow border border-amber-300 flex-shrink-0" onclick="buyRelic('${relic.id}')">
@@ -3486,8 +3943,8 @@ function openShop() {
                         </div>
                     `).join('')
             : `<div class="muted-text text-center py-3">${getShopAvailableRelics().length === 0
-                        ? 'Вы скупили все артефакты.'
-                        : 'Предложение раскуплено. Обновите его, чтобы увидеть новые артефакты.'}</div>`;
+                        ? t('shop.soldAll')
+                        : t('shop.soldOut')}</div>`;
     }
 
     renderShopRelicSlots();
@@ -3513,7 +3970,7 @@ function renderRelicSlots(containerId, { sellable = false } = {}) {
 
         if (relic && sellable) {
             const price = Math.floor(relic.price / 2);
-            slot.title = `${relic.name}: ${relic.desc} (продать за ${price}$)`;
+            slot.title = t('shop.slotTitle', { name: getRelicName(relic), desc: getRelicDesc(relic), price });
             slot.onclick = () => sellRelic(i);
         } else if (relic) {
             const highlighted = relicHighlightUntil[relic.id] > Date.now();
@@ -3542,8 +3999,8 @@ window.sellRelic = function(index) {
 
     const sellPrice = Math.floor(relic.price / 2);
     showConfirm(
-        "Продать артефакт?",
-        `Продать «${relic.name}» за ${sellPrice}$? Слот освободится для новой покупки.`,
+        t('shop.sellTitle'),
+        t('shop.sellText', { name: getRelicName(relic), price: sellPrice }),
         () => {
             run.relics.splice(index, 1);
             run.gold += sellPrice;
@@ -3554,11 +4011,11 @@ window.sellRelic = function(index) {
 
 window.buyHeal = function() {
     if (run.gold < HEAL_COST) {
-        showModal("Недостаточно денег", `Нужно ${HEAL_COST} золотых монет для покупки здоровья.`);
+        showModal(t('shop.noMoneyTitle'), t('shop.noMoneyHeal', { n: HEAL_COST }));
         return;
     }
     if (run.playerHP >= run.maxHP) {
-        showModal("Здоровье полное", "У вас уже максимальный запас здоровья!");
+        showModal(t('shop.fullHpTitle'), t('shop.fullHpText'));
         return;
     }
 
@@ -3573,15 +4030,15 @@ window.buyRelic = function(relicId) {
 
     // Only what the draft currently offers can be bought.
     if (!Array.isArray(run.shopOffer) || !run.shopOffer.includes(relicId)) {
-        showModal("Нет в продаже", "Этого артефакта сейчас нет в предложении магазина.");
+        showModal(t('shop.notOfferedTitle'), t('shop.notOfferedText'));
         return;
     }
     if (run.gold < relic.price) {
-        showModal("Недостаточно денег", "Побеждайте в боях, чтобы зарабатывать золотые монеты.");
+        showModal(t('shop.noMoneyTitle'), t('shop.noMoneyRelic'));
         return;
     }
     if (run.relics.length >= MAX_RELICS) {
-        showModal("Слоты забиты", "Максимум 5 артефактов на руках!");
+        showModal(t('shop.slotsFullTitle'), t('shop.slotsFullText', { n: MAX_RELICS }));
         return;
     }
 
@@ -3594,11 +4051,11 @@ window.buyRelic = function(relicId) {
 window.rerollShop = function() {
     ensureShopOffer();
     if (!canRerollShop()) {
-        showModal("Нечего обновлять", "Все доступные артефакты уже в предложении.");
+        showModal(t('shop.noRerollTitle'), t('shop.noRerollText'));
         return;
     }
     if (run.gold < SHOP_REROLL_COST) {
-        showModal("Недостаточно денег", `Обновление предложения стоит ${SHOP_REROLL_COST}$.`);
+        showModal(t('shop.noMoneyTitle'), t('shop.noMoneyReroll', { n: SHOP_REROLL_COST }));
         return;
     }
 
@@ -3633,7 +4090,7 @@ function renderCardHTML(card, extraClass = '') {
 
     return `
                 <div class="card-base ${cardStyle} ${color} ${extraClass}">
-                    ${isTrump ? '<span class="absolute top-0.5 right-0.5 text-[10px] leading-none select-none text-amber-500 font-black" title="Козырь">👑</span>' : ''}
+                    ${isTrump ? `<span class="absolute top-0.5 right-0.5 text-[10px] leading-none select-none text-amber-500 font-black" title="${t('card.trump')}">👑</span>` : ''}
                     ${renderCardFaceHTML(card)}
                 </div>
             `;
@@ -3668,14 +4125,14 @@ function renderTurnBanner() {
 
     const state = battle.defender === 'enemy'
         ? {
-            text: battle.cardsToTake ? "Соперник забирает карты! (Жмите БИТО)" : "Ваш ход: Атака",
+            text: battle.cardsToTake ? t('banner.enemyTakes') : t('banner.attack'),
             color: 'amber'
         }
         : battle.phase === BATTLE_PHASES.ENEMY_THROWING_IN
-            ? { text: "Вы берёте карты... Соперник подкидывает", color: 'rose' }
+            ? { text: t('banner.throwingIn'), color: 'rose' }
         : battle.isTransferActive
-            ? { text: "Выберите карту для Перевода!", color: 'indigo' }
-            : { text: "Ход соперника: Защищайтесь!", color: 'rose' };
+            ? { text: t('banner.transfer'), color: 'indigo' }
+            : { text: t('banner.defend'), color: 'rose' };
 
     banner.innerText = state.text;
     banner.className = `turn-banner-base turn-banner-${state.color}`;
@@ -3698,7 +4155,7 @@ function renderEnemyHand() {
                 const eyeCard = document.createElement('div');
                 eyeCard.className = `w-9 h-14 bg-amber-50 border-2 ${isTrump ? 'border-amber-400 ring-2 ring-amber-400/70' : 'border-amber-300'} rounded-md shadow-lg flex flex-col justify-between p-0.5 relative ${color}`;
                 eyeCard.innerHTML = `
-                            <span class="absolute -top-1.5 -right-1.5 text-[10px] leading-none bg-black/90 rounded-full p-0.5 border border-amber-400" title="Шулерский глаз">👁️</span>
+                            <span class="absolute -top-1.5 -right-1.5 text-[10px] leading-none bg-black/90 rounded-full p-0.5 border border-amber-400" title="${t('relic.cheat_eye.name')}">👁️</span>
                             ${renderCardFaceHTML(card)}
                         `;
                 revealedSlot.appendChild(eyeCard);
@@ -3723,7 +4180,7 @@ function renderDeck() {
                                 ${renderCardHTML(battle.trumpCard)}
                             </div>
                             <div class="w-12 h-18 sm:w-14 sm:h-20 bg-rose-950 border-2 border-slate-200 rounded-lg shadow-md z-10 flex items-center justify-center font-extrabold text-xs text-amber-300">
-                                ${battle.drawDeck.length} шт
+                                ${t('deck.count', { n: battle.drawDeck.length })}
                             </div>
                         </div>
                     `;
@@ -3731,7 +4188,7 @@ function renderDeck() {
             const isRed = battle.trumpSuit === 'Hearts' || battle.trumpSuit === 'Tiles';
             deckContainer.innerHTML = `
                         <div class="flex items-center gap-1.5 bg-amber-950/90 border border-amber-500/60 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-300 shadow-md backdrop-blur-sm">
-                            <span>Козырь:</span>
+                            <span>${t('deck.trump')}</span>
                             <span class="${isRed ? 'text-rose-400' : 'text-slate-100'} text-base font-extrabold">${SUITS[battle.trumpCard.suit]}</span>
                         </div>
                     `;
@@ -3793,13 +4250,14 @@ function renderActionButtons() {
     const [btnAction, btnTake, btnTransfer] = ['btn-action', 'btn-take', 'btn-transfer'].map(getEl);
     if (btnAction && btnTake && btnTransfer) {
         if (battle.defender === 'enemy') {
-            btnAction.innerText = battle.cardsToTake ? "БИТО (Враг взял)" : "БИТО";
+            btnAction.innerText = battle.cardsToTake ? t('btn.bitoTook') : t('btn.bito');
             btnAction.disabled = battle.phase !== BATTLE_PHASES.PLAYER_ATTACK || battle.table.length === 0;
             btnTake.disabled = true;
             btnTransfer.disabled = true;
+            btnTransfer.innerText = t('btn.transfer');
             btnTransfer.className = "btn-action-base btn-action-indigo";
         } else {
-            btnAction.innerText = "БИТО";
+            btnAction.innerText = t('btn.bito');
             btnAction.disabled = battle.phase !== BATTLE_PHASES.PLAYER_DEFENSE || battle.table.length === 0 || hasOpenAttacks();
             btnTake.disabled = battle.phase !== BATTLE_PHASES.PLAYER_DEFENSE || battle.table.length === 0;
             
@@ -3807,10 +4265,10 @@ function renderActionButtons() {
             btnTransfer.disabled = !canTransfer;
 
             if (battle.isTransferActive) {
-                btnTransfer.innerText = "ОТМЕНА";
+                btnTransfer.innerText = t('btn.cancel');
                 btnTransfer.className = "btn-action-base btn-action-amber transfer-active";
             } else {
-                btnTransfer.innerText = "ПЕРЕВОД";
+                btnTransfer.innerText = t('btn.transfer');
                 btnTransfer.className = "btn-action-base btn-action-indigo";
             }
         }
@@ -3860,8 +4318,8 @@ function showRelicPopover(relicId) {
 
 function renderRelicPopoverContent(relic) {
     const base = {
-        title: `${relic.icon} ${relic.name}`,
-        text: relic.desc,
+        title: `${relic.icon} ${getRelicName(relic)}`,
+        text: getRelicDesc(relic),
         relicId: relic.id,
         // Tapping the dimmed backdrop (not the card itself) dismisses the
         // popover without activating anything — same as the explicit close
@@ -3875,7 +4333,7 @@ function renderRelicPopoverContent(relic) {
         const effect = RELIC_EFFECTS[relic.id];
         openModal({
             ...base,
-            cancel: { label: "ЗАКРЫТЬ", onClick: () => closeRelicPopover() },
+            cancel: { label: t('btn.close'), onClick: () => closeRelicPopover() },
             confirm: {
                 label: effect.label,
                 disabled: !effect.isReady(),
@@ -3889,7 +4347,7 @@ function renderRelicPopoverContent(relic) {
     } else {
         openModal({
             ...base,
-            confirm: { label: "ПОНЯТНО", disabled: false, onClick: () => closeRelicPopover() }
+            confirm: { label: t('btn.ok'), disabled: false, onClick: () => closeRelicPopover() }
         });
     }
 }
@@ -3921,7 +4379,7 @@ function refreshRelicPopoverIfOpen() {
 //   onBackdrop       called when the dimmed backdrop (not the card) is tapped
 //   relicId          marks the dialog as that relic's popover (see
 //                    refreshRelicPopoverIfOpen); anything else clears the mark
-function openModal({ title, text, confirmLabel = "ПОНЯТНО", onConfirm = null,
+function openModal({ title, text, confirmLabel = t('btn.ok'), onConfirm = null,
                      confirm = null, cancel = null, onBackdrop = null, relicId = null }) {
     const modal = getEl('msg-box');
     if (!modal) return;
@@ -3975,8 +4433,8 @@ function showModal(title, text, onClose) {
 // choices like selling an artifact.
 function showConfirm(title, text, onConfirm) {
     openModal({
-        title, text, confirmLabel: "ПРОДАТЬ", onConfirm,
-        cancel: { label: "ОТМЕНА", onClick: () => closeModal() }
+        title, text, confirmLabel: t('btn.sell'), onConfirm,
+        cancel: { label: t('btn.cancel'), onClick: () => closeModal() }
     });
 }
 
@@ -4001,12 +4459,12 @@ bindClick('btn-transfer', () => {
 
     if (reason === 'not_defender' || reason === 'empty_table') return;
 
-    const [title, text] = TRANSFER_BLOCK_MESSAGES[reason];
+    const [titleKey, textKey] = TRANSFER_BLOCK_MESSAGES[reason];
     if (reason === 'no_matching_card') {
         const requiredRank = battle.table[0].attack.value;
-        showModal(title, `У вас нет карты достоинства ${VALUES[requiredRank]} для перевода.`);
+        showModal(t(titleKey), t('transfer.noMatch', { rank: VALUES[requiredRank] }));
     } else {
-        showModal(title, text);
+        showModal(t(titleKey), t(textKey));
     }
 });
 
@@ -4019,7 +4477,7 @@ bindClick('btn-next-floor', () => {
     run.floor++;
     if (run.floor > ENEMIES.length) {
         clearLocalSave();
-        showModal("ПОБЕДА В ЗАБЕГЕ!", "Вы прошли все этажи подземелья и стали Легендой Дурака!", () => {
+        showModal(t('modal.runWonTitle'), t('modal.runWonText'), () => {
             showSplashScreen();
         });
     } else {
@@ -4027,6 +4485,9 @@ bindClick('btn-next-floor', () => {
         saveGameState();
     }
 });
+
+bindClick('btn-lang-ru', () => setLanguage('ru'));
+bindClick('btn-lang-en', () => setLanguage('en'));
 
 bindClick('btn-open-menu', () => {
     showSplashScreen();
@@ -4421,6 +4882,10 @@ function runGameUnitTests() {
 
     const realBattleSnapshot = captureRealBattleForTests();
     const realStateSnapshot = captureRealStateForTests();
+    // The tests assert on Russian UI text, so they always run in Russian; the player's
+    // language is put back in the finally block below.
+    const realLanguage = currentLang;
+    setLanguage('ru', { persist: false, render: false });
 
     const runner = new TinyTestRunner();
 
@@ -7019,7 +7484,7 @@ function runGameUnitTests() {
         // ---- file structure ----
         it('File is split into sections in the documented order, EVENT BINDINGS last', () => {
             const prod = getProductionSource();
-            const expected = ['CONSTANTS AND STATIC DATA', 'DOM HELPERS', 'AUDIO', 'GAME STATE', 'BATTLE INVARIANTS', 'PERSISTENCE',
+            const expected = ['CONSTANTS AND STATIC DATA', 'DOM HELPERS', 'LOCALIZATION', 'AUDIO', 'GAME STATE', 'BATTLE INVARIANTS', 'PERSISTENCE',
                 'CARD / TABLE PRIMITIVES', 'RULES (PURE FUNCTIONS)', 'BATTLE STATE TRANSITIONS', 'ENEMY AI', 'RELICS', 'SHOP',
                 'RENDERING', 'MODALS AND POPOVERS', 'EVENT BINDINGS'];
             let last = -1;
@@ -8959,14 +9424,14 @@ function runGameUnitTests() {
 
         it('showRelicPopover(): a passive relic shows only the description, no activation button', () => {
             game({
-                relics: [{ id: 'ace_sleeve', name: 'Туз в рукаве', icon: '🃏', desc: 'Тестовое описание', price: 12 }]
+                relics: [{ id: 'ace_sleeve', icon: '🃏', price: 12 }]
             }, {}, () => {
                 showRelicPopover('ace_sleeve');
                 const modal = getEl('msg-box');
                 const confirmBtn = getEl('msg-btn');
                 const cancelBtn = getEl('msg-btn-cancel');
                 assert.isFalse(modal.classList.contains('hidden'), 'popup must open');
-                assert.equal(getEl('msg-body').innerText, 'Тестовое описание');
+                assert.equal(getEl('msg-body').innerText, t('relic.ace_sleeve.desc'), 'popup text comes from the dictionary by relic id');
                 assert.equal(confirmBtn.innerText, 'ПОНЯТНО', 'a passive relic has only the close button');
                 assert.isTrue(cancelBtn.classList.contains('hidden'));
                 confirmBtn.click();
@@ -9701,6 +10166,212 @@ function runGameUnitTests() {
         });
     });
 
+    runner.describe('16. Localization (I18N, language switch)', (it, assert) => {
+        const { inGame } = makeTestFixtures();
+
+        // Runs fn in the given language without touching storage or the screen.
+        const inLanguage = (lang, fn) => {
+            const previous = currentLang;
+            setLanguage(lang, { persist: false, render: false });
+            try { fn(); } finally { setLanguage(previous, { persist: false, render: false }); }
+        };
+        // Runs fn and then puts the stored language choice back exactly as it was.
+        const preservingStoredLanguage = (fn) => {
+            const previous = currentLang;
+            const stored = localStorage.getItem(LANG_KEY);
+            try { fn(); } finally {
+                if (stored === null) localStorage.removeItem(LANG_KEY); else localStorage.setItem(LANG_KEY, stored);
+                setLanguage(previous, { persist: false, render: false });
+            }
+        };
+        const placeholdersOf = (text) => (text.match(/\{\w+\}/g) || []).sort().join();
+
+        it('The unit tests run in Russian whatever language the player picked', () => {
+            assert.equal(currentLang, 'ru');
+        });
+
+        it('ru and en tables have exactly the same keys', () => {
+            const missingInEn = Object.keys(I18N.ru).filter(key => !(key in I18N.en));
+            const missingInRu = Object.keys(I18N.en).filter(key => !(key in I18N.ru));
+            assert.equal(missingInEn.length, 0, 'missing in en: ' + missingInEn.join(', '));
+            assert.equal(missingInRu.length, 0, 'missing in ru: ' + missingInRu.join(', '));
+        });
+
+        it('Placeholders match between languages, and no text is empty', () => {
+            for (const key of Object.keys(I18N.ru)) {
+                assert.equal(placeholdersOf(I18N.en[key]), placeholdersOf(I18N.ru[key]), 'placeholders differ: ' + key);
+                assert.isTrue(I18N.ru[key].length > 0 && I18N.en[key].length > 0, 'empty text: ' + key);
+            }
+        });
+
+        it('English text contains no Cyrillic', () => {
+            const leaked = Object.keys(I18N.en).filter(key => /[\u0400-\u04FF]/.test(I18N.en[key]));
+            assert.equal(leaked.length, 0, 'Russian text in the en table: ' + leaked.join(', '));
+        });
+
+        it('t(): fills placeholders, falls back to Russian, then to the key itself', () => {
+            I18N.ru['test.only_ru'] = 'только по-русски {n}';
+            try {
+                inLanguage('en', () => {
+                    assert.equal(t('shop.reroll', { n: 3 }), '🎲 Reroll · 3$');
+                    assert.equal(t('shop.reroll'), '🎲 Reroll · {n}$', 'an unfilled placeholder stays visible');
+                    assert.equal(t('test.only_ru', { n: 2 }), 'только по-русски 2', 'a key missing in en falls back to ru');
+                    assert.equal(t('no.such.key'), 'no.such.key');
+                });
+            } finally {
+                delete I18N.ru['test.only_ru'];
+            }
+        });
+
+        it('Every relic, enemy and relic ability has complete text in both languages', () => {
+            for (const lang of SUPPORTED_LANGUAGES) {
+                inLanguage(lang, () => {
+                    for (const relic of ALL_RELICS) {
+                        assert.isTrue(!relic.name.startsWith('relic.') && !relic.desc.startsWith('relic.'), lang + ': no text for ' + relic.id);
+                        assert.isFalse(/\{\w+\}/.test(relic.desc), lang + ': unfilled placeholder in ' + relic.id);
+                    }
+                    for (const enemy of ENEMIES) {
+                        assert.isTrue(!enemy.name.startsWith('enemy.') && !enemy.abilityDesc.startsWith('enemy.'), lang + ': no text for ' + enemy.key);
+                        assert.isFalse(/\{\w+\}/.test(enemy.abilityDesc), lang + ': unfilled placeholder in ' + enemy.key);
+                    }
+                    for (const id of ACTIVE_RELIC_IDS) {
+                        assert.isFalse(RELIC_EFFECTS[id].label.startsWith('relic.'), lang + ': no ability label for ' + id);
+                    }
+                });
+            }
+        });
+
+        it('Relic, enemy, rank and rarity text follows the language', () => {
+            inLanguage('en', () => {
+                assert.equal(getRelicName(ALL_RELICS.find(r => r.id === 'ace_sleeve')), 'Ace Up the Sleeve');
+                assert.equal(ENEMIES[0].name, 'Rookie Sharp');
+                assert.equal(ENEMIES[0].abilityDesc, 'Plain old opponent');
+                assert.equal(VALUES[14], 'A');
+                assert.equal(RARITY_LABELS[RARITY.RARE], 'Rare');
+            });
+            assert.equal(getRelicName(ALL_RELICS.find(r => r.id === 'ace_sleeve')), 'Туз в рукаве');
+            assert.equal(ENEMIES[0].name, 'Начинающий Шулер');
+            assert.equal(VALUES[14], 'Т');
+        });
+
+        it('Numbers in descriptions come from the constants in both languages', () => {
+            for (const lang of SUPPORTED_LANGUAGES) {
+                inLanguage(lang, () => {
+                    const desc = (id) => ALL_RELICS.find(r => r.id === id).desc;
+                    assert.isTrue(desc('mirror_ring').includes(String(TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER)), lang + ' mirror_ring');
+                    assert.isTrue(desc('sharp_suit').includes(String(SHARP_SUIT_DAMAGE)), lang + ' sharp_suit');
+                    assert.isTrue(desc('moonshine_flask').includes(String(FLASK_HEAL_ON_DEFEND)), lang + ' moonshine_flask');
+                    assert.isTrue(desc('golden_bullet').includes(String(GOLDEN_BULLET_DAMAGE)), lang + ' golden_bullet');
+                    const enemy = (id) => ENEMIES.find(e => e.abilityId === id).abilityDesc;
+                    assert.isTrue(enemy('swindle').includes(`${SWINDLE_GOLD_LOSS}$`), lang + ' swindle');
+                    assert.isTrue(enemy('hearty').includes(String(HEARTY_REGEN_ON_DEFENSE)), lang + ' hearty');
+                    assert.isTrue(enemy('pickpocket').includes(`${Math.round(PICKPOCKET_REWARD_CUT * 100)}%`), lang + ' pickpocket');
+                    assert.isTrue(enemy('all_in').includes(String(ALL_IN_EXTRA_TAKE_DAMAGE)), lang + ' all_in');
+                    assert.isTrue(enemy('thick_skin').includes(String(THICK_SKIN_DAMAGE_REDUCTION)), lang + ' thick_skin');
+                });
+            }
+        });
+
+        it('setLanguage(): localizes the page, remembers the choice and rejects unknown languages', () => {
+            preservingStoredLanguage(() => {
+                assert.isFalse(setLanguage('de', { persist: false, render: false }), 'unknown language is refused');
+                assert.equal(currentLang, 'ru');
+                assert.isTrue(setLanguage('en', { render: false }));
+                assert.equal(localStorage.getItem(LANG_KEY), 'en', 'the choice is stored');
+                assert.equal(readStoredLanguage(), 'en');
+                assert.equal(document.documentElement.lang, 'en');
+                assert.equal(document.title, t('doc.title'));
+                assert.equal(getEl('btn-new-run').textContent, 'SCRAP THE RUN (NEW GAME)');
+                assert.equal(getEl('btn-toggle-audio').title, 'Toggle sound');
+                assert.equal(getEl('btn-lang-en').getAttribute('aria-pressed'), 'true');
+                assert.equal(getEl('btn-lang-ru').getAttribute('aria-pressed'), 'false');
+                assert.isTrue(setLanguage('ru', { render: false }));
+                assert.equal(getEl('btn-new-run').textContent, 'СБРОСИТЬ ЗАБЕГ (НОВАЯ ИГРА)');
+                localStorage.setItem(LANG_KEY, 'xx');
+                assert.equal(readStoredLanguage(), 'ru', 'a garbage value in storage means Russian');
+            });
+        });
+
+        it('The autosave indicator is re-localized on a language change', () => {
+            const previousKey = lastSaveStatusKey;
+            try {
+                updateSaveStatus('save.session');
+                inLanguage('en', () => assert.equal(getEl('save-status-text').textContent, 'Session'));
+                assert.equal(getEl('save-status-text').textContent, 'Сессия');
+            } finally {
+                updateSaveStatus(previousKey);
+            }
+        });
+
+        it('Language buttons: a click switches the language and repaints the battle', () => {
+            inGame({ defender: 'enemy', phase: BATTLE_PHASES.PLAYER_ATTACK }, () => {
+                preservingStoredLanguage(() => {
+                    getEl('btn-lang-en').click();
+                    assert.equal(currentLang, 'en');
+                    assert.equal(getEl('turn-banner').innerText, 'Your move: Attack', 'the battle is repainted');
+                    assert.equal(localStorage.getItem(LANG_KEY), 'en');
+                    getEl('btn-lang-ru').click();
+                    assert.equal(getEl('turn-banner').innerText, 'Ваш ход: Атака');
+                });
+            });
+        });
+
+        it('Rendering follows the language: banner, action buttons and the enemy quirk badge', () => {
+            inGame({ defender: 'enemy', phase: BATTLE_PHASES.PLAYER_ATTACK }, () => {
+                inLanguage('en', () => {
+                    renderTurnBanner();
+                    assert.equal(getEl('turn-banner').innerText, t('banner.attack'));
+                    battle.cardsToTake = true; renderTurnBanner(); renderActionButtons();
+                    assert.equal(getEl('turn-banner').innerText, 'Foe is taking cards! (Hit BITO)');
+                    assert.equal(getEl('btn-action').innerText, 'BITO (Foe took)');
+                    assert.equal(getEl('btn-transfer').innerText, 'TRANSFER');
+                    renderHeader();
+                    assert.isTrue(getEl('boss-ability-badge').innerText.startsWith('Quirk: '), 'quirk badge is localized');
+                });
+            });
+        });
+
+        it('Saves are language-independent: a saved relic carries no localized text', () => {
+            inGame({}, () => {
+                inLanguage('en', () => {
+                    run.relics = [ALL_RELICS.find(r => r.id === 'ace_sleeve')];
+                    const saved = JSON.stringify(serializeGameState());
+                    assert.isTrue(saved.includes('ace_sleeve'), 'the relic id is saved');
+                    assert.isFalse(saved.includes('Ace Up the Sleeve') || saved.includes('Туз в рукаве'), 'no relic name in the save');
+                    assert.isFalse(saved.includes('Making the foe') || saved.includes('Заставление врага'), 'no relic description in the save');
+                    run.relics = [{ id: 'ace_sleeve', icon: '🃏', price: 12 }];
+                    assert.equal(getRelicName(run.relics[0]), 'Ace Up the Sleeve', 'a relic restored from a save is named by id');
+                });
+            });
+        });
+
+        it('Every key used in the code or in data-i18n attributes exists in the dictionary', () => {
+            const used = new Set();
+            for (const match of getProductionSource().matchAll(/\bt\('([\w.]+)'[,)]/g)) used.add(match[1]);
+            document.querySelectorAll('[data-i18n]').forEach(el => used.add(el.dataset.i18n));
+            document.querySelectorAll('[data-i18n-title]').forEach(el => used.add(el.dataset.i18nTitle));
+            for (const key of TRANSFER_BLOCK_MESSAGES ? Object.values(TRANSFER_BLOCK_MESSAGES).flat() : []) if (key) used.add(key);
+            assert.isTrue(used.size > 50, 'the scan should find the keys');
+            const unknown = [...used].filter(key => !(key in I18N.ru) || !(key in I18N.en));
+            assert.equal(unknown.length, 0, 'keys without text: ' + unknown.join(', '));
+        });
+
+        it('No Russian text is left in the game code outside the Russian table', () => {
+            let source = getProductionSource();
+            const from = source.indexOf('\n    ru: {');
+            const to = source.indexOf('\n    en: {');
+            assert.isTrue(from > 0 && to > from, 'Russian table not found');
+            source = (source.slice(0, from) + source.slice(to)).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+            // The splash-screen helpers live after the test code, so scan that tail as well.
+            const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
+            const tailAt = fullSource.indexOf('function update' + 'StartButtonForSavedRun');
+            assert.isTrue(tailAt > 0, 'splash helpers not found');
+            source += '\n' + fullSource.slice(tailAt).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+            const lines = source.split('\n').filter(line => /[\u0400-\u04FF]/.test(line)).map(line => line.trim().slice(0, 80));
+            assert.equal(lines.length, 0, 'hardcoded Russian text: ' + lines.join(' | '));
+        });
+    });
+
     // Some tests call game functions (e.g. handlePlayerTake) that autosave as a
     // side effect, which would otherwise overwrite the player's real save with
     // fake test fixtures. preserveLocalSaveAround guarantees the real save is
@@ -9727,6 +10398,7 @@ function runGameUnitTests() {
         // Put the real run/battle back exactly as they were before the run,
         // whatever individual tests did to them (see captureRealStateForTests).
         restoreRealStateAfterTests(realStateSnapshot);
+        setLanguage(realLanguage, { persist: false, render: false });
         // Tests drive real game functions (startFloorBattle, executeEnemyAI,
         // etc.) against throwaway fixtures, which paint the DOM with fixture
         // data. Restoring run/battle in memory does not undo that, so repaint
@@ -9877,10 +10549,10 @@ function updateStartButtonForSavedRun() {
     if (!btnStart) return;
     const span = btnStart.querySelector('span');
     if (hasSavedGame()) {
-        if (span) span.innerText = "▶ ПРОДОЛЖИТЬ ИГРУ";
+        if (span) span.innerText = t('splash.continue');
         if (btnNewRun) btnNewRun.classList.remove('hidden');
     } else {
-        if (span) span.innerText = "▶ НОВАЯ ИГРА";
+        if (span) span.innerText = t('splash.newGame');
         if (btnNewRun) btnNewRun.classList.add('hidden');
     }
 }
@@ -9896,6 +10568,7 @@ function showSplashScreen() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+    setLanguage(readStoredLanguage(), { persist: false, render: false });
     initUnitTestsUI();
     updateStartButtonForSavedRun();
 });
