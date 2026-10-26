@@ -745,6 +745,8 @@ const ALL_RELICS = [
 
 // Numbers that are interpolated into a relic description (the text itself is in I18N).
 const RELIC_DESC_PARAMS = {
+    ace_sleeve: () => ({ n: ACE_SLEEVE_BONUS_DAMAGE }),
+    midas_touch: () => ({ n: MIDAS_TOUCH_GOLD_ON_DEFEND }),
     mirror_ring: () => ({ n: TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER }),
     sharp_suit: () => ({ n: SHARP_SUIT_DAMAGE }),
     moonshine_flask: () => ({ n: FLASK_HEAL_ON_DEFEND }),
@@ -986,7 +988,7 @@ const I18N = {
         "hud.relics": "ШУЛЕРСКИЕ АРТЕФАКТЫ (JOKERS)",
         "btn.take": "ВЗЯТЬ",
         "btn.bito": "БИТО",
-        "btn.bitoTook": "БИТО (Враг взял)",
+        "btn.bitoTook": "БИТО (Соперник взял)",
         "btn.transfer": "ПЕРЕВОД",
         "btn.cancel": "ОТМЕНА",
         "btn.ok": "ПОНЯТНО",
@@ -1041,7 +1043,7 @@ const I18N = {
         "modal.drawTitle": "Ничья в кону",
         "modal.drawText": "Колода и карты обоих игроков закончились! Перемешиваем колоду...",
         "modal.roundWonTitle": "Раунд Выигран!",
-        "modal.roundWonText": "Вы первыми скинули все карты! Противник остается в дураках и получает {n} ед. урона.",
+        "modal.roundWonText": "Вы первыми скинули все карты! Соперник остаётся в дураках и получает {n} ед. урона.",
         "modal.roundLostTitle": "Раунд Проигран!",
         "modal.roundLostText": "Соперник первым скинул все карты! Вы остались в дураках с {cards} картами и получили {n} ед. урона.{note}",
         "modal.roundLostRope": " Страховочный трос спас вас, оставив 1 HP!",
@@ -1060,7 +1062,7 @@ const I18N = {
         "modal.cantBeatText": "Эта карта не покрывает атакующего! Нужна карта той же масти старше или козырь.",
         "modal.reward": "Вы одолели соперника! Получено +{n}$",
         "modal.rewardBoss": " и +{n} к максимальному здоровью за победу над боссом!",
-        "modal.enemyTransferTitle": "Враг Переводит!",
+        "modal.enemyTransferTitle": "Соперник Переводит!",
         "modal.enemyTransferText": "{name} переводит атаку обратно на вас!",
         "modal.runWonTitle": "ПОБЕДА В ЗАБЕГЕ!",
         "modal.runWonText": "Вы прошли все этажи подземелья и стали Легендой Дурака!",
@@ -1069,25 +1071,25 @@ const I18N = {
         "transfer.boss": "Трактирщик запрещает переводить карты на этом этаже!",
         "transfer.defending": "Нельзя переводить ход, если вы уже начали отбиваться!",
         "transfer.mixed": "Переводить можно только карты одинакового достоинства!",
-        "transfer.handSmall": "У противника недостаточно карт на руках, чтобы принять перевод!",
+        "transfer.handSmall": "У соперника недостаточно карт на руках, чтобы принять перевод!",
         "transfer.noMatch": "У вас нет карты достоинства {rank} для перевода.",
         "relic.pocket_discard.action": "✂️ Сбросить 6/7 (Карманный сброс)",
         "relic.jester_discard.action": "🃏 Пересдать руку (Шутовской сброс)",
         "relic.sleight_of_hand.action": "🪄 Подменить карту (Ловкость рук)",
         "relic.ace_sleeve.name": "Туз в рукаве",
-        "relic.ace_sleeve.desc": "Заставление врага взять карты наносит +5 ед. дополнительного урона.",
+        "relic.ace_sleeve.desc": "Заставление соперника взять карты наносит +{n} ед. дополнительного урона.",
         "relic.midas_touch.name": "Золотое пальто",
-        "relic.midas_touch.desc": "Получайте +3$ каждый раз, когда успешно отбиваетесь.",
+        "relic.midas_touch.desc": "Получайте +{n}$ каждый раз, когда успешно отбиваетесь.",
         "relic.mirror_ring.name": "Зеркальный перстень",
-        "relic.mirror_ring.desc": "Когда вы берёте карты со стола, враг получает {n} ед. урона за каждую взятую карту.",
+        "relic.mirror_ring.desc": "Когда вы берёте карты со стола, соперник получает {n} ед. урона за каждую взятую карту.",
         "relic.cheat_eye.name": "Шулерский глаз",
         "relic.cheat_eye.desc": "Показывает вам самую старшую карту в руке соперника (козыри считаются старше).",
         "relic.pocket_discard.name": "Карманный сброс",
         "relic.pocket_discard.desc": "Раз за раунд можно безвозвратно сбросить из руки шестёрку или семёрку прямо в отбой.",
         "relic.spam_mail.name": "Спам-рассылка",
-        "relic.spam_mail.desc": "Когда враг забирает карты со стола, он дополнительно берёт верхнюю карту из колоды.",
+        "relic.spam_mail.desc": "Когда соперник забирает карты со стола, он дополнительно берёт верхнюю карту из колоды.",
         "relic.heavy_ballast.name": "Тяжёлый балласт",
-        "relic.heavy_ballast.desc": "В начале хода врага он получает урон за каждую карту в руке сверх 6 штук (не больше 4 ед.).",
+        "relic.heavy_ballast.desc": "В начале хода соперника он получает урон за каждую карту в руке сверх 6 штук (не больше 4 ед.).",
         "relic.ballast_drop.name": "Сброс балласта",
         "relic.ballast_drop.desc": "При взятии карт со стола вы сразу сбрасываете в отбой 2 некозырные карты наименьшего ранга.",
         "relic.coin_magnet.name": "Магнит для мелочи",
@@ -1097,18 +1099,18 @@ const I18N = {
         "relic.jester_discard.name": "Шутовской сброс",
         "relic.jester_discard.desc": "Раз за бой на своём ходу атаки можно сбросить всю руку и добрать столько же карт из колоды.",
         "relic.cascade_transfer.name": "Каскадный перевод",
-        "relic.cascade_transfer.desc": "Первый перевод карт за ход наносит врагу 4 ед. урона.",
+        "relic.cascade_transfer.desc": "Первый перевод карт за ход наносит сопернику 4 ед. урона.",
         "relic.sleight_of_hand.name": "Ловкость рук",
-        "relic.sleight_of_hand.desc": "Раз за бой можно заменить карту, которой враг пошёл на вас, случайной картой из колоды.",
+        "relic.sleight_of_hand.desc": "Раз за бой можно заменить карту, которой соперник пошёл на вас, случайной картой из колоды.",
         "relic.salted_wound.name": "Солёная рана",
-        "relic.salted_wound.desc": "Если враг берёт карты со стола, он получает +1 ед. урона за каждую карту сверх 6 в его руке (не больше 4 ед.).",
+        "relic.salted_wound.desc": "Если соперник берёт карты со стола, он получает +1 ед. урона за каждую карту сверх 6 в его руке (не больше 4 ед.).",
         "relic.sharp_suit.name": "Острая масть",
-        "relic.sharp_suit.desc": "Каждый раз, когда вы играете козырную карту (атака, подкидка, перевод или защита), враг получает {n} ед. урона.",
+        "relic.sharp_suit.desc": "Каждый раз, когда вы играете козырную карту (атака, подкидка, перевод или защита), соперник получает {n} ед. урона.",
         "relic.moonshine_flask.name": "Фляжка с пойлом",
         "relic.moonshine_flask.desc": "Каждый раз, когда вы успешно отбиваетесь, вы восстанавливаете {n} HP.",
         "relic.golden_bullet.name": "Золотая пуля",
-        "relic.golden_bullet.desc": "Каждый раз, когда артефакт приносит вам $, враг получает {n} ед. урона.",
-        "enemy.plain.ability": "Стандартный противник",
+        "relic.golden_bullet.desc": "Каждый раз, когда артефакт приносит вам $, соперник получает {n} ед. урона.",
+        "enemy.plain.ability": "Стандартный соперник",
         "enemy.rookie.name": "Начинающий Шулер",
         "enemy.swindler.name": "Уличный Мошенник",
         "enemy.swindler.ability": "Когда вы берёте карты, вы теряете {n}$",
@@ -1199,7 +1201,7 @@ const I18N = {
         "banner.attack": "Your move: Attack",
         "banner.throwingIn": "You're taking cards... The opponent is throwing in cards.",
         "banner.transfer": "Choose a card to transfer the attack!",
-        "banner.defend": "Foe's move: Defend yourself!",
+        "banner.defend": "Opponent's move: Defend yourself!",
         "modal.battleWon": "Victory!",
         "modal.alreadyWon": "You already took this one down and cashed out. Swing by the shop before the next fight.",
         "modal.drawTitle": "Dead Heat",
@@ -1207,10 +1209,10 @@ const I18N = {
         "modal.roundWonTitle": "You won the round!",
         "modal.roundWonText": "You emptied your hand first! The other guy's left holding the bag and eats {n} damage.",
         "modal.roundLostTitle": "Round Lost!",
-        "modal.roundLostText": "Foe emptied their hand first! You're the Durak with {cards} cards left and ate {n} damage.{note}",
+        "modal.roundLostText": "The opponent emptied their hand first! You're the Durak with {cards} cards left and ate {n} damage.{note}",
         "modal.roundLostRope": " The Safety Rope saved your hide with 1 HP left!",
         "modal.defeatTitle": "Busted!",
-        "modal.defeatRound": "Foe emptied their hand first. You ate {n} damage and went down.",
+        "modal.defeatRound": "The opponent emptied their hand first. You ate {n} damage and went down.",
         "modal.defeatHp": "You're out of HP. Run's over.",
         "modal.ropeTitle": "Safety Rope Held!",
         "modal.ropeText": "Somehow you're still breathing with 1 HP. The table's cleared.",
@@ -1222,9 +1224,9 @@ const I18N = {
         "modal.wrongCardText": "To transfer the attack, choose a card of rank {rank}.",
         "modal.cantBeatTitle": "Can't Beat That",
         "modal.cantBeatText": "That card doesn't cover the attack! You need a higher card of the same suit, or a trump.",
-        "modal.reward": "You took the foe down! Scored +{n}$",
+        "modal.reward": "You took the opponent down! Scored +{n}$",
         "modal.rewardBoss": " and +{n} max HP for dropping a boss!",
-        "modal.enemyTransferTitle": "Foe Transfers!",
+        "modal.enemyTransferTitle": "Opponent Transfers!",
         "modal.enemyTransferText": "{name} passes the attack right back at you!",
         "modal.runWonTitle": "RUN WON!",
         "modal.runWonText": "You cleared every floor of the dungeon and became a Durak Legend!",
@@ -1233,25 +1235,25 @@ const I18N = {
         "transfer.boss": "The Innkeeper doesn't allow transfers on this floor!",
         "transfer.defending": "You can't transfer once you've started defending!",
         "transfer.mixed": "You can only transfer cards of the same rank!",
-        "transfer.handSmall": "The foe doesn't have enough cards to take a transfer!",
+        "transfer.handSmall": "The opponent doesn't have enough cards to take a transfer!",
         "transfer.noMatch": "You don't have a rank {rank} card to transfer.",
         "relic.pocket_discard.action": "✂️ Discard a 6/7 (Pocket Dump)",
         "relic.jester_discard.action": "🃏 Redeal your hand (Jester's Dump)",
         "relic.sleight_of_hand.action": "🪄 Swap a card (Sleight of Hand)",
         "relic.ace_sleeve.name": "Ace Up the Sleeve",
-        "relic.ace_sleeve.desc": "Making the foe take cards deals +5 bonus damage.",
+        "relic.ace_sleeve.desc": "Whenever the opponent takes cards, deal +{n} bonus damage to them.",
         "relic.midas_touch.name": "Gilded Coat",
-        "relic.midas_touch.desc": "Pocket +3$ every time you defend clean.",
+        "relic.midas_touch.desc": "Gain +{n}$ whenever you successfully defend.",
         "relic.mirror_ring.name": "Mirror Ring",
-        "relic.mirror_ring.desc": "When you take cards from the table, the foe eats {n} damage for every card you took.",
+        "relic.mirror_ring.desc": "Whenever you take cards from the table, deal {n} damage to the opponent for each card taken.",
         "relic.cheat_eye.name": "Hustler's Eye",
-        "relic.cheat_eye.desc": "Shows you the highest card in the foe's hand (trumps count as higher).",
+        "relic.cheat_eye.desc": "Reveals the strongest card in the opponent's hand. Trumps outrank all non-trumps.",
         "relic.pocket_discard.name": "Pocket Dump",
-        "relic.pocket_discard.desc": "Once a round you can discard a six or a seven from your hand straight into the discard pile for good.",
+        "relic.pocket_discard.desc": "Once per round, discard a 6 or 7 from your hand permanently.",
         "relic.spam_mail.name": "Spam Mail",
-        "relic.spam_mail.desc": "When the foe takes cards off the table, it also draws the top card of the deck.",
+        "relic.spam_mail.desc": "When the opponent takes cards off the table, they also draw the top card of the deck.",
         "relic.heavy_ballast.name": "Heavy Ballast",
-        "relic.heavy_ballast.desc": "At the start of the foe's turn it takes damage for every card in hand beyond 6 (max 4 damage).",
+        "relic.heavy_ballast.desc": "At the start of the opponent's turn, they take damage for every card in hand beyond 6 (max 4 damage).",
         "relic.ballast_drop.name": "Ballast Drop",
         "relic.ballast_drop.desc": "When you take cards from the table, you instantly discard the 2 lowest-rank non-trump cards.",
         "relic.coin_magnet.name": "Coin Magnet",
@@ -1261,17 +1263,17 @@ const I18N = {
         "relic.jester_discard.name": "Jester's Dump",
         "relic.jester_discard.desc": "Once per fight, on your attacking turn, you can discard your whole hand and draw the same number of cards from the deck.",
         "relic.cascade_transfer.name": "Cascade Transfer",
-        "relic.cascade_transfer.desc": "The first card transfer each turn deals 4 damage to the foe.",
+        "relic.cascade_transfer.desc": "The first card transfer each turn deals 4 damage to the opponent.",
         "relic.sleight_of_hand.name": "Sleight of Hand",
-        "relic.sleight_of_hand.desc": "Once per fight, swap the card the foe just led at you with a random card from the deck.",
+        "relic.sleight_of_hand.desc": "Once per fight, swap the card the opponent just led at you with a random card from the deck.",
         "relic.salted_wound.name": "Salted Wound",
-        "relic.salted_wound.desc": "If the foe takes cards from the table, it takes +1 damage for every card above 6 in its hand (max 4 damage).",
+        "relic.salted_wound.desc": "If the opponent takes cards from the table, they also suffer +1 damage for every card above 6 in their hand (max 4 damage).",
         "relic.sharp_suit.name": "Sharp Suit",
-        "relic.sharp_suit.desc": "Every time you play a trump card (attack, throw-in, transfer or defense), the foe takes {n} damage.",
+        "relic.sharp_suit.desc": "Every time you play a trump card (attack, throw-in, transfer or defense), deal {n} damage to the opponent.",
         "relic.moonshine_flask.name": "Moonshine Flask",
         "relic.moonshine_flask.desc": "Every time you defend successfully, you patch up {n} HP.",
         "relic.golden_bullet.name": "Golden Bullet",
-        "relic.golden_bullet.desc": "Every time a relic brings you $, the foe takes {n} damage.",
+        "relic.golden_bullet.desc": "Every time a relic brings you $, deal {n} damage to the opponent.",
         "enemy.plain.ability": "Plain old opponent",
         "enemy.rookie.name": "Rookie Sharp",
         "enemy.swindler.name": "Street Hustler",
@@ -5817,7 +5819,7 @@ function runGameUnitTests() {
         // cascade_transfer can deal the killing blow, and a transfer is not a
         // terminal action: the code after the damage must notice the win instead of
         // carrying on (the reported hang — enemy at 0 HP, win modal replaced by the
-        // "Враг Переводит!" one, no way forward).
+        // "Соперник Переводит!" one, no way forward).
         it('Cascade transfer: enemy transfers the attack and dies from damage - victory, victory modal not covered', () => {
             inGameStrict({
                 phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', enemyHP: CASCADE_TRANSFER_DAMAGE,
@@ -5998,7 +6000,7 @@ function runGameUnitTests() {
                 assert.equal(battle.enemyHP, 1);
                 assert.phase(BATTLE_PHASES.PLAYER_DEFENSE);
                 assert.equal(battle.defender, 'player');
-                assert.modalTitle('Враг Переводит!');
+                assert.modalTitle('Соперник Переводит!');
             }, relicRun('cascade_transfer'));
         });
 
@@ -8222,7 +8224,7 @@ function runGameUnitTests() {
         it('Ladder: the first regular enemy has no ability, the rest each got their own ability', () => {
             const fillers = ENEMIES.filter(e => !e.isBoss);
             assert.equal(fillers[0].abilityId, 'none');
-            assert.equal(fillers[0].abilityDesc, 'Стандартный противник');
+            assert.equal(fillers[0].abilityDesc, 'Стандартный соперник');
             fillers.slice(1).forEach(e => {
                 assert.isTrue(e.abilityId !== 'none', `${e.name}: ability not set`);
                 assert.isTrue(e.activeAbilities.has(e.abilityId));
@@ -9431,7 +9433,7 @@ function runGameUnitTests() {
                 const confirmBtn = getEl('msg-btn');
                 const cancelBtn = getEl('msg-btn-cancel');
                 assert.isFalse(modal.classList.contains('hidden'), 'popup must open');
-                assert.equal(getEl('msg-body').innerText, t('relic.ace_sleeve.desc'), 'popup text comes from the dictionary by relic id');
+                assert.equal(getEl('msg-body').innerText, getRelicDesc({ id: 'ace_sleeve' }), 'popup text comes from the dictionary by relic id');
                 assert.equal(confirmBtn.innerText, 'ПОНЯТНО', 'a passive relic has only the close button');
                 assert.isTrue(cancelBtn.classList.contains('hidden'));
                 confirmBtn.click();
@@ -10260,6 +10262,8 @@ function runGameUnitTests() {
                     const desc = (id) => ALL_RELICS.find(r => r.id === id).desc;
                     assert.isTrue(desc('mirror_ring').includes(String(TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER)), lang + ' mirror_ring');
                     assert.isTrue(desc('sharp_suit').includes(String(SHARP_SUIT_DAMAGE)), lang + ' sharp_suit');
+                    assert.isTrue(desc('ace_sleeve').includes(String(ACE_SLEEVE_BONUS_DAMAGE)), lang + ' ace_sleeve');
+                    assert.isTrue(desc('midas_touch').includes(String(MIDAS_TOUCH_GOLD_ON_DEFEND)), lang + ' midas_touch');
                     assert.isTrue(desc('moonshine_flask').includes(String(FLASK_HEAL_ON_DEFEND)), lang + ' moonshine_flask');
                     assert.isTrue(desc('golden_bullet').includes(String(GOLDEN_BULLET_DAMAGE)), lang + ' golden_bullet');
                     const enemy = (id) => ENEMIES.find(e => e.abilityId === id).abilityDesc;
@@ -10338,7 +10342,7 @@ function runGameUnitTests() {
                     const saved = JSON.stringify(serializeGameState());
                     assert.isTrue(saved.includes('ace_sleeve'), 'the relic id is saved');
                     assert.isFalse(saved.includes('Ace Up the Sleeve') || saved.includes('Туз в рукаве'), 'no relic name in the save');
-                    assert.isFalse(saved.includes('Making the foe') || saved.includes('Заставление врага'), 'no relic description in the save');
+                    assert.isFalse(saved.includes('Whenever the opponent takes cards') || saved.includes('Заставление соперника'), 'no relic description in the save');
                     run.relics = [{ id: 'ace_sleeve', icon: '🃏', price: 12 }];
                     assert.equal(getRelicName(run.relics[0]), 'Ace Up the Sleeve', 'a relic restored from a save is named by id');
                 });
