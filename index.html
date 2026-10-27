@@ -828,7 +828,7 @@ const BOSS_ROSTER = [
         key: "casino", hp: 40, avatar: "🎩",
         abilityId: "ai_transfer",
         fillersBefore: 2, fillerHpRange: [24, 32],
-        permanentAbility: true, // с этого момента переводить умеют все противники
+        permanentAbility: true, // from this point on, every opponent can transfer
     },
     {
         key: "syndicate", hp: 55, avatar: "🕵️",
@@ -1574,7 +1574,7 @@ let battle = {
     phase: 'idle',
     aiTimer: null,
     actionToken: 0,
-    // Turn-scoped guards, reset at the start of every "ход" (see resetTurnScopedFlags)
+    // Turn-scoped guards, reset at the start of every turn (see resetTurnScopedFlags)
     cascadeTransferUsedThisTurn: false,
     heavyBallastAppliedThisTurn: false,
     // Battle-scoped guards, reset once per fight in startFloorBattle
@@ -1677,7 +1677,7 @@ function scheduleEnemyAction(action, delay = AI_STANDARD_DELAY_MS) {
     enterAIWaitingPhase(action, delay);
 }
 
-// Clears the once-per-"ход" guards. Called every time the turn passes from
+// Clears the once-per-turn guards. Called every time the turn passes from
 // one side to the other (attacker/defender roles swap), so relics like
 // cascade_transfer and heavy_ballast can fire again next turn but not twice
 // within the same one via a chain of transfers/attacks.
@@ -1885,7 +1885,7 @@ function startNewRound() {
  * checkRoundEnd() ends the round the instant that condition becomes true, so
  * the game would have resolved win/loss/draw before the next autosave — a
  * state like this can never be produced by normal play. Seeing it anyway (as
- * in the reported bug: an empty player hand during "Ваш ход: Атака") means the
+ * in the reported bug: an empty player hand during the "Your move: Attack" banner) means the
  * save is inconsistent, not just old. In non-active phases (ROUND_OVER,
  * BATTLE_OVER, IDLE) the very same card layout is legitimate.
  *
@@ -3451,7 +3451,7 @@ const RELIC_EFFECTS = {
     midas_touch: {
         // Called from handleBito() when the PLAYER is the defender and
         // the round ends with every attack beaten (the player pressed
-        // БИТО / the AI called bito; taking cards goes through
+        // the player pressed bito / the AI called bito; taking cards goes through
         // handlePlayerTake() and never reaches this hook). Fires once
         // per round, not once per beaten card — so it is deliberately
         // NOT wired to onPlayerDefend, which fires per card. Additive,
@@ -3756,7 +3756,7 @@ function usePocketDiscard() {
         battle.pocketDiscardUsedThisRound = true;
         // This can be the card that empties the player's hand: if the draw
         // deck and table are also already empty, that's a round win the
-        // normal БИТО/take/replenish call sites would catch via
+        // normal bito/take/replenish call sites would catch via
         // checkRoundEnd() but this one-off discard bypassed. Without this
         // call the round just sits there with an empty hand and no way
         // forward (see: discarding the last card didn't end the battle).
@@ -4247,7 +4247,7 @@ function renderPlayerHand() {
     }
 }
 
-// БИТО / ВЗЯТЬ / ПЕРЕВОД: label and enabled state for the current phase.
+// Bito / take / transfer buttons: label and enabled state for the current phase.
 function renderActionButtons() {
     const [btnAction, btnTake, btnTransfer] = ['btn-action', 'btn-take', 'btn-transfer'].map(getEl);
     if (btnAction && btnTake && btnTransfer) {
@@ -4793,7 +4793,7 @@ function withFieldSnapshot(fields, testFn) {
 // The helpers above cancel the real battle's pending AI move while tests
 // run, and nothing else re-arms it. These two bracket a whole test run:
 // capture what the real game was doing, then put it back afterward, so
-// running the tests mid-battle can never freeze the game on "Ход соперника".
+// running the tests mid-battle can never freeze the game on the opponent-turn banner.
 // Closes UI that tests may have opened, without duplicating DOM cleanup.
 function closeTestUI() {
     closeModal();
@@ -4827,7 +4827,7 @@ function restoreRealBattleAfterTests(snapshot) {
 // every field they change (e.g. a test that writes battle.phase directly, or
 // one that drives damageEnemyHP() into BATTLE_OVER). Without it such a leak
 // survives the test run and the player comes back to a broken screen — the
-// reported case: a mid-round battle left in BATTLE_OVER, so "БИТО" stayed
+// reported case: a mid-round battle left in BATTLE_OVER, so the bito button stayed
 // disabled. The pair below deep-copies the game state at the start of a run
 // and puts it back at the end, so no test — present or future — can leak.
 //
@@ -5270,7 +5270,7 @@ function runGameUnitTests() {
         it('REGRESSION: advancing to the next floor saves the battle after it is initialized', () => {
             // The same ordering rule applies in the btn-next-floor handler. Isolated for the
             // same reason: otherwise the floor-2 fixture would overwrite the real battle and
-            // leave "Уличный Мошенник" in the #enemy-name DOM element for the rest of the
+            // leave the previous enemy name in the #enemy-name DOM element for the rest of the
             // play session.
             game({}, () => {
                 clearLocalSave();
@@ -5372,7 +5372,7 @@ function runGameUnitTests() {
             assert.isTrue(validateSaveData(buildGoodSave()));
         });
 
-        it('REGRESSION: empty player hand in an active phase with empty deck and table is invalid (reported bug: "Ваш ход: Атака" with an empty hand)', () => {
+        it('REGRESSION: empty player hand in an active phase with empty deck and table is invalid (reported bug: the "Your move: Attack" banner with an empty hand)', () => {
             const save = buildGoodSave();
             save.battle.drawDeck = [];
             save.battle.table = [];
@@ -5819,7 +5819,7 @@ function runGameUnitTests() {
         // cascade_transfer can deal the killing blow, and a transfer is not a
         // terminal action: the code after the damage must notice the win instead of
         // carrying on (the reported hang — enemy at 0 HP, win modal replaced by the
-        // "Соперник Переводит!" one, no way forward).
+        // opponent-transfers one, no way forward).
         it('Cascade transfer: enemy transfers the attack and dies from damage - victory, victory modal not covered', () => {
             inGameStrict({
                 phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', enemyHP: CASCADE_TRANSFER_DAMAGE,
@@ -9459,10 +9459,10 @@ function runGameUnitTests() {
         it('showModal()/showConfirm(): REGRESSION - reset disabled/opacity-40 left over from a disabled relic activation button', () => {
             // Bug: showRelicPopover() leaves msg-btn disabled and with the
             // opacity-40 class when the ability is unavailable. Any following
-            // showModal()/showConfirm() (e.g. "Недопустимый
-            // ход") reuses the same button and used not to reset
+            // showModal()/showConfirm() (e.g. an invalid-move
+            // message) reuses the same button and used not to reset
             // these two properties - the dialog looked functional, but the
-            // "ПОНЯТНО"/"ПРОДАТЬ" button did not react to clicks.
+            // confirm/sell button did not react to clicks.
             game({ relics: [{ id: 'pocket_discard' }] }, {}, () => {
                 // pocket_discard is unavailable (there is no 6/7 in hand at all, since
                 // battle is not set up for a fight here) - isReady() === false,
@@ -9549,7 +9549,7 @@ function runGameUnitTests() {
                 assert.equal(battle.playerHand.length, 0, 'last card must go to discard');
                 // Before, usePocketDiscard() did not call checkRoundEnd(), and an emptied
                 // hand with an already empty deck and table did not end the round -
-                // the game hung on "Ваш ход: Атака" with no cards and no available
+                // the game hung on the "Your move: Attack" banner with no cards and no available
                 // actions (bug from a user report).
                 assert.phase(BATTLE_PHASES.ROUND_OVER, 'checkRoundEnd() must have fired and ended the round');
                 assert.modalTitle('Раунд Выигран!');
@@ -9980,7 +9980,7 @@ function runGameUnitTests() {
             });
         });
 
-        // REGRESSION (report): after a test run mid-battle the "БИТО" button stayed
+        // REGRESSION (report): after a test run mid-battle the bito button stayed
         // inactive. Tests (suite 7 and the boss victory) changed the real battle.phase
         // and did not restore it, and damageEnemyHP() moved the battle to BATTLE_OVER.
         it('REGRESSION: restoreRealStateAfterTests restores the real battle phase, defender, table, hands and gold', () => {
@@ -10543,9 +10543,9 @@ function initSecretCornerGesture(onActivated) {
 /**
  * Keeps the splash screen's primary button in sync with whether a valid save
  * exists. With no save (first visit, or after a defeat/victory clears it), the
- * primary button is a plain "НОВАЯ ИГРА" and the separate reset button is
+ * primary button is a plain "new game" button and the separate reset button is
  * hidden — there's nothing to reset. With a save, the primary button becomes
- * "ПРОДОЛЖИТЬ ИГРУ" and the reset button reappears as the way to abandon it.
+ * "continue game" and the reset button reappears as the way to abandon it.
  */
 function updateStartButtonForSavedRun() {
     const btnStart = getEl('btn-start-game');
