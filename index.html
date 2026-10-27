@@ -1275,16 +1275,16 @@ const I18N = {
         "relic.golden_bullet.name": "Golden Bullet",
         "relic.golden_bullet.desc": "Every time a relic brings you $, deal {n} damage to the opponent.",
         "enemy.plain.ability": "Plain old opponent",
-        "enemy.rookie.name": "Rookie Sharp",
+        "enemy.rookie.name": "Rookie Hustler",
         "enemy.swindler.name": "Street Hustler",
         "enemy.swindler.ability": "Whenever you take cards, you lose {n}$",
-        "enemy.grifter.name": "Card Grifter",
+        "enemy.grifter.name": "Card Cheat",
         "enemy.grifter.ability": "Swaps a weak card for a strong one from the deck at the start of the round",
-        "enemy.slicker.name": "Barroom Slicker",
+        "enemy.slicker.name": "Barroom Brawler",
         "enemy.slicker.ability": "Heals {n} HP for every successful defense",
-        "enemy.pickpocket.name": "Slick Pickpocket",
+        "enemy.pickpocket.name": "Pickpocket",
         "enemy.pickpocket.ability": "Victory reward is {n}% smaller",
-        "enemy.gambler.name": "Hot-Shot Gambler",
+        "enemy.gambler.name": "High-Roller",
         "enemy.gambler.ability": "Whenever you take cards, you lose {n} more HP",
         "enemy.shark.name": "Seasoned Card Shark",
         "enemy.shark.ability": "Swaps a weak card for a trump from the deck at the start of the round",
@@ -10246,7 +10246,7 @@ function runGameUnitTests() {
         it('Relic, enemy, rank and rarity text follows the language', () => {
             inLanguage('en', () => {
                 assert.equal(getRelicName(ALL_RELICS.find(r => r.id === 'ace_sleeve')), 'Ace Up the Sleeve');
-                assert.equal(ENEMIES[0].name, 'Rookie Sharp');
+                assert.equal(ENEMIES[0].name, 'Rookie Hustler');
                 assert.equal(ENEMIES[0].abilityDesc, 'Plain old opponent');
                 assert.equal(VALUES[14], 'A');
                 assert.equal(RARITY_LABELS[RARITY.RARE], 'Rare');
