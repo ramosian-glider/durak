@@ -1152,7 +1152,7 @@ const I18N = {
         "hud.relics": "CROOKED RELICS (JOKERS)",
         "btn.take": "TAKE",
         "btn.bito": "END TURN",
-        "btn.bitoTook": "END TURN",
+        "btn.bitoTook": "END TURN (opponent takes)",
         "btn.transfer": "TRANSFER",
         "btn.cancel": "CANCEL",
         "btn.ok": "GOT IT",
@@ -1176,8 +1176,8 @@ const I18N = {
         "shop.sellTitle": "Pawn this relic?",
         "shop.sellText": "Pawn “{name}” for {price}$? The slot frees up for a new buy.",
         "shop.noMoneyTitle": "Not Enough Cash",
-        "shop.noMoneyHeal": "You need {n} gold coins to buy healing.",
-        "shop.noMoneyRelic": "Win some battles to earn gold coins.",
+        "shop.noMoneyHeal": "You need {n}$ to buy healing.",
+        "shop.noMoneyRelic": "Win some battles to earn cash.",
         "shop.noMoneyReroll": "A reroll costs {n}$.",
         "shop.fullHpTitle": "Already Full HP",
         "shop.fullHpText": "You're already at max health!",
@@ -1208,7 +1208,7 @@ const I18N = {
         "modal.drawText": "The deck's dry and both hands are empty! Reshuffling...",
         "modal.roundWonTitle": "You won the round!",
         "modal.roundWonText": "You emptied your hand first! The other guy's left holding the bag and eats {n} damage.",
-        "modal.roundLostTitle": "Round Lost!",
+        "modal.roundLostTitle": "You lost the round!",
         "modal.roundLostText": "The opponent emptied their hand first! You're the Durak with {cards} cards left and ate {n} damage.{note}",
         "modal.roundLostRope": " The Safety Rope saved your hide with 1 HP left!",
         "modal.defeatTitle": "Busted!",
@@ -1296,7 +1296,7 @@ const I18N = {
         "enemy.casino.ability": "Can transfer your attacks back to you",
         "enemy.syndicate.name": "Syndicate Kingpin",
         "enemy.syndicate.ability": "Throws in up to 8 cards, no mercy",
-        "enemy.shadow.name": "The Shadow (Final BOSS)",
+        "enemy.shadow.name": "The Shadow (Final Boss)",
         "enemy.shadow.ability": "Double damage to you whenever you take cards",
     }
 };
@@ -10327,7 +10327,7 @@ function runGameUnitTests() {
                     assert.equal(getEl('turn-banner').innerText, t('banner.attack'));
                     battle.cardsToTake = true; renderTurnBanner(); renderActionButtons();
                     assert.equal(getEl('turn-banner').innerText, 'The opponent is taking cards. Click “End Turn”.');
-                    assert.equal(getEl('btn-action').innerText, 'END TURN');
+                    assert.equal(getEl('btn-action').innerText, 'END TURN (opponent takes)');
                     assert.equal(getEl('btn-transfer').innerText, 'TRANSFER');
                     renderHeader();
                     assert.isTrue(getEl('boss-ability-badge').innerText.startsWith('Quirk: '), 'quirk badge is localized');
