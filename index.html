@@ -750,7 +750,12 @@ const RELIC_DESC_PARAMS = {
     mirror_ring: () => ({ n: TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER }),
     sharp_suit: () => ({ n: SHARP_SUIT_DAMAGE }),
     moonshine_flask: () => ({ n: FLASK_HEAL_ON_DEFEND }),
-    golden_bullet: () => ({ n: GOLDEN_BULLET_DAMAGE })
+    golden_bullet: () => ({ n: GOLDEN_BULLET_DAMAGE }),
+    heavy_ballast: () => ({ n: HEAVY_BALLAST_DAMAGE_PER_CARD, limit: HAND_SIZE, max: ENEMY_HAND_EXCESS_CAP * HEAVY_BALLAST_DAMAGE_PER_CARD }),
+    salted_wound: () => ({ n: SALTED_WOUND_DAMAGE_PER_CARD, limit: HAND_SIZE, max: ENEMY_HAND_EXCESS_CAP * SALTED_WOUND_DAMAGE_PER_CARD }),
+    ballast_drop: () => ({ n: BALLAST_DROP_DISCARD_COUNT }),
+    coin_magnet: () => ({ n: COIN_MAGNET_GOLD_PER_SIX }),
+    cascade_transfer: () => ({ n: CASCADE_TRANSFER_DAMAGE })
 };
 
 // Relic text is looked up by id, so a relic saved in one language is shown in the current one.
@@ -832,7 +837,7 @@ const BOSS_ROSTER = [
     },
     {
         key: "syndicate", hp: 55, avatar: "🕵️",
-        abilityId: "aggressive_throw",
+        abilityId: "aggressive_throw", abilityParams: { n: AGGRESSIVE_THROW_BOSS_LIMIT },
         fillersBefore: 2, fillerHpRange: [38, 46],
     },
     {
@@ -873,6 +878,7 @@ function buildEnemyLadder(bossRoster, fillerPool) {
         ladder.push(localizeEnemy({
             key: boss.key, hp: boss.hp, avatar: boss.avatar,
             abilityId: boss.abilityId,
+            abilityParams: boss.abilityParams,
             isBoss: true, permanentAbility: !!boss.permanentAbility,
             level,
         }));
@@ -1089,21 +1095,21 @@ const I18N = {
         "relic.spam_mail.name": "Спам-рассылка",
         "relic.spam_mail.desc": "Когда соперник забирает карты со стола, он дополнительно берёт верхнюю карту из колоды.",
         "relic.heavy_ballast.name": "Тяжёлый балласт",
-        "relic.heavy_ballast.desc": "В начале хода соперника он получает урон за каждую карту в руке сверх 6 штук (не больше 4 ед.).",
+        "relic.heavy_ballast.desc": "В начале хода соперника он получает {n} ед. урона за каждую карту в руке сверх {limit} штук (не больше {max} ед.).",
         "relic.ballast_drop.name": "Сброс балласта",
-        "relic.ballast_drop.desc": "При взятии карт со стола вы сразу сбрасываете в отбой 2 некозырные карты наименьшего ранга.",
+        "relic.ballast_drop.desc": "При взятии карт со стола вы сразу сбрасываете в отбой {n} некозырные карты наименьшего ранга.",
         "relic.coin_magnet.name": "Магнит для мелочи",
-        "relic.coin_magnet.desc": "Каждая шестёрка, сыгранная любым игроком (атака, подкидка, перевод или защита), приносит +1$.",
+        "relic.coin_magnet.desc": "Каждая шестёрка, сыгранная любым игроком (атака, подкидка, перевод или защита), приносит +{n}$.",
         "relic.safety_rope.name": "Страховочный трос",
         "relic.safety_rope.desc": "При смертельном уроне вы выживаете с 1 HP и стол очищается (срабатывает 1 раз за забег).",
         "relic.jester_discard.name": "Шутовской сброс",
         "relic.jester_discard.desc": "Раз за бой на своём ходу атаки можно сбросить всю руку и добрать столько же карт из колоды.",
         "relic.cascade_transfer.name": "Каскадный перевод",
-        "relic.cascade_transfer.desc": "Первый перевод карт за ход наносит сопернику 4 ед. урона.",
+        "relic.cascade_transfer.desc": "Первый перевод карт за ход наносит сопернику {n} ед. урона.",
         "relic.sleight_of_hand.name": "Ловкость рук",
         "relic.sleight_of_hand.desc": "Раз за бой можно заменить карту, которой соперник пошёл на вас, случайной картой из колоды.",
         "relic.salted_wound.name": "Солёная рана",
-        "relic.salted_wound.desc": "Если соперник берёт карты со стола, он получает +1 ед. урона за каждую карту сверх 6 в его руке (не больше 4 ед.).",
+        "relic.salted_wound.desc": "Если соперник берёт карты со стола, он получает +{n} ед. урона за каждую карту сверх {limit} в его руке (не больше {max} ед.).",
         "relic.sharp_suit.name": "Острая масть",
         "relic.sharp_suit.desc": "Каждый раз, когда вы играете козырную карту (атака, подкидка, перевод или защита), соперник получает {n} ед. урона.",
         "relic.moonshine_flask.name": "Фляжка с пойлом",
@@ -1131,7 +1137,7 @@ const I18N = {
         "enemy.casino.name": "Фаворит Казино",
         "enemy.casino.ability": "Умеет Переводить ваши атаки",
         "enemy.syndicate.name": "Основатель Синдиката",
-        "enemy.syndicate.ability": "Агрессивно подкидывает до 8 карт",
+        "enemy.syndicate.ability": "Агрессивно подкидывает до {n} карт",
         "enemy.shadow.name": "Тень (Финальный БОСС)",
         "enemy.shadow.ability": "Удвоенный урон игроку при взятии карт",
     },
@@ -1253,21 +1259,21 @@ const I18N = {
         "relic.spam_mail.name": "Spam Mail",
         "relic.spam_mail.desc": "When the opponent takes cards off the table, they also draw the top card of the deck.",
         "relic.heavy_ballast.name": "Heavy Ballast",
-        "relic.heavy_ballast.desc": "At the start of the opponent's turn, they take damage for every card in hand beyond 6 (max 4 damage).",
+        "relic.heavy_ballast.desc": "At the start of the opponent's turn, they take {n} damage for every card in hand beyond {limit} (max {max} damage).",
         "relic.ballast_drop.name": "Ballast Drop",
-        "relic.ballast_drop.desc": "When you take cards from the table, you instantly discard the 2 lowest-rank non-trump cards.",
+        "relic.ballast_drop.desc": "When you take cards from the table, you instantly discard the {n} lowest-rank non-trump cards.",
         "relic.coin_magnet.name": "Coin Magnet",
-        "relic.coin_magnet.desc": "Whenever anyone plays a 6 (attack, throw-in, transfer or defense), gain +1$.",
+        "relic.coin_magnet.desc": "Whenever anyone plays a 6 (attack, throw-in, transfer or defense), gain +{n}$.",
         "relic.safety_rope.name": "Safety Rope",
         "relic.safety_rope.desc": "On lethal damage you survive with 1 HP and the table gets cleared (works once per run).",
         "relic.jester_discard.name": "Jester's Dump",
         "relic.jester_discard.desc": "Once per battle, on your attacking turn, you can discard your whole hand and draw the same number of cards from the deck.",
         "relic.cascade_transfer.name": "Cascade Transfer",
-        "relic.cascade_transfer.desc": "The first card transfer each turn deals 4 damage to the opponent.",
+        "relic.cascade_transfer.desc": "The first card transfer each turn deals {n} damage to the opponent.",
         "relic.sleight_of_hand.name": "Sleight of Hand",
         "relic.sleight_of_hand.desc": "Once per battle, swap the card the opponent just led at you with a random card from the deck.",
         "relic.salted_wound.name": "Salted Wound",
-        "relic.salted_wound.desc": "If the opponent takes cards from the table, they also suffer +1 damage for every card above 6 in their hand (max 4 damage).",
+        "relic.salted_wound.desc": "If the opponent takes cards from the table, they also suffer +{n} damage for every card above {limit} in their hand (max {max} damage).",
         "relic.sharp_suit.name": "Sharp Suit",
         "relic.sharp_suit.desc": "Whenever you play a trump card (attack, throw-in, transfer or defense), deal {n} damage to the opponent.",
         "relic.moonshine_flask.name": "Moonshine Flask",
@@ -1295,7 +1301,7 @@ const I18N = {
         "enemy.casino.name": "House Favorite",
         "enemy.casino.ability": "Can transfer your attacks back to you",
         "enemy.syndicate.name": "Syndicate Kingpin",
-        "enemy.syndicate.ability": "Throws in up to 8 cards, no mercy",
+        "enemy.syndicate.ability": "Throws in up to {n} cards, no mercy",
         "enemy.shadow.name": "The Shadow (Final Boss)",
         "enemy.shadow.ability": "Double damage to you whenever you take cards",
     }
@@ -10266,12 +10272,20 @@ function runGameUnitTests() {
                     assert.isTrue(desc('midas_touch').includes(String(MIDAS_TOUCH_GOLD_ON_DEFEND)), lang + ' midas_touch');
                     assert.isTrue(desc('moonshine_flask').includes(String(FLASK_HEAL_ON_DEFEND)), lang + ' moonshine_flask');
                     assert.isTrue(desc('golden_bullet').includes(String(GOLDEN_BULLET_DAMAGE)), lang + ' golden_bullet');
+                    assert.isTrue(desc('heavy_ballast').includes(`${ENEMY_HAND_EXCESS_CAP * HEAVY_BALLAST_DAMAGE_PER_CARD}`) && desc('heavy_ballast').includes(String(HAND_SIZE)), lang + ' heavy_ballast');
+                    assert.isTrue(desc('salted_wound').includes(`${ENEMY_HAND_EXCESS_CAP * SALTED_WOUND_DAMAGE_PER_CARD}`) && desc('salted_wound').includes(String(HAND_SIZE)), lang + ' salted_wound');
+                    assert.isTrue(desc('ballast_drop').includes(String(BALLAST_DROP_DISCARD_COUNT)), lang + ' ballast_drop');
+                    assert.isTrue(desc('coin_magnet').includes(`+${COIN_MAGNET_GOLD_PER_SIX}$`), lang + ' coin_magnet');
+                    assert.isTrue(desc('cascade_transfer').includes(String(CASCADE_TRANSFER_DAMAGE)), lang + ' cascade_transfer');
+                    ALL_RELICS.forEach(r => assert.isFalse(/\{\w+\}/.test(r.desc), `${lang} ${r.id}: unresolved placeholder`));
                     const enemy = (id) => ENEMIES.find(e => e.abilityId === id).abilityDesc;
                     assert.isTrue(enemy('swindle').includes(`${SWINDLE_GOLD_LOSS}$`), lang + ' swindle');
                     assert.isTrue(enemy('hearty').includes(String(HEARTY_REGEN_ON_DEFENSE)), lang + ' hearty');
                     assert.isTrue(enemy('pickpocket').includes(`${Math.round(PICKPOCKET_REWARD_CUT * 100)}%`), lang + ' pickpocket');
                     assert.isTrue(enemy('all_in').includes(String(ALL_IN_EXTRA_TAKE_DAMAGE)), lang + ' all_in');
                     assert.isTrue(enemy('thick_skin').includes(String(THICK_SKIN_DAMAGE_REDUCTION)), lang + ' thick_skin');
+                    assert.isTrue(enemy('aggressive_throw').includes(String(AGGRESSIVE_THROW_BOSS_LIMIT)), lang + ' aggressive_throw');
+                    ENEMIES.forEach(e => assert.isFalse(/\{\w+\}/.test(e.abilityDesc), `${lang} ${e.key}: unresolved placeholder`));
                 });
             }
         });
