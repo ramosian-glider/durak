@@ -1907,12 +1907,18 @@ function resumeFromSave() {
         return;
     }
 
-    // A draw is saved as ROUND_OVER with both hands, the draw deck and
-    // the table empty. Recreate its modal so the player can continue into
-    // the next round; otherwise restoring leaves the run stuck with no cards.
-    if (battle.phase === BATTLE_PHASES.ROUND_OVER && getRoundResult()?.type === 'draw') {
-        presentRoundResult({ type: 'draw' });
-        return;
+    // A finished round is saved as ROUND_OVER, before the player closes its
+    // modal (draw, round won, round lost). Recreate that modal so the player
+    // can continue into the next round; otherwise restoring leaves the run
+    // stuck with no way forward. Nothing is applied twice: a lost round's
+    // damage is already in the save, a won round's enemy damage still lands
+    // when the modal is closed.
+    if (battle.phase === BATTLE_PHASES.ROUND_OVER) {
+        const result = getRoundResult();
+        if (result) {
+            presentRoundResult({ ...result, isDefeated: run.playerHP <= 0 });
+            return;
+        }
     }
 
     // If the game was saved while the AI was thinking — restart it
@@ -4888,6 +4894,165 @@ function closeTestUI() {
     if (shop) setVisible(shop, false, 'flex');
 }
 
+// ---- Fuzzing: random play against the invariants --------------------------
+// A fuzz game is one whole battle played by a random "player" on the manual AI
+// scheduler: it presses only what the interface allows (cards, bito, take,
+// transfer, artifact buttons), now and then a click the rules forbid, and OKs
+// every modal. After each action the opponent's turn is played out with
+// drainAI() and the game must be sound AND waiting for the player (see
+// checkFuzzState). A game is fully determined by its seed, so a failure is
+// replayed from the browser console with playFuzzGame(seed, { resume }).
+
+const FUZZ_MAX_ACTIONS = 250;
+const FUZZ_NOISE_CHANCE = 0.08;   // a click the rules may forbid
+const FUZZ_RESUME_CHANCE = 0.15;  // "close the tab and come back" after an action
+
+function isModalOpen() {
+    const modal = getEl('msg-box');
+    return !!modal && !modal.classList.contains('hidden');
+}
+
+// The fuzz game ends with a won battle (the victory modal leads to the shop)
+// or a lost run (the defeat modal leads to the splash screen).
+function isBattleFinished() {
+    return battle.phase === BATTLE_PHASES.BATTLE_OVER || run.playerHP <= 0;
+}
+
+// Everything the interface lets the player do right now.
+function listFuzzActions() {
+    const actions = [];
+    if (!canAcceptPlayerAction()) return actions;
+    const maxAttacks = getMaxAllowedAttacks();
+    const openAttack = getOpenAttacks()[0];
+    const requiredRank = battle.table.length > 0 ? battle.table[0].attack.value : null;
+    battle.playerHand.forEach((card, index) => {
+        let playable;
+        if (battle.defender === 'enemy') {
+            playable = battle.table.length === 0 || (battle.table.length < maxAttacks && isRankOnTable(card.value));
+        } else if (battle.isTransferActive) {
+            playable = card.value === requiredRank;
+        } else {
+            playable = !!openAttack && canBeat(openAttack.attack, card);
+        }
+        if (playable) actions.push({ kind: 'card', index, label: `card ${card.suit[0]}${card.value}` });
+    });
+    for (const [buttonId, kind] of [['btn-action', 'bito'], ['btn-take', 'take'], ['btn-transfer', 'transfer']]) {
+        const button = getEl(buttonId);
+        if (button && !button.disabled) actions.push({ kind, label: kind });
+    }
+    for (const relicId of ['pocket_discard', 'jester_discard', 'sleight_of_hand']) {
+        if (hasRelic(relicId) && RELIC_EFFECTS[relicId].isReady()) actions.push({ kind: 'relic', relicId, label: relicId });
+    }
+    return actions;
+}
+
+function performFuzzAction(action) {
+    switch (action.kind) {
+        case 'card': window.onPlayerCardClick(action.index); break;
+        case 'bito': getEl('btn-action').click(); break;
+        case 'take': getEl('btn-take').click(); break;
+        case 'transfer': getEl('btn-transfer').click(); break;
+        case 'relic': RELIC_EFFECTS[action.relicId].onUse(); break;
+    }
+}
+
+// Plays out the opponent's turn and presses OK on every modal (a round-end
+// modal starts the next round) until the game waits for the player or ends.
+function settleFuzzGame() {
+    for (let i = 0; i < 20; i++) {
+        drainAI();
+        if (isBattleFinished() || !isModalOpen()) return;
+        getEl('msg-btn').click();
+    }
+    throw new Error('modals keep reopening: the game never settles');
+}
+
+// What must hold whenever the game waits for the player.
+function checkFuzzState() {
+    const violations = getBattleInvariantViolations(battle);
+    assert.equal(violations.length, 0, 'invariants broken: ' + violations.join('; '));
+    const cardsInPlay = battle.drawDeck.length + battle.discardPile.length + battle.playerHand.length
+        + battle.enemyHand.length + getTableCards().length;
+    assert.equal(cardsInPlay, run.deck.length, `${cardsInPlay} cards in play, but the deck has ${run.deck.length}`);
+    if (isBattleFinished()) return;
+    assert.isTrue(canAcceptPlayerAction(), `the game stopped in phase ${battle.phase} with no AI step left to run`);
+    assert.isTrue(listFuzzActions().length > 0, `the player has no move in phase ${battle.phase}`);
+    const savedText = localStorage.getItem(SAVE_KEY);
+    if (savedText !== null) assert.isTrue(validateSaveData(JSON.parse(savedText)), 'the autosave the game wrote is not loadable');
+}
+
+// Closing the tab and coming back: the modal is gone, the game restarts from the
+// autosave that is in storage (not from a fresh one) and carries on from there.
+function resumeFuzzGameFromAutosave() {
+    if (localStorage.getItem(SAVE_KEY) === null) return;
+    closeModal();
+    assert.isTrue(loadGameState(), 'the game wrote this autosave itself, yet it does not load');
+    resumeFromSave();
+}
+
+function playFuzzGame(seed, { resume = false, maxActions = FUZZ_MAX_ACTIONS } = {}) {
+    const pick = createSeededRng(seed);
+    const int = n => Math.floor(pick() * n);
+    const maxHP = 60 + int(200); // enough to survive several rounds: random play is a poor card player
+    const fuzzRun = makeTestRun({
+        floor: 1 + int(ENEMIES.length), playerHP: maxHP, maxHP,
+        relics: shuffledCopy(ALL_RELICS, pick).slice(0, int(MAX_RELICS + 1)).map(r => ({ ...r }))
+    });
+    const fuzzBattle = makeTestBattle({}, { phase: BATTLE_PHASES.IDLE, trumpSuit: null, enemyHP: 0 });
+    const result = { seed, actions: 0, outcome: 'unfinished', trace: [] };
+
+    setGameRng(createSeededRng(seed + 1));
+    try {
+        withTestGame(fuzzRun, fuzzBattle, () => {
+            try {
+                startFloorBattle();
+                settleFuzzGame();
+                checkFuzzState();
+                while (!isBattleFinished() && result.actions < maxActions) {
+                    if (pick() < FUZZ_NOISE_CHANCE && battle.playerHand.length > 0) {
+                        result.trace.push('noise');
+                        window.onPlayerCardClick(int(battle.playerHand.length));
+                        settleFuzzGame();
+                        if (isBattleFinished()) break;
+                    }
+                    const actions = listFuzzActions();
+                    const action = actions[int(actions.length)];
+                    result.trace.push(action.label);
+                    performFuzzAction(action);
+                    result.actions++;
+                    if (resume && pick() < FUZZ_RESUME_CHANCE) {
+                        result.trace.push('resume@' + battle.phase);
+                        resumeFuzzGameFromAutosave();
+                    }
+                    settleFuzzGame();
+                    checkFuzzState();
+                }
+                result.outcome = battle.phase === BATTLE_PHASES.BATTLE_OVER ? 'won' : (run.playerHP <= 0 ? 'lost' : 'unfinished');
+            } catch (err) {
+                throw new Error(`fuzz seed ${seed}${resume ? ' (resume)' : ''}, action ${result.actions}, after [${result.trace.slice(-8).join(' > ')}]: ${err.message}`);
+            }
+        });
+    } finally {
+        setGameRng();
+    }
+    return result;
+}
+
+// A batch of fuzz games for the console, e.g. fuzzSweep(1, 500, { resume: true }).
+// Throws on the first failure; the message names the seed to replay with playFuzzGame().
+// The built-in suite only plays a few seeds (the test panel runs on the page's
+// main thread), so run a long sweep here after touching the AI, saves or relics.
+function fuzzSweep(fromSeed, toSeed, options = {}) {
+    const summary = { games: 0, actions: 0, won: 0, lost: 0, unfinished: 0 };
+    for (let seed = fromSeed; seed <= toSeed; seed++) {
+        const result = playFuzzGame(seed, options);
+        summary.games++;
+        summary.actions += result.actions;
+        summary[result.outcome]++;
+    }
+    return summary;
+}
+
 function captureRealBattleForTests() {
     return {
         battle,
@@ -4970,6 +5135,11 @@ function runGameUnitTests() {
 
     const realBattleSnapshot = captureRealBattleForTests();
     const realAIScheduler = aiScheduler;
+    // Tests drive real game code, which plays real sounds (hundreds of them in
+    // the fuzz games, piling up into one burst of noise). The real engine stays
+    // muted for the whole run; the sound tests use their own fake audio context.
+    const realAudioMuted = audio.isMuted;
+    audio.isMuted = true;
     const realStateSnapshot = captureRealStateForTests();
     // The tests assert on Russian UI text, so they always run in Russian; the player's
     // language is put back in the finally block below.
@@ -6246,6 +6416,47 @@ function runGameUnitTests() {
                 assert.phase(BATTLE_PHASES.PLAYER_ATTACK);
                 assert.isTrue(battle.playerHand.length > 0, 'cards must be dealt after confirmation');
                 assert.isTrue(battle.enemyHand.length > 0, 'the opponent must also get cards');
+            });
+        });
+
+        it('resumeFromSave(): round won (tab closed on its modal) restores the modal; the enemy damage lands once, then the next round starts', () => {
+            inGameStrict({
+                phase: BATTLE_PHASES.ROUND_OVER,
+                drawDeck: [], table: [], playerHand: [], enemyHand: testCards('e', 'Tiles', 2),
+                enemyHP: 100
+            }, () => {
+                clearLocalSave();
+                saveGameState();
+                assert.isTrue(loadGameState(), 'round-over save must load');
+
+                resumeFromSave();
+                assert.modalTitle(t('modal.roundWonTitle'));
+                assert.equal(battle.enemyHP, 100, 'the damage lands on confirmation, not before');
+
+                getEl('msg-btn').click();
+                assert.equal(battle.enemyHP, 100 - (EMPTY_HAND_BASE_DAMAGE + 2 * EMPTY_HAND_DAMAGE_PER_CARD));
+                assert.phase(BATTLE_PHASES.PLAYER_ATTACK);
+                assert.isTrue(battle.playerHand.length > 0, 'cards must be dealt after confirmation');
+            });
+        });
+
+        it('resumeFromSave(): round lost (tab closed on its modal) restores the modal without taking the damage again', () => {
+            inGameStrict({
+                phase: BATTLE_PHASES.ROUND_OVER,
+                drawDeck: [], table: [], playerHand: testCards('p', 'Tiles', 2), enemyHand: [],
+                enemyHP: 100
+            }, () => {
+                clearLocalSave();
+                const hpInSave = run.playerHP; // the loss was applied before the save was written
+                saveGameState();
+                assert.isTrue(loadGameState(), 'round-over save must load');
+
+                resumeFromSave();
+                assert.modalTitle(t('modal.roundLostTitle'));
+                getEl('msg-btn').click();
+                assert.equal(run.playerHP, hpInSave, 'the damage is already in the save and must not be applied again');
+                assert.phase(BATTLE_PHASES.PLAYER_ATTACK);
+                assert.isTrue(battle.playerHand.length > 0, 'cards must be dealt after confirmation');
             });
         });
 
@@ -7585,6 +7796,15 @@ function runGameUnitTests() {
                 audio.ctx = null; audio.isMuted = false; window.AudioContext = undefined; window.webkitAudioContext = undefined;
                 audio.playCardSound(); audio.playWinSound(); audio.playTakeSound(); // must not throw
             } finally { audio.ctx = savedCtx; audio.isMuted = savedMuted; window.AudioContext = realAC; window.webkitAudioContext = realWAC; }
+        });
+
+        it('The test run keeps the real sound engine muted (game code under test must not make noise)', () => {
+            assert.isTrue(audio.isMuted, 'runGameUnitTests() must mute the real engine');
+            const realCtx = audio.ctx;
+            let oscillators = 0;
+            audio.ctx = { currentTime: 0, createOscillator() { oscillators++; throw new Error('no real sound in tests'); } };
+            try { audio.playCardSound(); audio.playWinSound(); audio.playTakeSound(); } finally { audio.ctx = realCtx; }
+            assert.equal(oscillators, 0, 'a muted engine must not even create oscillators');
         });
 
         it('playTone(): a Web Audio failure does not throw (the sound just drops)', () => {
@@ -10591,6 +10811,44 @@ function runGameUnitTests() {
         });
     });
 
+    runner.describe('17. Fuzz: random play against the invariants (manual AI scheduler)', (it, assert) => {
+        // A few fixed seeds keep the panel fast and the run deterministic; seeds 2 and 4
+        // caught the "tab closed on a round-over modal" bug (see suite 8h).
+        const LAST_SEED = 4;
+
+        it('Random play: seeded games never break an invariant, get stuck or leave an unloadable autosave', () => {
+            const summary = fuzzSweep(1, LAST_SEED);
+            assert.isTrue(summary.actions >= 100, 'the fuzzer barely played: ' + summary.actions + ' actions');
+            assert.isTrue(summary.unfinished < summary.games, 'no game reached the end of its battle');
+        });
+
+        it('Random play with "close the tab and come back" at random moments (resume from the autosave)', () => {
+            const summary = fuzzSweep(1, LAST_SEED, { resume: true });
+            assert.isTrue(summary.actions >= 100, 'the fuzzer barely played: ' + summary.actions + ' actions');
+            assert.isTrue(summary.unfinished < summary.games, 'no game reached the end of its battle');
+        });
+
+        it('A fuzz game is reproducible: the same seed gives the same game, move for move', () => {
+            for (const options of [{}, { resume: true }]) {
+                assert.equal(JSON.stringify(playFuzzGame(6, options)), JSON.stringify(playFuzzGame(6, options)));
+            }
+        });
+
+        it('The checks are not vacuous: a stuck game, a game with no move and a lost card are all caught', () => {
+            const { inGameStrict } = makeTestFixtures({}, { deck: [] });
+            const messageOf = fn => { try { fn(); } catch (err) { return err.message; } return ''; };
+            inGameStrict({ phase: BATTLE_PHASES.RESOLVING }, () => {
+                assert.isTrue(messageOf(checkFuzzState).includes('no AI step left'), 'a game parked in RESOLVING must be reported');
+            });
+            inGameStrict({ phase: BATTLE_PHASES.PLAYER_ATTACK }, () => {
+                assert.isTrue(messageOf(checkFuzzState).includes('no move'), 'an attacker with no card and an empty table must be reported');
+            });
+            inGameStrict({ phase: BATTLE_PHASES.PLAYER_ATTACK, playerHand: [testCard('p1', 'Hearts', 9)] }, () => {
+                assert.isTrue(messageOf(checkFuzzState).includes('cards in play'), 'a card that is not in the deck must be reported');
+            });
+        });
+    });
+
     // Some tests call game functions (e.g. handlePlayerTake) that autosave as a
     // side effect, which would otherwise overwrite the player's real save with
     // fake test fixtures. preserveLocalSaveAround guarantees the real save is
@@ -10615,6 +10873,7 @@ function runGameUnitTests() {
 
         clearAITimer();
         setAIScheduler(realAIScheduler); // whatever a test left installed, the real game goes back to its own
+        audio.isMuted = realAudioMuted;
         // Put the real run/battle back exactly as they were before the run,
         // whatever individual tests did to them (see captureRealStateForTests).
         restoreRealStateAfterTests(realStateSnapshot);
