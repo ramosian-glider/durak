@@ -713,6 +713,10 @@ const ENEMY_THROW_IN_DELAY_MS = 500;
 
 const AI_POST_THROW_DELAY_MS = 700;
 
+// Safety net for drainAI(): the most steps one opponent turn may take before
+// the AI is considered stuck in a loop.
+const AI_DRAIN_STEP_LIMIT = 200;
+
 // Artifact rarity. It only changes how often an artifact shows up in the shop
 // draft (RARITY_DROP_WEIGHTS), never its price or its effect.
 const RARITY = { COMMON: 'common', UNCOMMON: 'uncommon', RARE: 'rare' };
@@ -1590,11 +1594,83 @@ let battle = {
     pocketDiscardUsedThisRound: false
 };
 
+// ---- AI scheduler ----------------------------------------------------
+// The opponent's turn is a deterministic state machine: every step is an
+// ordinary function (executeEnemyAI, handleEnemyTake, enemyThrowInStep, ...)
+// that enterAIWaitingPhase() hands to the scheduler. Time exists only inside
+// the scheduler, and there are two interchangeable ones:
+//   - timer (default): setTimeout/clearTimeout, so the player watches the
+//     opponent "think" for `delay` ms;
+//   - manual: nothing runs by itself, steps wait in a queue until drainAI()
+//     runs them in order, ignoring `delay`. Tests and simulations use it.
+// `delay` is a pacing hint for the player's eyes, never a game rule. The
+// scheduler's handle is stored in battle.aiTimer (runtime-only, never saved).
+function createTimerAIScheduler() {
+    return {
+        kind: 'timer',
+        // setTimeout/clearTimeout are looked up at call time on purpose.
+        schedule: (fn, delay) => setTimeout(fn, delay),
+        cancel: handle => clearTimeout(handle)
+    };
+}
+
+function createManualAIScheduler() {
+    const queue = []; // entries { fn, delay }, oldest first
+    return {
+        kind: 'manual',
+        queue,
+        schedule(fn, delay) {
+            const entry = { fn, delay };
+            queue.push(entry);
+            return entry;
+        },
+        cancel(handle) {
+            const at = queue.indexOf(handle);
+            if (at !== -1) queue.splice(at, 1);
+        }
+    };
+}
+
+let aiScheduler = createTimerAIScheduler();
+
+// Switches the scheduler and returns the previous one, so a caller can put it
+// back. The current battle's pending step is cancelled on the OLD scheduler
+// first, so no handle is ever cancelled by the wrong one.
+function setAIScheduler(scheduler) {
+    clearAITimer();
+    const previous = aiScheduler;
+    aiScheduler = scheduler;
+    return previous;
+}
+
 function clearAITimer() {
     if (battle.aiTimer !== null) {
-        clearTimeout(battle.aiTimer);
+        aiScheduler.cancel(battle.aiTimer);
         battle.aiTimer = null;
     }
+}
+
+// Manual scheduler only: runs the oldest queued step. Returns false when the
+// queue was empty (nothing to run).
+function stepAI() {
+    if (aiScheduler.kind !== 'manual') throw new Error('stepAI() needs the manual AI scheduler');
+    const entry = aiScheduler.queue.shift();
+    if (!entry) return false;
+    entry.fn();
+    return true;
+}
+
+// Manual scheduler only: runs queued steps in order, including the ones they
+// schedule, until none is left, i.e. until the opponent's turn is over and
+// the game waits for the player (or the battle ended). Returns the number of
+// steps run. Throws if the AI is still scheduling steps after `limit` of them.
+function drainAI(limit = AI_DRAIN_STEP_LIMIT) {
+    let steps = 0;
+    while (stepAI()) {
+        steps++;
+        if (steps >= limit && aiScheduler.queue.length > 0) throw new Error(`AI did not settle within ${limit} steps`);
+    }
+    return steps;
 }
 
 // The ONLY place allowed to write battle.phase (guarded by a source-scan
@@ -1647,7 +1723,7 @@ function canAcceptPlayerAction() {
 // The ONE place that hands the turn to the AI (guarded by a source-scan test
 // in suite 8g). It owns the whole transition:
 //   cancel any pending AI timer -> AI_WAITING (setBattlePhase) -> persist +
-//   repaint (commitBattleState) -> arm a timer for `action`.
+//   repaint (commitBattleState) -> hand `action` to the AI scheduler.
 // The token is captured AFTER setBattlePhase() bumps it, so the callback's
 // staleness check compares against the value this very transition produced:
 // any later phase change (player click, round end, another transition)
@@ -1666,7 +1742,7 @@ function enterAIWaitingPhase(action, delay = AI_STANDARD_DELAY_MS, phase = BATTL
     setBattlePhase(phase);
     commitBattleState();
     const token = battle.actionToken;
-    battle.aiTimer = setTimeout(() => {
+    battle.aiTimer = aiScheduler.schedule(() => {
         battle.aiTimer = null;
         if (battle.actionToken !== token || battle.phase !== phase) return;
         action();
@@ -4755,13 +4831,17 @@ function preserveLocalSaveAround(fn) {
 // the player's actual state.
 function withIsolatedGameState(fixtureRun, fixtureBattle, testFn) {
     const oldRun = run, oldBattle = battle, oldTimer = battle.aiTimer;
-    clearAITimer();
+    // The fixture battle never runs on real timers: its AI steps wait in a
+    // queue until the test runs them (stepAI/drainAI). Swapping also cancels
+    // the real battle's pending step.
+    const realScheduler = setAIScheduler(createManualAIScheduler());
     run = fixtureRun;
     battle = fixtureBattle;
     try {
         testFn();
     } finally {
         clearAITimer(); // cancel anything the test scheduled on the fake battle
+        setAIScheduler(realScheduler);
         run = oldRun;
         battle = oldBattle;
         battle.aiTimer = oldTimer;
@@ -4881,14 +4961,15 @@ function restoreRealStateAfterTests(snapshot) {
 }
 
 function runGameUnitTests() {
-    // Plays the enemy's throw-in steps of a declared take to the end, without
-    // waiting for timers: each step is the same function the timer would call.
+    // Plays the enemy's throw-in steps of a declared take to the end: each
+    // step is taken from the manual AI scheduler, exactly as a timer would fire it.
     function playOutEnemyThrowIn() {
         let guard = 50;
-        while (battle.phase === BATTLE_PHASES.ENEMY_THROWING_IN && guard-- > 0) enemyThrowInStep();
+        while (battle.phase === BATTLE_PHASES.ENEMY_THROWING_IN && guard-- > 0) stepAI();
     }
 
     const realBattleSnapshot = captureRealBattleForTests();
+    const realAIScheduler = aiScheduler;
     const realStateSnapshot = captureRealStateForTests();
     // The tests assert on Russian UI text, so they always run in Russian; the player's
     // language is put back in the finally block below.
@@ -5602,25 +5683,17 @@ function runGameUnitTests() {
         // check works in both directions.
         it('scheduleEnemyAction(): deferred action runs if the token is unchanged and is dropped if the phase changed', () => {
             inGame({ phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy' }, () => {
-                const realSetTimeout = window.setTimeout;
-                const callbacks = [];
-                window.setTimeout = (fn) => { callbacks.push(fn); return 1; };
-                try {
-                    clearLocalSave();
-                    let fired = 0;
-                    scheduleEnemyAction(() => { fired++; });
-                    assert.phase(BATTLE_PHASES.AI_WAITING);
-                    callbacks[0]();
-                    assert.equal(fired, 1, 'action with a current token must run');
+                clearLocalSave();
+                let fired = 0;
+                scheduleEnemyAction(() => { fired++; });
+                assert.phase(BATTLE_PHASES.AI_WAITING);
+                stepAI();
+                assert.equal(fired, 1, 'action with a current token must run');
 
-                    scheduleEnemyAction(() => { fired++; });
-                    setBattlePhase(BATTLE_PHASES.PLAYER_ATTACK); // any later transition makes the pending action stale
-                    callbacks[1]();
-                    assert.equal(fired, 1, 'stale action must not run');
-                } finally {
-                    window.setTimeout = realSetTimeout;
-                    clearAITimer();
-                }
+                scheduleEnemyAction(() => { fired++; });
+                setBattlePhase(BATTLE_PHASES.PLAYER_ATTACK); // any later transition makes the pending action stale
+                stepAI();
+                assert.equal(fired, 1, 'stale action must not run');
             });
         });
     });
@@ -5721,7 +5794,7 @@ function runGameUnitTests() {
         });
     });
 
-    runner.describe('8g. enterAIWaitingPhase (the single point handing the turn to the AI)', (it, assert) => {
+    runner.describe('8g. enterAIWaitingPhase and the AI scheduler (the single point handing the turn to the AI)', (it, assert) => {
         const { inGameSaved: inGame } = makeTestFixtures({
             drawDeck: [testCard('d1', 'Hearts', 6)],
             playerHand: [testCard('p1', 'Hearts', 6)],
@@ -5731,6 +5804,7 @@ function runGameUnitTests() {
         });
 
         // Runs fn with setTimeout/clearTimeout replaced by recorders, restoring them afterwards.
+        // Only for the default timer scheduler: everything else uses the manual one.
         function withFakeTimers(fn) {
             const realSet = window.setTimeout, realClear = window.clearTimeout;
             const timers = [], cleared = [];
@@ -5747,49 +5821,176 @@ function runGameUnitTests() {
             assert.equal(offenders.length, 0, 'AI_WAITING is set bypassing enterAIWaitingPhase(): ' + offenders.length);
         });
 
-        it('enterAIWaitingPhase(): AI_WAITING phase, save, timer with the given delay', () => {
+        it('enterAIWaitingPhase(): AI_WAITING phase, save, step queued with the given delay', () => {
             inGame({}, () => {
-                withFakeTimers((timers) => {
-                    clearLocalSave();
-                    enterAIWaitingPhase(() => {}, 1234);
-                    assert.phase(BATTLE_PHASES.AI_WAITING);
-                    assert.equal(battle.actionToken, 1);
-                    assert.equal(timers.length, 1);
-                    assert.equal(timers[0].delay, 1234);
-                    assert.isTrue(battle.aiTimer !== null, 'timer must be stored in battle.aiTimer');
-                    const saved = readSavedGame();
-                    assert.equal(saved.battle.phase, BATTLE_PHASES.AI_WAITING, 'transition must be saved');
-                });
+                clearLocalSave();
+                enterAIWaitingPhase(() => {}, 1234);
+                assert.phase(BATTLE_PHASES.AI_WAITING);
+                assert.equal(battle.actionToken, 1);
+                assert.equal(aiScheduler.queue.length, 1);
+                assert.equal(aiScheduler.queue[0].delay, 1234);
+                assert.isTrue(battle.aiTimer === aiScheduler.queue[0], 'scheduler handle must be stored in battle.aiTimer');
+                const saved = readSavedGame();
+                assert.equal(saved.battle.phase, BATTLE_PHASES.AI_WAITING, 'transition must be saved');
             });
         });
 
-        it('enterAIWaitingPhase(): cancels a previously scheduled timer and makes the old action stale', () => {
+        it('enterAIWaitingPhase(): cancels a previously scheduled step and makes the old action stale', () => {
             inGame({}, () => {
-                withFakeTimers((timers, cleared) => {
-                    let first = 0, second = 0;
-                    enterAIWaitingPhase(() => { first++; });
-                    enterAIWaitingPhase(() => { second++; });
-                    assert.equal(cleared.length, 1, 'previous timer must be cancelled');
-                    timers[0].cb();
-                    assert.equal(first, 0, 'action of the first transition is stale');
-                    battle.aiTimer = null;
-                    timers[1].cb();
-                    assert.equal(second, 1, 'action of the last transition runs');
-                });
+                let first = 0, second = 0;
+                enterAIWaitingPhase(() => { first++; });
+                const firstEntry = aiScheduler.queue[0];
+                enterAIWaitingPhase(() => { second++; });
+                assert.equal(aiScheduler.queue.length, 1, 'previous step must be cancelled');
+                assert.isTrue(aiScheduler.queue[0] !== firstEntry);
+                firstEntry.fn(); // a callback that was already handed out is stale anyway
+                assert.equal(first, 0, 'action of the first transition is stale');
+                stepAI();
+                assert.equal(second, 1, 'action of the last transition runs');
+                assert.equal(battle.aiTimer, null, 'a step that ran clears its handle');
             });
         });
 
         it('scheduleEnemyAI() runs executeEnemyAI() via enterAIWaitingPhase() with the right delay', () => {
             inGame({}, () => {
-                withFakeTimers((timers) => {
-                    scheduleEnemyAI(AI_QUICK_DELAY_MS);
-                    assert.phase(BATTLE_PHASES.AI_WAITING);
-                    assert.equal(timers.length, 1);
-                    assert.equal(timers[0].delay, AI_QUICK_DELAY_MS);
-                });
+                scheduleEnemyAI(AI_QUICK_DELAY_MS);
+                assert.phase(BATTLE_PHASES.AI_WAITING);
+                assert.equal(aiScheduler.queue.length, 1);
+                assert.equal(aiScheduler.queue[0].delay, AI_QUICK_DELAY_MS);
             });
         });
+
+        it('Timer scheduler (the default in the real game): setTimeout with the given delay, clearTimeout on cancel', () => {
+            inGame({}, () => {
+                const manual = setAIScheduler(createTimerAIScheduler());
+                try {
+                    withFakeTimers((timers, cleared) => {
+                        enterAIWaitingPhase(() => {}, 1234);
+                        assert.equal(timers.length, 1);
+                        assert.equal(timers[0].delay, 1234);
+                        assert.equal(battle.aiTimer, 1, 'the setTimeout id is the handle');
+                        clearAITimer();
+                        assert.equal(cleared.join(), '1', 'cancel goes to clearTimeout');
+                        assert.equal(battle.aiTimer, null);
+                    });
+                } finally { setAIScheduler(manual); }
+            });
+        });
+
+        // ---- AI scheduler: the opponent's turn is a state machine, timers are pacing ----
+        const { inGameStrict } = makeTestFixtures({
+            drawDeck: testCards('d', 'Pikes', 4, i => 7 + i),
+            playerHand: testCards('p', 'Tiles', 5, i => 6 + i),
+            enemyHand: testCards('e', 'Tiles', 4, i => 6 + i),
+            table: [testPair(testCard('a1', 'Pikes', 14))],
+            trumpCard: testCard('t1', 'Hearts', 6),
+            defender: 'enemy', phase: BATTLE_PHASES.PLAYER_ATTACK
+        });
+
+        // Hands the turn to the opponent, plays all of it with drainAI(), and describes where it ended.
+        function playOpponentTurn(seed) {
+            setGameRng(createSeededRng(seed));
+            try {
+                scheduleEnemyAI(AI_STANDARD_DELAY_MS);
+                const steps = drainAI();
+                return { steps, phase: battle.phase, enemyHand: battle.enemyHand.map(c => c.id).join(), playerHand: battle.playerHand.map(c => c.id).join() };
+            } finally { setGameRng(); }
+        }
+
+        it('drainAI(): plays the whole opponent turn without timers and stops with the player to move', () => {
+            inGameStrict({}, () => {
+                const before = getAllCardIds();
+                const result = playOpponentTurn(1);
+                assert.isTrue(result.steps >= 2, 'the AI decides and then acts: at least two steps, got ' + result.steps);
+                assert.equal(aiScheduler.queue.length, 0, 'nothing is left in the queue');
+                assert.equal(battle.aiTimer, null);
+                assert.phase(BATTLE_PHASES.PLAYER_ATTACK);
+                assert.cardsConserved(before);
+            });
+        });
+
+        it('drainAI(): the same position and the same seed give the same result (no hidden dependence on time)', () => {
+            const outcomes = [];
+            for (let i = 0; i < 2; i++) inGameStrict({}, () => { outcomes.push(JSON.stringify(playOpponentTurn(7))); });
+            assert.equal(outcomes[0], outcomes[1]);
+        });
+
+        it('drainAI(): throws instead of hanging when the AI keeps scheduling steps', () => {
+            inGameStrict({}, () => {
+                const loop = () => scheduleEnemyAction(loop);
+                loop();
+                let message = '';
+                try { drainAI(25); } catch (err) { message = err.message; }
+                assert.isTrue(message.includes('25'), 'expected the step-limit error, got: ' + message);
+            });
+        });
+
+        it('stepAI() runs one step and reports false on an empty queue; drainAI() returns 0 then', () => {
+            inGameStrict({}, () => {
+                assert.isFalse(stepAI());
+                assert.equal(drainAI(), 0);
+                let fired = 0;
+                scheduleEnemyAction(() => { fired++; });
+                assert.isTrue(stepAI());
+                assert.equal(fired, 1);
+                assert.isFalse(stepAI());
+            });
+        });
+
+        it('stepAI()/drainAI() refuse to run on the timer scheduler', () => {
+            inGameStrict({}, () => {
+                const manual = setAIScheduler(createTimerAIScheduler());
+                try {
+                    for (const fn of [stepAI, drainAI]) {
+                        let message = '';
+                        try { fn(); } catch (err) { message = err.message; }
+                        assert.isTrue(message.includes('manual'), fn.name + ' must say it needs the manual scheduler, got: ' + message);
+                    }
+                } finally { setAIScheduler(manual); }
+            });
+        });
+
+        it('setAIScheduler(): cancels the pending step on the old scheduler and returns it', () => {
+            inGameStrict({}, () => {
+                const manual = aiScheduler;
+                enterAIWaitingPhase(() => {});
+                assert.equal(manual.queue.length, 1);
+                const previous = setAIScheduler(createTimerAIScheduler());
+                try {
+                    assert.isTrue(previous === manual, 'the previous scheduler is returned');
+                    assert.equal(manual.queue.length, 0, 'the pending step was cancelled on the scheduler that owned it');
+                    assert.equal(battle.aiTimer, null);
+                } finally { setAIScheduler(previous); }
+            });
+        });
+
+        it('Isolated fixtures run on their own manual scheduler and put the real one back', () => {
+            const real = aiScheduler;
+            assert.equal(real.kind, 'timer', 'the real game uses timers');
+            inGameStrict({}, () => {
+                assert.equal(aiScheduler.kind, 'manual');
+                assert.isTrue(aiScheduler !== real);
+            });
+            assert.isTrue(aiScheduler === real, 'the real scheduler is back after the fixture');
+        });
+
+        it('Static guard: the battle transitions and the enemy AI never touch timers directly (only the scheduler does)', () => {
+            const prod = getProductionSource();
+            // Cut the sections out first (their headers are comments), then drop the comments.
+            const section = (from, to) => {
+                const start = prod.indexOf('\n// ' + from + '\n'), end = prod.indexOf('\n// ' + to + '\n');
+                assert.isTrue(start > 0 && end > start + 1000, 'section "' + from + '" not found');
+                return prod.slice(start, end).replace(/\/\/[^\n]*/g, '');
+            };
+            const timerCalls = /\b(?:setTimeout|clearTimeout|setInterval)\(/g;
+            const offenders = [
+                ...(section('BATTLE STATE TRANSITIONS', 'FLOATING CHANGE PLATES').match(timerCalls) || []),
+                ...(section('ENEMY AI', 'RELICS').match(timerCalls) || [])
+            ];
+            assert.equal(offenders.length, 0, 'direct timer calls in battle logic: ' + offenders.length);
+        });
     });
+
 
     runner.describe('8h. Victory over the opponent and game continuation (enemy at 0 HP)', (it, assert) => {
         const { inGame, inGameStrict } = makeTestFixtures({
@@ -10413,6 +10614,7 @@ function runGameUnitTests() {
         if (cancelBtn) cancelBtn.onclick = null;
 
         clearAITimer();
+        setAIScheduler(realAIScheduler); // whatever a test left installed, the real game goes back to its own
         // Put the real run/battle back exactly as they were before the run,
         // whatever individual tests did to them (see captureRealStateForTests).
         restoreRealStateAfterTests(realStateSnapshot);
