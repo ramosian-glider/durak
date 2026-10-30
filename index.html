@@ -1742,11 +1742,14 @@ function enterAIWaitingPhase(action, delay = AI_STANDARD_DELAY_MS, phase = BATTL
     setBattlePhase(phase);
     commitBattleState();
     const token = battle.actionToken;
-    battle.aiTimer = aiScheduler.schedule(() => {
-        battle.aiTimer = null;
+    const handle = aiScheduler.schedule(() => {
+        // Only forget our own handle: a stale step that fires late must not
+        // wipe the handle of the newer step that is pending now.
+        if (battle.aiTimer === handle) battle.aiTimer = null;
         if (battle.actionToken !== token || battle.phase !== phase) return;
         action();
     }, delay);
+    battle.aiTimer = handle;
 }
 
 // Thin, intention-revealing entry points over enterAIWaitingPhase().
@@ -2197,6 +2200,9 @@ function loadGameState() {
             return false;
         }
 
+        // The step pending for the state being replaced must not outlive it.
+        clearAITimer();
+
         run = parsed.run;
 
         // Restore battle from the allow-list, keeping the runtime-only fields
@@ -2206,8 +2212,8 @@ function loadGameState() {
             if (key in savedBattle) battle[key] = savedBattle[key];
         }
 
-        // After loading, reset the runtime-only fields to a safe state
-        battle.aiTimer = null;
+        // After loading, reset the runtime-only fields to a safe state (aiTimer
+        // was cleared above). The token bump makes any older step stale.
         battle.actionToken = (battle.actionToken || 0) + 1;
 
         return true;
@@ -6158,6 +6164,50 @@ function runGameUnitTests() {
                 ...(section('ENEMY AI', 'RELICS').match(timerCalls) || [])
             ];
             assert.equal(offenders.length, 0, 'direct timer calls in battle logic: ' + offenders.length);
+        });
+
+        it('A stale step that fires late does not wipe the handle of the pending step', () => {
+            inGame({}, () => {
+                enterAIWaitingPhase(() => {});
+                const staleEntry = aiScheduler.queue[0];
+                enterAIWaitingPhase(() => {}); // cancels the first step
+                const pendingEntry = aiScheduler.queue[0];
+                staleEntry.fn(); // a step that escaped its cancellation fires anyway
+                assert.isTrue(battle.aiTimer === pendingEntry, 'the pending step must stay reachable for clearAITimer()');
+                assert.equal(aiScheduler.queue.length, 1);
+            });
+        });
+
+        it('loadGameState(): cancels the step that was pending for the state being replaced', () => {
+            inGameStrict({}, () => {
+                scheduleEnemyAI();
+                assert.equal(aiScheduler.queue.length, 1);
+                assert.isTrue(loadGameState(), 'the state the game just saved must load');
+                assert.equal(aiScheduler.queue.length, 0, 'no step of the old state may stay queued');
+                assert.equal(battle.aiTimer, null);
+            });
+        });
+
+        it('Opening the menu pauses the opponent; continuing from the autosave re-arms it', () => {
+            inGameStrict({}, () => {
+                const splash = getEl('splash-screen');
+                const wasHidden = splash.classList.contains('hidden');
+                try {
+                    scheduleEnemyAI();
+                    showSplashScreen();
+                    assert.equal(aiScheduler.queue.length, 0, 'no step may stay pending behind the menu');
+                    assert.equal(battle.aiTimer, null);
+                    assert.phase(BATTLE_PHASES.AI_WAITING);
+                    // "Continue": what the start button does with a saved run.
+                    assert.isTrue(loadGameState());
+                    resumeFromSave();
+                    assert.equal(aiScheduler.queue.length, 1, 'continuing must re-arm the opponent');
+                    drainAI();
+                    assert.phase(BATTLE_PHASES.PLAYER_ATTACK);
+                } finally {
+                    splash.classList.toggle('hidden', wasHidden);
+                }
+            });
         });
     });
 
@@ -11039,8 +11089,11 @@ function updateStartButtonForSavedRun() {
 /**
  * Shows the splash screen and refreshes its "continue" button state in the same
  * place, so no call site can forget to sync it (see updateStartButtonForSavedRun).
+ * Also pauses the opponent: its pending step is cancelled, and "continue" re-arms
+ * it from the autosave via resumeFromSave(), so the game never plays on behind the menu.
  */
 function showSplashScreen() {
+    clearAITimer();
     const splash = getEl('splash-screen');
     if (splash) splash.classList.remove('hidden');
     updateStartButtonForSavedRun();
