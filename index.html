@@ -4791,10 +4791,13 @@ function getAllCardIds() {
 // the first occurrence of that text in the file.
 // Only the game's own inline script is scanned (the one holding the marker):
 // viewers and extensions may inject extra <script> tags that are not game code.
+const TEST_INFRA_MARKER = 'const assert = {';
+function getGameScriptSource() {
+    return [...document.scripts].map(sc => sc.textContent).find(text => text.includes(TEST_INFRA_MARKER)) || '';
+}
 function getProductionSource() {
-    const marker = 'const assert = {';
-    const gameSource = [...document.scripts].map(sc => sc.textContent).find(text => text.includes(marker)) || '';
-    return gameSource.slice(0, gameSource.indexOf(marker));
+    const gameSource = getGameScriptSource();
+    return gameSource.slice(0, gameSource.indexOf(TEST_INFRA_MARKER));
 }
 
 // Runs fn against a throwaway run/battle under full test conditions: the
@@ -8110,6 +8113,20 @@ function runGameUnitTests() {
                 if (preRaw === null) localStorage.removeItem(SAVE_KEY); else localStorage.setItem(SAVE_KEY, preRaw);
             }
         });
+
+        it('Tailwind is inlined in the file: no CDN script, and utility classes really style elements', () => {
+            assert.isFalse([...document.scripts].some(sc => sc.src.includes('tailwindcss')), 'the cdn.tailwindcss.com script is not needed');
+            assert.isTrue(!!document.getElementById('tailwind-inline'), 'inline <style id="tailwind-inline"> not found');
+            const probe = document.createElement('div');
+            probe.className = 'hidden';
+            document.body.appendChild(probe);
+            const hiddenDisplay = getComputedStyle(probe).display;
+            probe.className = 'flex';
+            const flexDisplay = getComputedStyle(probe).display;
+            probe.remove();
+            assert.equal(hiddenDisplay, 'none', 'class hidden must hide the element');
+            assert.equal(flexDisplay, 'flex', 'class flex must enable flex layout');
+        });
     });
 
     runner.describe('8o. Player take: enemy throws in step by step (ENEMY_THROWING_IN)', (it, assert) => {
@@ -10628,20 +10645,6 @@ function runGameUnitTests() {
         // Same idea as the source scans in suites 8e/8g: nothing outside the RNG block may
         // reach for Math.random() or the biased sort-shuffle again. The literals are built by
         // concatenation so this test's own source cannot satisfy the search.
-        it('Tailwind is inlined in the file: no CDN script, and utility classes really style elements', () => {
-            assert.isFalse([...document.scripts].some(sc => sc.src.includes('tailwindcss')), 'the cdn.tailwindcss.com script is not needed');
-            assert.isTrue(!!document.getElementById('tailwind-inline'), 'inline <style id="tailwind-inline"> not found');
-            const probe = document.createElement('div');
-            probe.className = 'hidden';
-            document.body.appendChild(probe);
-            const hiddenDisplay = getComputedStyle(probe).display;
-            probe.className = 'flex';
-            const flexDisplay = getComputedStyle(probe).display;
-            probe.remove();
-            assert.equal(hiddenDisplay, 'none', 'class hidden must hide the element');
-            assert.equal(flexDisplay, 'flex', 'class flex must enable flex layout');
-        });
-
         it('no direct Math.random() calls in battle code outside the randomness block, and no sort-shuffle', () => {
             const source = getProductionSource();
             const blockStart = source.indexOf('// ---- Randomness:');
@@ -10860,7 +10863,7 @@ function runGameUnitTests() {
             assert.isTrue(from > 0 && to > from, 'Russian table not found');
             source = (source.slice(0, from) + source.slice(to)).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
             // The splash-screen helpers live after the test code, so scan that tail as well.
-            const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
+            const fullSource = getGameScriptSource();
             const tailAt = fullSource.indexOf('function update' + 'StartButtonForSavedRun');
             assert.isTrue(tailAt > 0, 'splash helpers not found');
             source += '\n' + fullSource.slice(tailAt).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
