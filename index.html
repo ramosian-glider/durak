@@ -475,6 +475,11 @@
                 </div>
             </div>
 
+            <label class="flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer select-none self-start">
+                <input type="checkbox" id="test-only-failed" class="w-4 h-4 accent-rose-500 cursor-pointer">
+                Show only failed
+            </label>
+
             <div class="grid grid-cols-3 gap-3">
                 <div class="bg-slate-900 border border-slate-800 p-3 rounded-2xl text-center">
                     <div class="text-2xl font-black text-slate-200" id="test-stat-total">0</div>
@@ -4784,9 +4789,12 @@ function getAllCardIds() {
 // instead of the whole script, so test code — which legitimately breaks
 // those rules to build fixtures — is never flagged. The marker must stay
 // the first occurrence of that text in the file.
+// Only the game's own inline script is scanned (the one holding the marker):
+// viewers and extensions may inject extra <script> tags that are not game code.
 function getProductionSource() {
-    const fullSource = [...document.scripts].map(sc => sc.textContent).join('\n');
-    return fullSource.slice(0, fullSource.indexOf('const assert = {'));
+    const marker = 'const assert = {';
+    const gameSource = [...document.scripts].map(sc => sc.textContent).find(text => text.includes(marker)) || '';
+    return gameSource.slice(0, gameSource.indexOf(marker));
 }
 
 // Runs fn against a throwaway run/battle under full test conditions: the
@@ -10944,6 +10952,60 @@ function runGameUnitTests() {
     }
 }
 
+function renderTestSuitesList(results) {
+    const suitesList = getEl('test-suites-list');
+    if (!suitesList) return;
+    const onlyFailed = !!getEl('test-only-failed')?.checked;
+    suitesList.innerHTML = '';
+
+    results.details.forEach(suite => {
+        // "Only failed" hides passed tests, and suites that have no failures at all.
+        const visibleTests = onlyFailed ? suite.tests.filter(t => !t.success) : suite.tests;
+        if (visibleTests.length === 0) return;
+
+        const suiteBox = document.createElement('div');
+        suiteBox.className = 'bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg';
+        
+        let testsHtml = '';
+        visibleTests.forEach(test => {
+            if (test.success) {
+                testsHtml += `
+                            <div class="flex items-center justify-between py-1.5 border-b border-slate-800/60 text-xs">
+                                <span class="text-slate-300 font-medium flex items-center gap-2">
+                                    <span class="text-emerald-400 font-bold">✓</span> ${test.name}
+                                </span>
+                                <span class="text-[10px] bg-emerald-950/80 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-700/40 font-bold">PASSED</span>
+                            </div>
+                        `;
+            } else {
+                testsHtml += `
+                            <div class="flex flex-col gap-1 py-2 border-b border-rose-900/40 text-xs">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-rose-200 font-semibold flex items-center gap-2">
+                                        <span class="text-rose-500 font-bold">✕</span> ${test.name}
+                                    </span>
+                                    <span class="text-[10px] bg-rose-950 text-rose-400 px-2 py-0.5 rounded-full border border-rose-700/40 font-bold">FAILED</span>
+                                </div>
+                                <div class="text-[11px] text-rose-300 bg-rose-950/40 p-2 rounded-lg font-mono border border-rose-800/30">
+                                    ${test.error}
+                                </div>
+                            </div>
+                        `;
+            }
+        });
+
+        suiteBox.innerHTML = `
+                    <h3 class="text-sm font-black text-amber-400 mb-2">${suite.name}</h3>
+                    <div class="flex flex-col gap-0.5">${testsHtml}</div>
+                `;
+        suitesList.appendChild(suiteBox);
+    });
+
+    if (onlyFailed && !suitesList.children.length) {
+        suitesList.innerHTML = '<div class="text-center text-emerald-400 text-sm font-bold py-8">No failed tests 🎉</div>';
+    }
+}
+
 function renderTestResultsUI(results) {
     const modal = getEl('unit-test-modal');
     if (!modal) return;
@@ -10959,50 +11021,11 @@ function renderTestResultsUI(results) {
     setElText('test-stat-passed', results.passed);
     setElText('test-stat-failed', results.failed);
 
-    const suitesList = getEl('test-suites-list');
-    if (suitesList) {
-        suitesList.innerHTML = '';
+    // Re-filter the already computed results on toggle; tests are not re-run.
+    const onlyFailedBox = getEl('test-only-failed');
+    if (onlyFailedBox) onlyFailedBox.onchange = () => renderTestSuitesList(results);
 
-        results.details.forEach(suite => {
-            const suiteBox = document.createElement('div');
-            suiteBox.className = 'bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg';
-            
-            let testsHtml = '';
-            suite.tests.forEach(test => {
-                if (test.success) {
-                    testsHtml += `
-                                <div class="flex items-center justify-between py-1.5 border-b border-slate-800/60 text-xs">
-                                    <span class="text-slate-300 font-medium flex items-center gap-2">
-                                        <span class="text-emerald-400 font-bold">✓</span> ${test.name}
-                                    </span>
-                                    <span class="text-[10px] bg-emerald-950/80 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-700/40 font-bold">PASSED</span>
-                                </div>
-                            `;
-                } else {
-                    testsHtml += `
-                                <div class="flex flex-col gap-1 py-2 border-b border-rose-900/40 text-xs">
-                                    <div class="flex items-center justify-between">
-                                        <span class="text-rose-200 font-semibold flex items-center gap-2">
-                                            <span class="text-rose-500 font-bold">✕</span> ${test.name}
-                                        </span>
-                                        <span class="text-[10px] bg-rose-950 text-rose-400 px-2 py-0.5 rounded-full border border-rose-700/40 font-bold">FAILED</span>
-                                    </div>
-                                    <div class="text-[11px] text-rose-300 bg-rose-950/40 p-2 rounded-lg font-mono border border-rose-800/30">
-                                        ${test.error}
-                                    </div>
-                                </div>
-                            `;
-                }
-            });
-
-            suiteBox.innerHTML = `
-                        <h3 class="text-sm font-black text-amber-400 mb-2">${suite.name}</h3>
-                        <div class="flex flex-col gap-0.5">${testsHtml}</div>
-                    `;
-            suitesList.appendChild(suiteBox);
-        });
-    }
-
+    renderTestSuitesList(results);
     setVisible(modal, true, 'flex');
 }
 
