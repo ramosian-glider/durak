@@ -162,6 +162,7 @@
         .relic-slot-filled,
         .relic-slot-sellable { cursor: pointer; }
         .relic-slot-filled {
+            position: relative;
             background-color: rgba(245, 158, 11, 0.2);
             border-color: rgba(251, 191, 36, 0.6);
             font-size: 1.125rem;
@@ -187,6 +188,22 @@
             font-weight: 800;
             letter-spacing: 0.04em;
             text-transform: uppercase;
+        }
+        /* Small count over a relic icon (transfer_streak), bottom-right corner. */
+        .relic-badge {
+            position: absolute;
+            right: 2px;
+            bottom: 1px;
+            min-width: 0.875rem;
+            padding: 0 0.2rem;
+            border-radius: 0.5rem;
+            background-color: rgba(15, 23, 42, 0.9);
+            color: #fcd34d;
+            font-size: 0.625rem;
+            font-weight: 800;
+            line-height: 0.875rem;
+            text-align: center;
+            pointer-events: none;
         }
         .relic-slot-empty {
             border-style: dashed;
@@ -564,7 +581,8 @@ const BATTLE_SAVED_FIELDS = Object.freeze([
     'enemyHP', 'phase',
     'cascadeTransferUsedThisTurn', 'heavyBallastAppliedThisTurn',
     'jesterDiscardUsedThisBattle', 'sleightOfHandUsedThisBattle',
-    'pocketDiscardUsedThisRound'
+    'pocketDiscardUsedThisRound',
+    'transferStreak'
 ]);
 
 const SUITS = { Pikes: '♠', Hearts: '♥', Tiles: '♦', Clovers: '♣' };
@@ -625,6 +643,9 @@ const HEAVY_BALLAST_DAMAGE_PER_CARD = 1;
 const SALTED_WOUND_DAMAGE_PER_CARD = 1;
 
 const CASCADE_TRANSFER_DAMAGE = 4;
+
+// transfer_streak: damage per link of the streak. The Nth transfer in a row hits for N times this.
+const TRANSFER_STREAK_DAMAGE_PER_LINK = 2;
 
 const COIN_MAGNET_GOLD_PER_SIX = 1;
 
@@ -749,7 +770,8 @@ const ALL_RELICS = [
     { id: "salted_wound", rarity: RARITY.UNCOMMON, icon: "🧂", price: 10 },
     { id: "sharp_suit", rarity: RARITY.UNCOMMON, icon: "🗡️", price: 9 },
     { id: "moonshine_flask", rarity: RARITY.UNCOMMON, icon: "🍶", price: 12 },
-    { id: "golden_bullet", rarity: RARITY.UNCOMMON, icon: "🔫", price: 8 }
+    { id: "golden_bullet", rarity: RARITY.UNCOMMON, icon: "🔫", price: 8 },
+    { id: "transfer_streak", rarity: RARITY.UNCOMMON, icon: "🌊", price: 10 }
 ];
 
 // Numbers that are interpolated into a relic description (the text itself is in I18N).
@@ -764,7 +786,8 @@ const RELIC_DESC_PARAMS = {
     salted_wound: () => ({ n: SALTED_WOUND_DAMAGE_PER_CARD, limit: HAND_SIZE, max: ENEMY_HAND_EXCESS_CAP * SALTED_WOUND_DAMAGE_PER_CARD }),
     ballast_drop: () => ({ n: BALLAST_DROP_DISCARD_COUNT }),
     coin_magnet: () => ({ n: COIN_MAGNET_GOLD_PER_SIX }),
-    cascade_transfer: () => ({ n: CASCADE_TRANSFER_DAMAGE })
+    cascade_transfer: () => ({ n: CASCADE_TRANSFER_DAMAGE }),
+    transfer_streak: () => ({ n: TRANSFER_STREAK_DAMAGE_PER_LINK })
 };
 
 // Relic text is looked up by id, so a relic saved in one language is shown in the current one.
@@ -1125,6 +1148,8 @@ const I18N = {
         "relic.moonshine_flask.desc": "Каждый раз, когда вы успешно отбиваетесь, вы восстанавливаете {n} HP.",
         "relic.golden_bullet.name": "Золотая пуля",
         "relic.golden_bullet.desc": "Каждый раз, когда артефакт приносит вам $, соперник получает {n} ед. урона.",
+        "relic.transfer_streak.name": "Каскадный перевод",
+        "relic.transfer_streak.desc": "Каждый ваш перевод увеличивает серию на 1 и наносит сопернику {n}×N ед. урона (N — длина серии). Серия сбрасывается, когда вы бьёте карту или берёте карты, и длится до конца боя.",
         "enemy.plain.ability": "Стандартный соперник",
         "enemy.rookie.name": "Начинающий Шулер",
         "enemy.swindler.name": "Уличный Мошенник",
@@ -1289,6 +1314,8 @@ const I18N = {
         "relic.moonshine_flask.desc": "Whenever you successfully defend, restore {n} HP.",
         "relic.golden_bullet.name": "Golden Bullet",
         "relic.golden_bullet.desc": "Whenever a relic brings you $, deal {n} damage to the opponent.",
+        "relic.transfer_streak.name": "Cascade Transfer",
+        "relic.transfer_streak.desc": "Each transfer you make adds 1 to your streak and deals {n}×N damage to the opponent (N = streak length). The streak resets when you beat a card or take cards, and lasts until the end of the battle.",
         "enemy.plain.ability": "Plain old opponent",
         "enemy.rookie.name": "Rookie Hustler",
         "enemy.swindler.name": "Street Hustler",
@@ -1596,7 +1623,9 @@ let battle = {
     jesterDiscardUsedThisBattle: false,
     sleightOfHandUsedThisBattle: false,
     // Round-scoped guard for pocket_discard (once per round)
-    pocketDiscardUsedThisRound: false
+    pocketDiscardUsedThisRound: false,
+    // Battle-scoped counter for transfer_streak: the player's transfers in a row (0 = no streak)
+    transferStreak: 0
 };
 
 // ---- AI scheduler ----------------------------------------------------
@@ -1884,6 +1913,7 @@ function startFloorBattle() {
     // fight; it may span several rounds if the deck runs out and reshuffles).
     battle.jesterDiscardUsedThisBattle = false;
     battle.sleightOfHandUsedThisBattle = false;
+    battle.transferStreak = 0;
 
     startNewRound();
 }
@@ -2857,6 +2887,8 @@ window.onPlayerCardClick = function(index) {
                 battle.isTransferActive = false;
                 onPlayerCardPlayed(card);
                 triggerCascadeTransfer();
+                // Only the player's own transfers count for transfer_streak (an ai_transfer bounce does not).
+                fireAllHooks('onPlayerTransfer');
                 audio.playCardSound();
                 renderAll();
                 scheduleEnemyAI(AI_STANDARD_DELAY_MS);
@@ -2872,6 +2904,7 @@ window.onPlayerCardClick = function(index) {
             if (canBeat(undefendedPair.attack, card)) {
                 playDefenseCard(battle.playerHand, undefendedPair, card);
                 onPlayerCardPlayed(card);
+                fireAllHooks('onPlayerBeatCard');
                 audio.playCardSound();
 
                 scheduleEnemyAI(AI_QUICK_DELAY_MS);
@@ -3579,6 +3612,33 @@ const RELIC_EFFECTS = {
             return true;
         }
     },
+    transfer_streak: {
+        // The streak (battle.transferStreak) is the number of transfers the PLAYER made in a
+        // row this battle. It grows on onPlayerTransfer (an opponent's ai_transfer does not
+        // count) and breaks when the player beats a card (onPlayerBeatCard, per card) or
+        // takes the table (onPlayerTookCards). Attacking and throwing in neither grow nor
+        // break it. startFloorBattle() zeroes it, so a streak never outlives its battle.
+        onPlayerTransfer() {
+            battle.transferStreak++;
+            // An earlier hook on this very transfer (sharp_suit, cascade_transfer) may have
+            // already won the battle: a second hit would pay the victory out twice.
+            if (battle.phase === BATTLE_PHASES.BATTLE_OVER) return;
+            damageEnemyHP(TRANSFER_STREAK_DAMAGE_PER_LINK * battle.transferStreak);
+            return true;
+        },
+        // Both reset hooks return true only when there was a streak to lose, so the
+        // artifact flashes exactly when the player sees the counter vanish.
+        onPlayerBeatCard() {
+            return resetTransferStreak();
+        },
+        onPlayerTookCards() {
+            return resetTransferStreak();
+        },
+        // Passive: the small number drawn over the icon (renderRelicSlots); 0 = no badge.
+        getBadge() {
+            return battle.transferStreak;
+        }
+    },
     heavy_ballast: {
         // Fired once at the start of the enemy's attacking turn (from
         // executeEnemyAI's "enemy is attacker" branch), not on every
@@ -3815,6 +3875,13 @@ function queryRelicHook(hookName, ctx) {
 // pocket_discard: a card the player may drop (a 6 or a 7).
 function isPocketDiscardCard(card) {
     return POCKET_DISCARD_VALUES.includes(card.value);
+}
+
+// transfer_streak: the streak is broken. Returns true if there was a streak to lose.
+function resetTransferStreak() {
+    if (battle.transferStreak === 0) return false;
+    battle.transferStreak = 0;
+    return true;
 }
 
 // How many cards "count" as excess in an oversized enemy hand, for relics
@@ -4078,6 +4145,14 @@ function renderRelicSlots(containerId, { sellable = false } = {}) {
             const ready = ACTIVE_RELIC_IDS.includes(relic.id) && RELIC_EFFECTS[relic.id].isReady();
             slot.className += (highlighted ? ' relic-highlight' : '') + (ready ? ' relic-ready-glow' : '');
             slot.onclick = () => showRelicPopover(relic.id);
+            // A relic that tracks a count (transfer_streak) shows it over the icon; 0 shows nothing.
+            const badge = RELIC_EFFECTS[relic.id]?.getBadge?.();
+            if (badge > 0) {
+                const badgeEl = document.createElement('span');
+                badgeEl.className = 'relic-badge';
+                badgeEl.textContent = badge;
+                slot.appendChild(badgeEl);
+            }
         }
         bar.appendChild(slot);
     }
@@ -4727,7 +4802,8 @@ function makeTestBattle(defaults = {}, overrides = {}) {
         defender: 'enemy', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
         enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
         cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-        jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+        jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false,
+        transferStreak: 0
     }, defaults, overrides);
 }
 
@@ -6323,6 +6399,38 @@ function runGameUnitTests() {
             }, relicRun('cascade_transfer'));
         });
 
+        it('transfer_streak: player transfers and the streak hit finishes the enemy - victory, AI turn not started', () => {
+            inGameStrict({
+                phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: true, enemyHP: TRANSFER_STREAK_DAMAGE_PER_LINK,
+                table: [testPair(testCard('a1', 'Clubs', 8))],
+                playerHand: [testCard('p1', 'Hearts', 8), testCard('p2', 'Pikes', 12)],
+                enemyHand: [testCard('e1', 'Hearts', 7), testCard('e2', 'Pikes', 12)]
+            }, () => {
+                clearLocalSave();
+                window.onPlayerCardClick(0);
+                assert.equal(battle.enemyHP, 0);
+                assert.phase(BATTLE_PHASES.BATTLE_OVER, 'victory must not be overwritten by the AI_WAITING phase');
+                assert.aiNotScheduled();
+                assert.modalTitle('Победа в Бою!');
+                assert.rewardGrantedOnce();
+            }, relicRun('transfer_streak'));
+        });
+
+        it('transfer_streak: another hook already won the battle on the same transfer - no second hit, the reward is paid once', () => {
+            inGameStrict({
+                phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: true, enemyHP: CASCADE_TRANSFER_DAMAGE,
+                table: [testPair(testCard('a1', 'Clubs', 8))],
+                playerHand: [testCard('p1', 'Hearts', 8), testCard('p2', 'Pikes', 12)],
+                enemyHand: [testCard('e1', 'Hearts', 7), testCard('e2', 'Pikes', 12)]
+            }, () => {
+                clearLocalSave();
+                window.onPlayerCardClick(0);
+                assert.equal(battle.enemyHP, 0);
+                assert.phase(BATTLE_PHASES.BATTLE_OVER);
+                assert.rewardGrantedOnce();
+            }, { relics: [{ id: 'cascade_transfer' }, { id: 'transfer_streak' }] });
+        });
+
         // Same root cause on the defend path: sharp_suit's hit lands inside
         // onPlayerCardClick(), which then used to hand the turn to the AI anyway.
         it('sharp_suit: enemy dies from damage when defended with a trump - victory, AI turn not started', () => {
@@ -6433,7 +6541,7 @@ function runGameUnitTests() {
             }
             assert.equal(
                 [...lethalHooks].sort().join(),
-                ['onEnemyTurnStart', 'onGoldGained', 'onPlayerCardPlayed', 'onPlayerTookCards', 'onTransfer'].join(),
+                ['onEnemyTurnStart', 'onGoldGained', 'onPlayerCardPlayed', 'onPlayerTookCards', 'onPlayerTransfer', 'onTransfer'].join(),
                 'a new hook calls damageEnemyHP(): check the code that dispatches it (didEnemyJustDie / enterAIWaitingPhase) and add a test to suite 8h'
             );
         });
@@ -9763,11 +9871,11 @@ function runGameUnitTests() {
             // nothing. When a new fire*() call site is added, add its hook
             // name here too.
             const KNOWN_HOOKS = [
-                'onTransfer', 'onEnemyTookCards', 'onPlayerTookCards', 'onEnemyTurnStart',
+                'onTransfer', 'onPlayerTransfer', 'onPlayerBeatCard', 'onEnemyTookCards', 'onPlayerTookCards', 'onEnemyTurnStart',
                 'onCardPlayed', 'onPlayerCardPlayed', 'onLethalDamage', 'onDefenseSucceeded',
                 'onPlayerTakePenalty', 'onEnemyCollectedTable', 'onGoldGained',
-                // Passive relic query (cheat_eye) - read via queryRelicHook(), never fired.
-                'getRevealedEnemyCard',
+                // Passive relic queries (cheat_eye, transfer_streak's badge) - read while rendering, never fired.
+                'getRevealedEnemyCard', 'getBadge',
                 // Active (button-triggered) relic ability hooks — see pocket_discard.
                 'isReady', 'onUse'
             ];
@@ -10350,6 +10458,152 @@ function runGameUnitTests() {
         });
     });
 
+    runner.describe('11f. Cascade Transfer (transfer_streak): streak of transfers, damage, badge', (it, assert) => {
+        const { inGameStrict, inGameSaved } = makeTestFixtures({}, { deck: [] });
+        const { game, playerTakes } = makeRelicFixtures();
+        const relicRun = (...ids) => ({ relics: ids.map(id => ({ ...ALL_RELICS.find(r => r.id === id) })) });
+        // The opponent attacked with an 8 and the player holds an 8 to pass it back (a transfer is on offer).
+        const transferOffer = (overrides = {}) => ({
+            phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: true, enemyHP: 40,
+            table: [testPair(testCard('a1', 'Clubs', 8))],
+            playerHand: [testCard('p1', 'Hearts', 8), testCard('p2', 'Pikes', 12)],
+            enemyHand: [testCard('e1', 'Hearts', 7), testCard('e2', 'Pikes', 12)],
+            ...overrides
+        });
+        const relicBadge = () => getEl('relics-bar').children[0].querySelector('.relic-badge');
+
+        it('transfer_streak: relic data (name, icon, price) and the damage number in the description', () => {
+            const relic = ALL_RELICS.find(r => r.id === 'transfer_streak');
+            assert.equal(relic.name, 'Каскадный перевод');
+            assert.equal(relic.icon, '🌊');
+            assert.equal(relic.price, 10);
+            assert.isTrue(relic.desc.includes(`${TRANSFER_STREAK_DAMAGE_PER_LINK}×N`), 'description must name the per-link damage: ' + relic.desc);
+        });
+
+        it('transfer_streak: the Nth transfer in a row grows the streak to N and hits for N x damage per link', () => {
+            game(relicRun('transfer_streak'), { enemyHP: 40 }, () => {
+                let expectedHP = 40;
+                for (let n = 1; n <= 4; n++) {
+                    fireAllHooks('onPlayerTransfer');
+                    expectedHP -= TRANSFER_STREAK_DAMAGE_PER_LINK * n;
+                    assert.equal(battle.transferStreak, n, 'streak after transfer ' + n);
+                    assert.equal(battle.enemyHP, expectedHP, 'enemy HP after transfer ' + n);
+                }
+            });
+        });
+
+        it('transfer_streak: a real transfer click grows the streak once and hits for damage x 1', () => {
+            inGameStrict(transferOffer(), () => {
+                window.onPlayerCardClick(0);
+                assert.equal(battle.transferStreak, 1);
+                assert.equal(battle.enemyHP, 40 - TRANSFER_STREAK_DAMAGE_PER_LINK);
+                assert.equal(battle.defender, 'enemy', 'the transfer itself still happened');
+            }, relicRun('transfer_streak'));
+        });
+
+        it('transfer_streak: without the relic nothing counts', () => {
+            inGameStrict(transferOffer(), () => {
+                window.onPlayerCardClick(0);
+                assert.equal(battle.transferStreak, 0);
+                assert.equal(battle.enemyHP, 40);
+            });
+        });
+
+        it('transfer_streak: the opponent\'s own transfer (ai_transfer) does not grow the streak', () => {
+            const transferFloorIndex = ENEMIES.findIndex(e => e.activeAbilities.has('ai_transfer'));
+            game({ floor: transferFloorIndex + 1, ...relicRun('transfer_streak') }, {
+                playerHand: [testCard('p1', 'Pikes', 10), testCard('p2', 'Pikes', 11)],
+                enemyHand: [testCard('e1', 'Clubs', 8)],
+                table: [testPair(testCard('a1', 'Clubs', 8))], phase: BATTLE_PHASES.AI_WAITING, enemyHP: 40
+            }, () => {
+                executeEnemyAI();
+                assert.equal(battle.defender, 'player', 'the opponent did transfer');
+                assert.equal(battle.transferStreak, 0);
+                assert.equal(battle.enemyHP, 40);
+            });
+        });
+
+        it('transfer_streak: beating a card breaks the streak; attacking and throwing in do not', () => {
+            inGameStrict({
+                phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', transferStreak: 3, enemyHP: 40,
+                table: [testPair(testCard('a1', 'Pikes', 7))], playerHand: [testCard('p1', 'Pikes', 9)]
+            }, () => {
+                window.onPlayerCardClick(0);
+                assert.equal(battle.transferStreak, 0, 'beating the card resets the streak');
+            }, relicRun('transfer_streak'));
+
+            inGameStrict({
+                phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', transferStreak: 2, enemyHP: 40, table: [],
+                playerHand: [testCard('p1', 'Pikes', 9), testCard('p2', 'Clubs', 9)], enemyHand: [testCard('e1', 'Pikes', 12), testCard('e2', 'Clubs', 12)]
+            }, () => {
+                window.onPlayerCardClick(0); // attack
+                assert.equal(battle.transferStreak, 2, 'an attack keeps the streak');
+                battle.phase = BATTLE_PHASES.PLAYER_ATTACK; // the opponent defended; the player throws in a card of the same rank
+                battle.table[0].defend = testCard('d1', 'Pikes', 12);
+                window.onPlayerCardClick(0); // throw-in
+                assert.equal(battle.transferStreak, 2, 'a throw-in keeps the streak');
+            }, relicRun('transfer_streak'));
+        });
+
+        it('transfer_streak: taking the table breaks the streak', () => {
+            playerTakes(['transfer_streak'], { transferStreak: 3, table: [testPair(testCard('x1', 'Hearts', 7))] },
+                () => assert.equal(battle.transferStreak, 0));
+        });
+
+        it('transfer_streak: the reset hooks report whether a streak was lost (the artifact flashes only then)', () => {
+            game(relicRun('transfer_streak'), { transferStreak: 0 }, () => {
+                assert.isFalse(resetTransferStreak(), 'no streak - nothing to lose');
+                battle.transferStreak = 2;
+                assert.isTrue(resetTransferStreak());
+                assert.equal(battle.transferStreak, 0);
+            });
+        });
+
+        it('transfer_streak: a new battle starts from 0', () => {
+            game({ ...relicRun('transfer_streak'), deck: generateStandardDeck() }, { transferStreak: 3 }, () => {
+                startFloorBattle();
+                assert.equal(battle.transferStreak, 0);
+            });
+        });
+
+        it('transfer_streak: the streak survives a save and load', () => {
+            // A save is only resumable when it is a plausible battle (cards in play, a real deck).
+            inGameSaved({
+                transferStreak: 3, drawDeck: [testCard('d1', 'Hearts', 6)],
+                playerHand: [testCard('p1', 'Pikes', 9)], enemyHand: [testCard('e1', 'Clubs', 9)]
+            }, () => {
+                saveGameState();
+                battle.transferStreak = 0;
+                assert.isTrue(loadGameState());
+                assert.equal(battle.transferStreak, 3);
+            }, { ...relicRun('transfer_streak'), deck: generateStandardDeck() });
+        });
+
+        it('transfer_streak: the counter sits over the icon while the streak is above 0 and disappears at 0', () => {
+            game(relicRun('transfer_streak'), { transferStreak: 0 }, () => {
+                renderAll();
+                assert.equal(relicBadge(), null, 'no badge at 0');
+                battle.transferStreak = 3;
+                renderAll();
+                assert.equal(relicBadge().textContent, '3');
+                battle.transferStreak = 0;
+                renderAll();
+                assert.equal(relicBadge(), null, 'the badge goes away when the streak breaks');
+            });
+        });
+
+        it('transfer_streak: other artifacts get no badge, and the shop slots never show one', () => {
+            game(relicRun('safety_rope'), {}, () => {
+                renderAll();
+                assert.equal(relicBadge(), null);
+            });
+            game(relicRun('transfer_streak'), { transferStreak: 3 }, () => {
+                renderShopRelicSlots();
+                assert.equal(getEl('shop-relic-slots').querySelector('.relic-badge'), null, 'no battle in the shop - no counter');
+            });
+        });
+    });
+
     runner.describe('12. Enemy header rendering (renderAll as the single state projection)', (it, assert) => {
         it('renderAll() redraws the enemy name, level and avatar from the current run.floor', () => {
             const expected = getCurrentEnemy();
@@ -10453,7 +10707,8 @@ function runGameUnitTests() {
                 defender: 'player', selectedCardIndex: null, cardsToTake: false, isTransferActive: false,
                 enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE, aiTimer: null, actionToken: 0,
                 cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
-                jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false
+                jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false,
+                transferStreak: 0
             }, () => {
                 relicHighlightUntil['safety_rope'] = Date.now() + 5000;
                 renderAll();
@@ -10773,6 +11028,7 @@ function runGameUnitTests() {
                     assert.isTrue(desc('ballast_drop').includes(String(BALLAST_DROP_DISCARD_COUNT)), lang + ' ballast_drop');
                     assert.isTrue(desc('coin_magnet').includes(`+${COIN_MAGNET_GOLD_PER_SIX}$`), lang + ' coin_magnet');
                     assert.isTrue(desc('cascade_transfer').includes(String(CASCADE_TRANSFER_DAMAGE)), lang + ' cascade_transfer');
+                    assert.isTrue(desc('transfer_streak').includes(String(TRANSFER_STREAK_DAMAGE_PER_LINK)), lang + ' transfer_streak');
                     ALL_RELICS.forEach(r => assert.isFalse(/\{\w+\}/.test(r.desc), `${lang} ${r.id}: unresolved placeholder`));
                     const enemy = (id) => ENEMIES.find(e => e.abilityId === id).abilityDesc;
                     assert.isTrue(enemy('swindle').includes(`${SWINDLE_GOLD_LOSS}$`), lang + ' swindle');
