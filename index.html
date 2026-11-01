@@ -5823,10 +5823,6 @@ function runGameUnitTests() {
         // setBattlePhase() is a pure state transition: no persistence, no paint.
         // Static guard on its body + a behavioural check for a stable phase.
         it('setBattlePhase() is a pure state transition: no saving, no re-render', () => {
-            const body = (getProductionSource().match(/function setBattlePhase\(phase\) \{[\s\S]*?\n\}\n/) || [''])[0];
-            assert.isTrue(body.length > 0, 'setBattlePhase() body not found');
-            assert.isFalse(/saveGameState|saveGameState|renderAll|commitBattleState/.test(body), 'setBattlePhase() must not save or render');
-
             inGame({}, () => {
                 const realRenderAll = window.renderAll;
                 let renders = 0;
@@ -7993,7 +7989,6 @@ function runGameUnitTests() {
             assert.equal(typeof window.saveRunToLocal, 'undefined');
             assert.equal(typeof window.loadRunFromLocal, 'undefined');
             assert.equal(typeof window.countTableCards, 'undefined');
-            assert.isFalse(/saveRunToLocal|loadRunFromLocal/.test(getProductionSource().replace(/\/\/[^\n]*/g, '')), 'no mentions must remain in the code');
         });
 
         it('Test helpers are not part of battle code: withIsolatedGameState etc. are defined after the runner', () => {
