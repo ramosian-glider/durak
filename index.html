@@ -4660,6 +4660,14 @@ const assert = {
     // No card was lost or duplicated since `before` (a getAllCardIds() snapshot).
     cardsConserved(before, msg = '') {
         assert.equal(getAllCardIds().join(), before.join(), msg);
+    },
+    // Victory path: once the opponent is dead no AI turn may be queued.
+    aiNotScheduled(msg = 'AI turn must not be scheduled after victory') {
+        assert.isTrue(battle.aiTimer === null, msg);
+    },
+    // The victory reward was paid exactly once on top of the gold the test started with.
+    rewardGrantedOnce(startGold = 15) {
+        assert.equal(run.gold, startGold + WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR, 'reward is granted exactly once');
     }
 };
 
@@ -4753,6 +4761,31 @@ function makeTestFixtures(battleDefaults = {}, runDefaults = {}) {
         inGameStrict: (battleOverrides, fn, runOverrides) =>
             runFixture(withTestGame, battleOverrides, fn, runOverrides)
     };
+}
+
+// Bare-run helpers shared by the relic suites (11, 11b-11e).
+function makeRelicFixtures() {
+        // Bare run (empty deck: tests deal from the battle's own cards); `runOverrides`
+        // come first because they usually say which relics are equipped.
+        const { inGame } = makeTestFixtures({}, { deck: [] });
+        const game = (runOverrides, battleOverrides, fn) => inGame(battleOverrides, fn, runOverrides);
+
+        // The two situations most hook tests start from. Each equips `relicIds`, builds
+        // the table, runs the take handler, then calls `check`. Overrides win over the defaults.
+        // The enemy collects a one-card table:
+        const enemyTakes = (relicIds, battleOverrides, check, runOverrides) => game(
+            { relics: relicIds.map(id => ({ id })), ...runOverrides },
+            { table: [testPair(testCard('x1', 'Hearts', 7))], cardsToTake: true, enemyHP: 50, ...battleOverrides },
+            () => { handleEnemyTake(); check(); }
+        );
+        // The player, defending, takes the table (enemyHP 100 keeps the enemy alive unless a test says otherwise):
+        const playerTakes = (relicIds, battleOverrides, check, runOverrides) => game(
+            { relics: relicIds.map(id => ({ id })), ...runOverrides },
+            { defender: 'player', phase: BATTLE_PHASES.PLAYER_DEFENSE, enemyHP: 100, ...battleOverrides },
+            () => { handlePlayerTake(); check(); }
+        );
+        const fullHand = (prefix, suit) => testCards(prefix, suit, HAND_SIZE, i => 6 + (i % 5));
+    return { inGame, game, enemyTakes, playerTakes, fullHand };
 }
 
 function testCard(id, suit, value) {
@@ -6269,7 +6302,7 @@ function runGameUnitTests() {
                 assert.equal(battle.enemyHP, 0);
                 assert.phase(BATTLE_PHASES.BATTLE_OVER, 'battle must stay in BATTLE_OVER, not hand the turn to the player');
                 assert.modalTitle('Победа в Бою!', 'victory modal must not be replaced by the transfer modal');
-                assert.equal(run.gold, 15 + WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR, 'reward is granted exactly once');
+                assert.rewardGrantedOnce();
                 assert.equal(readSavedGame().battle.phase, BATTLE_PHASES.BATTLE_OVER, 'save holds a victory, not a live round');
                 getEl('msg-btn').click();
                 assert.isFalse(getEl('shop-modal').classList.contains('hidden'), 'shop must open after victory');
@@ -6287,9 +6320,9 @@ function runGameUnitTests() {
                 window.onPlayerCardClick(0);
                 assert.equal(battle.enemyHP, 0);
                 assert.phase(BATTLE_PHASES.BATTLE_OVER, 'victory must not be overwritten by the AI_WAITING phase');
-                assert.isTrue(battle.aiTimer === null, 'AI turn must not be scheduled after victory');
+                assert.aiNotScheduled();
                 assert.modalTitle('Победа в Бою!');
-                assert.equal(run.gold, 15 + WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR, 'reward is granted exactly once');
+                assert.rewardGrantedOnce();
                 assert.equal(readSavedGame().battle.phase, BATTLE_PHASES.BATTLE_OVER);
             }, relicRun('cascade_transfer'));
         });
@@ -6306,7 +6339,7 @@ function runGameUnitTests() {
                 window.onPlayerCardClick(0);
                 assert.equal(battle.enemyHP, 0);
                 assert.phase(BATTLE_PHASES.BATTLE_OVER, 'victory must not be overwritten by the AI_WAITING phase');
-                assert.isTrue(battle.aiTimer === null, 'AI turn must not be scheduled after victory');
+                assert.aiNotScheduled();
                 assert.modalTitle('Победа в Бою!');
             }, relicRun('sharp_suit'));
         });
@@ -6323,7 +6356,7 @@ function runGameUnitTests() {
                 handleBito();
                 assert.equal(battle.enemyHP, 0);
                 assert.phase(BATTLE_PHASES.BATTLE_OVER, 'victory must not be overwritten by a player or AI turn');
-                assert.isTrue(battle.aiTimer === null, 'AI turn must not be scheduled after victory');
+                assert.aiNotScheduled();
                 assert.modalTitle('Победа в Бою!');
                 assert.equal(run.gold, 15 + MIDAS_TOUCH_GOLD_ON_DEFEND + WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR, 'victory gold is granted exactly once, and the reward itself does not fire the bullet');
             }, { relics: [{ id: 'midas_touch' }, { id: 'golden_bullet' }] });
@@ -6338,7 +6371,7 @@ function runGameUnitTests() {
                 window.onPlayerCardClick(0);
                 assert.equal(battle.enemyHP, 0);
                 assert.phase(BATTLE_PHASES.BATTLE_OVER, 'victory must not be overwritten by the AI_WAITING phase');
-                assert.isTrue(battle.aiTimer === null, 'AI turn must not be scheduled after victory');
+                assert.aiNotScheduled();
                 assert.modalTitle('Победа в Бою!');
             }, { relics: [{ id: 'coin_magnet' }, { id: 'golden_bullet' }] });
         });
@@ -6357,7 +6390,7 @@ function runGameUnitTests() {
                 });
                 assert.equal(battle.enemyHP, 0);
                 assert.phase(BATTLE_PHASES.BATTLE_OVER);
-                assert.isTrue(battle.aiTimer === null, 'AI turn must not be scheduled after victory');
+                assert.aiNotScheduled();
                 assert.isTrue(second.defend === null, 'after the enemy dies the second defense card is not placed');
                 assert.modalTitle('Победа в Бою!');
             }, { relics: [{ id: 'coin_magnet' }, { id: 'golden_bullet' }] });
@@ -6373,7 +6406,7 @@ function runGameUnitTests() {
                 window.onPlayerCardClick(0);
                 assert.equal(battle.enemyHP, 0);
                 assert.phase(BATTLE_PHASES.BATTLE_OVER);
-                assert.equal(run.gold, 15 + WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR, 'reward is granted exactly once');
+                assert.rewardGrantedOnce();
             }, { relics: [{ id: 'sharp_suit' }, { id: 'midas_touch' }, { id: 'golden_bullet' }] });
         });
 
@@ -6418,12 +6451,12 @@ function runGameUnitTests() {
                 executeEnemyAI();
                 assert.equal(battle.enemyHP, 0);
                 assert.phase(BATTLE_PHASES.BATTLE_OVER);
-                assert.isTrue(battle.aiTimer === null, 'AI turn must not be scheduled after victory');
+                assert.aiNotScheduled();
                 assert.equal(battle.table.length, 0, 'enemy attack must not be placed');
                 // Regression: an early exit from executeEnemyAI is allowed only when the hook itself killed the enemy.
                 assert.equal(battle.enemyHand.length, bigHand.length, 'enemy hand must not change after the early exit');
                 assert.modalTitle('Победа в Бою!');
-                assert.equal(run.gold, 15 + WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR, 'reward is granted exactly once');
+                assert.rewardGrantedOnce();
             }, relicRun('heavy_ballast'));
         });
 
@@ -9220,27 +9253,8 @@ function runGameUnitTests() {
         });
     });
 
-    runner.describe('11. New relics and the mirror_ring nerf', (it, assert) => {
-        // Bare run (empty deck: tests deal from the battle's own cards); `runOverrides`
-        // come first because they usually say which relics are equipped.
-        const { inGame } = makeTestFixtures({}, { deck: [] });
-        const game = (runOverrides, battleOverrides, fn) => inGame(battleOverrides, fn, runOverrides);
-
-        // The two situations most hook tests start from. Each equips `relicIds`, builds
-        // the table, runs the take handler, then calls `check`. Overrides win over the defaults.
-        // The enemy collects a one-card table:
-        const enemyTakes = (relicIds, battleOverrides, check, runOverrides) => game(
-            { relics: relicIds.map(id => ({ id })), ...runOverrides },
-            { table: [testPair(testCard('x1', 'Hearts', 7))], cardsToTake: true, enemyHP: 50, ...battleOverrides },
-            () => { handleEnemyTake(); check(); }
-        );
-        // The player, defending, takes the table (enemyHP 100 keeps the enemy alive unless a test says otherwise):
-        const playerTakes = (relicIds, battleOverrides, check, runOverrides) => game(
-            { relics: relicIds.map(id => ({ id })), ...runOverrides },
-            { defender: 'player', phase: BATTLE_PHASES.PLAYER_DEFENSE, enemyHP: 100, ...battleOverrides },
-            () => { handlePlayerTake(); check(); }
-        );
-        const fullHand = (prefix, suit) => testCards(prefix, suit, HAND_SIZE, i => 6 + (i % 5));
+    runner.describe('11. Take-damage relics (mirror_ring nerf, heavy_ballast, spam_mail, ace_sleeve, ballast_drop)', (it, assert) => {
+        const { game, enemyTakes, playerTakes, fullHand } = makeRelicFixtures();
 
         it('getEnemyDamageExcess caps the "extra" cards at ENEMY_HAND_EXCESS_CAP', () => {
             // [cards taken, "extra" cards]; beyond the cap (20 cards) the value does not grow
@@ -9265,123 +9279,6 @@ function runGameUnitTests() {
                 assert.equal(battle.enemyHP, 100 - 3 * TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER);
                 assert.equal(battle.enemyHP, 94);
             }, { floor: 12, playerHP: 100, maxHP: 100 });
-        });
-
-        it('safety_rope: saves from lethal damage once per run, clears the table and leaves the inventory', () => {
-            game({ playerHP: 5, relics: [{ id: 'safety_rope' }] }, { table: [testPair(testCard('a', 'Hearts', 6))] }, () => {
-                const first = applyPlayerDamage(100);
-                assert.isTrue(first.savedBySafetyRope);
-                assert.isFalse(first.isDefeated);
-                assert.equal(run.playerHP, 1);
-                assert.equal(battle.table.length, 0);
-                assert.isFalse(hasRelic('safety_rope'), 'Relic must be removed from the inventory after firing');
-                assert.equal(run.relics.length, 0);
-
-                battle.table = [];
-                const second = applyPlayerDamage(100);
-                assert.isFalse(second.savedBySafetyRope);
-                assert.isTrue(second.isDefeated);
-            });
-        });
-
-        it('safety_rope: after firing it can be sold in the shop again', () => {
-            game({ playerHP: 5, gold: 100, relics: [{ id: 'safety_rope' }] }, {
-                defender: 'player',
-                enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
-            }, () => {
-                applyPlayerDamage(100); // fires and consumes safety_rope
-                assert.isFalse(hasRelic('safety_rope'));
-
-                assert.isTrue(getShopAvailableRelics().some(r => r.id === 'safety_rope'),
-                    'After firing, the rope must return to the shop pool - deliberate behavior confirmed by the user');
-
-                // The draft is random, so put the rope on offer explicitly and check it is shown.
-                run.shopOffer = ['safety_rope'];
-                openShop();
-                const shopList = getEl('shop-relics-list');
-                const offersSafetyRope = Array.from(shopList.children)
-                    .some(item => item.textContent.includes('Страховочный трос'));
-                assert.isTrue(offersSafetyRope, 'If the draft offered the rope, it must be shown in the buy list');
-
-                buyRelic('safety_rope');
-                assert.isTrue(hasRelic('safety_rope'), 'Buying again must return the relic to the inventory');
-                assert.equal(run.gold, 100 - 18, 'Price (18$) must be charged on the repeat purchase');
-                closeTestUI();
-            });
-        });
-
-        it('safety_rope: after firing, the slot in the battle relic panel is freed', () => {
-            game({
-                playerHP: 5,
-                relics: [{ id: 'safety_rope', name: 'Страховочный трос', icon: '🪢', desc: 'x', price: 18 }]
-            }, {
-                defender: 'player',
-                enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
-            }, () => {
-                renderAll();
-                const relicsBar = getEl('relics-bar');
-                assert.isTrue(relicsBar.children[0].className.includes('relic-slot-filled'), 'Before firing, slot 0 must be occupied');
-
-                applyPlayerDamage(100);
-                renderAll();
-                assert.isTrue(relicsBar.children[0].className.includes('relic-slot-empty'), 'After firing, the slot must visually free up');
-            });
-        });
-
-        it('cascade_transfer: deals damage once per turn, a repeat call in the same turn does not hit again', () => {
-            game({ relics: [{ id: 'cascade_transfer' }] }, { enemyHP: 20 }, () => {
-                triggerCascadeTransfer();
-                assert.equal(battle.enemyHP, 16); // 20 - CASCADE_TRANSFER_DAMAGE(4)
-                assert.isTrue(battle.cascadeTransferUsedThisTurn);
-
-                triggerCascadeTransfer(); // same turn - must not fire again
-                assert.equal(battle.enemyHP, 16);
-
-                resetTurnScopedFlags(); // new turn
-                triggerCascadeTransfer();
-                assert.equal(battle.enemyHP, 12);
-            });
-        });
-
-        it('cascade_transfer: triggerCascadeTransfer uses fireAllHooks - a cascade_transfer already fired this turn does not block other onTransfer handlers', () => {
-            // Guards against accidentally switching triggerCascadeTransfer() to
-            // fireHook(): with a single onTransfer owner (cascade_transfer
-            // itself) fireHook vs fireAllHooks look identical, so this test
-            // adds a throwaway second owner to prove the dispatch really
-            // doesn't stop early once cascade_transfer has spent its charge.
-            let otherHookCalled = false;
-            RELIC_EFFECTS.__test_transfer = { onTransfer: () => { otherHookCalled = true; } };
-            try {
-                game({ relics: [{ id: 'cascade_transfer' }, { id: '__test_transfer' }] }, { enemyHP: 20 }, () => {
-                    triggerCascadeTransfer();
-                    assert.equal(battle.enemyHP, 16, 'cascade_transfer must still deal damage');
-                    assert.isTrue(otherHookCalled, 'The second onTransfer owner must fire in the same call even if cascade_transfer already spent its charge this turn');
-                });
-            } finally {
-                delete RELIC_EFFECTS.__test_transfer;
-            }
-        });
-
-        it('cascade_transfer: deals damage also when the opponent initiates the transfer via the ai_transfer ability (deliberate decision)', () => {
-            // Confirms the deliberate design decision that cascade_transfer
-            // fires on ANY transfer this turn, not just player-initiated ones.
-            // Exercises the real AI code path (executeEnemyAI's ai_transfer
-            // branch) rather than calling triggerCascadeTransfer() directly,
-            // so a future refactor of that branch can't silently drop the call
-            // without a test noticing.
-            const transferFloorIndex = ENEMIES.findIndex(e => e.activeAbilities.has('ai_transfer'));
-            game({ floor: transferFloorIndex + 1, relics: [{ id: 'cascade_transfer' }] }, {
-                playerHand: [
-                    testCard('p1', 'Pikes', 10),
-                    testCard('p2', 'Pikes', 11)
-                ],
-                enemyHand: [testCard('e1', 'Clubs', 8)],
-                table: [testPair(testCard('a1', 'Clubs', 8))], phase: BATTLE_PHASES.AI_WAITING
-            }, () => {
-                executeEnemyAI();
-                assert.equal(battle.defender, 'player', 'After the opponent transfer the player is the defender again');
-                assert.equal(battle.enemyHP, 36, 'cascade_transfer must deal damage even when the opponent initiated the transfer');
-            });
         });
 
         it('heavy_ballast: ticks once per enemy turn, damage capped via getEnemyDamageExcess', () => {
@@ -9565,6 +9462,306 @@ function runGameUnitTests() {
             assert.isTrue(relic.desc.includes(`${perCard} ед. урона`), `Description must name ${perCard} damage per card: ${relic.desc}`);
         });
 
+        it('ace_sleeve: when the enemy takes cards adds +ACE_SLEEVE_BONUS_DAMAGE to damage (via the onEnemyTookCards hook); bonuses stack with salted_wound; no relic - no bonus', () => {
+            const sixCards = testCards('e', 'Pikes', 6);
+            // enemyHand 6 + 1 (from the table) = 7 -> excess 1 -> salted_wound: +1 x SALTED_WOUND_DAMAGE_PER_CARD
+            const cases = [
+                { name: 'ace_sleeve', relics: ['ace_sleeve'], enemyHand: [testCard('e1', 'Pikes', 9)], damage: TAKE_DAMAGE_PER_CARD + ACE_SLEEVE_BONUS_DAMAGE },
+                { name: 'ace_sleeve + salted_wound', relics: ['ace_sleeve', 'salted_wound'], enemyHand: sixCards, damage: TAKE_DAMAGE_PER_CARD + ACE_SLEEVE_BONUS_DAMAGE + SALTED_WOUND_DAMAGE_PER_CARD },
+                { name: 'no relic', relics: [], enemyHand: [testCard('e1', 'Pikes', 9)], damage: TAKE_DAMAGE_PER_CARD }
+            ];
+            for (const c of cases) {
+                enemyTakes(c.relics, { playerHand: [testCard('p1', 'Pikes', 8)], enemyHand: c.enemyHand },
+                    () => assert.equal(battle.enemyHP, 50 - c.damage, c.name));
+            }
+        });
+
+        it('ballast_drop: on taking cards discards 2 non-trump cards of the lowest rank', () => {
+            playerTakes(['ballast_drop'], {
+                drawDeck: [testCard('d1', 'Hearts', 6)],
+                playerHand: [
+                    testCard('p1', 'Pikes', 7),
+                    testCard('p2', 'Pikes', 6),
+                ],
+                enemyHand: [testCard('e1', 'Pikes', 9)],
+                table: [
+                    testPair(testCard('x1', 'Hearts', 6)),
+                    testPair(testCard('x2', 'Pikes', 8)),
+                ]
+            }, () => {
+                // When two cards are taken the relic discards p1 and p2 from the hand.
+                assert.equal(battle.discardPile.filter(c => c.id === 'p1' || c.id === 'p2').length, 2);
+                assert.isFalse(battle.playerHand.some(c => c.id === 'p1' || c.id === 'p2'));
+                assert.isTrue(battle.playerHand.some(c => c.id === 'x1'));
+                assert.isTrue(battle.playerHand.some(c => c.id === 'x2'));
+            }, { playerHP: 100, maxHP: 100 });
+        });
+
+        it('ballast_drop: does not fire if only one card was taken from the table', () => {
+            playerTakes(['ballast_drop'], {
+                playerHand: [testCard('p1', 'Pikes', 7)],
+                enemyHand: [testCard('e1', 'Pikes', 9)],
+                table: [testPair(testCard('x1', 'Pikes', 6))]
+            }, () => {
+                assert.equal(battle.playerHand.length, 2, 'Both cards must stay in hand');
+                assert.equal(battle.discardPile.filter(c => c.id === 'p1' || c.id === 'x1').length, 0,
+                    'Ballast drop must not discard cards when one card is taken');
+            }, { playerHP: 100, maxHP: 100 });
+        });
+
+        it('ballast_drop: does not fire if the take finished the enemy via mirror_ring (victory takes priority)', () => {
+            playerTakes(['mirror_ring', 'ballast_drop'], {
+                drawDeck: [testCard('d1', 'Hearts', 6)],
+                playerHand: [
+                    testCard('p1', 'Pikes', 7),
+                    testCard('p2', 'Pikes', 6),
+                ],
+                enemyHand: [testCard('e1', 'Pikes', 9)],
+                table: [testPair(testCard('x1', 'Hearts', 6))],
+                enemyHP: 1
+            }, () => {
+                assert.equal(battle.enemyHP, 0);
+                assert.equal(battle.discardPile.filter(c => c.id === 'p1' || c.id === 'p2').length, 0, 'Ballast drop must not fire after victory');
+
+                closeModal();
+            }, { playerHP: 100, maxHP: 100 });
+        });
+
+        it('ballast_drop: description names the same card count as BALLAST_DROP_DISCARD_COUNT', () => {
+            const relic = ALL_RELICS.find(r => r.id === 'ballast_drop');
+            assert.isTrue(relic.desc.includes(`${BALLAST_DROP_DISCARD_COUNT} некозырные`), `Description must name ${BALLAST_DROP_DISCARD_COUNT} non-trump cards: ${relic.desc}`);
+        });
+    });
+
+    // The two newest artifacts. Their kill paths are covered in suite 8h.
+    runner.describe('11b. Moonshine Flask and Golden Bullet', (it, assert) => {
+        const { game, playerTakes } = makeRelicFixtures();
+        const defendedTable = () => [
+            testPair(testCard('bt1', 'Pikes', 6), testCard('bt2', 'Pikes', 7)),
+            testPair(testCard('bt3', 'Pikes', 10), testCard('bt4', 'Pikes', 11))
+        ];
+        // The enemy keeps cards: an empty enemy hand would end the round and cost the player HP.
+        const enemyCards = () => [testCard('bz1', 'Clubs', 13), testCard('bz2', 'Clubs', 14)];
+        const defending = { playerHand: [testCard('bz9', 'Pikes', 8)], enemyHand: enemyCards(), defender: 'player', enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE };
+
+        it('moonshine_flask: relic data (name, price 12$) and heal by FLASK_HEAL_ON_DEFEND', () => {
+            const relic = ALL_RELICS.find(r => r.id === 'moonshine_flask');
+            assert.equal(relic.name, 'Фляжка с пойлом');
+            assert.equal(relic.price, 12);
+            assert.isTrue(relic.desc.includes(String(FLASK_HEAL_ON_DEFEND)), 'description takes the number from the constant');
+        });
+
+        it('moonshine_flask: heals once per successful round defense, not per beaten card', () => {
+            game({ relics: [{ id: 'moonshine_flask' }] }, { ...defending, table: defendedTable() }, () => {
+                run.playerHP = run.maxHP - 10;
+                const before = run.playerHP;
+                handleBito();
+                assert.equal(run.playerHP, before + FLASK_HEAL_ON_DEFEND);
+            });
+        });
+
+        it('moonshine_flask: no per-battle limit - every successful defense heals again', () => {
+            game({ relics: [{ id: 'moonshine_flask' }] }, { ...defending, table: defendedTable() }, () => {
+                run.playerHP = run.maxHP - 10;
+                const before = run.playerHP;
+                handleBito();
+                battle.table = defendedTable();
+                battle.defender = 'player';
+                battle.phase = BATTLE_PHASES.PLAYER_DEFENSE;
+                handleBito();
+                assert.equal(run.playerHP, before + 2 * FLASK_HEAL_ON_DEFEND);
+            });
+        });
+
+        it('moonshine_flask: does not heal above max HP', () => {
+            game({ relics: [{ id: 'moonshine_flask' }] }, { ...defending, table: defendedTable() }, () => {
+                run.playerHP = run.maxHP;
+                handleBito();
+                assert.equal(run.playerHP, run.maxHP);
+            });
+        });
+
+        it('moonshine_flask: does NOT heal when the player took cards or the enemy defended; without the relic HP is unchanged', () => {
+            playerTakes(['moonshine_flask'], { table: [testPair(testCard('a1', 'Pikes', 6))] }, () => {
+                assert.isTrue(run.playerHP < 20, 'taking cards does not heal: the take penalty stays');
+            }, { playerHP: 20 });
+            game({ relics: [{ id: 'moonshine_flask' }] }, {
+                playerHand: [testCard('bz9', 'Pikes', 8)], enemyHand: enemyCards(),
+                table: [testPair(testCard('bz3', 'Pikes', 6), testCard('bz4', 'Pikes', 7))], enemyHP: 50
+            }, () => {
+                run.playerHP = run.maxHP - 10;
+                handleBito();
+                assert.equal(run.playerHP, run.maxHP - 10, 'when the enemy defends, the player does not heal');
+            });
+            game({}, { ...defending, table: defendedTable() }, () => {
+                run.playerHP = run.maxHP - 10;
+                handleBito();
+                assert.equal(run.playerHP, run.maxHP - 10, 'no relic - no heal');
+            });
+        });
+
+        it('golden_bullet: relic data (name, price 8$)', () => {
+            const relic = ALL_RELICS.find(r => r.id === 'golden_bullet');
+            assert.equal(relic.name, 'Золотая пуля');
+            assert.equal(relic.price, 8);
+        });
+
+        it('golden_bullet: midas_touch gold turns into GOLDEN_BULLET_DAMAGE damage for each payout', () => {
+            game({ relics: [{ id: 'midas_touch' }, { id: 'golden_bullet' }] }, { ...defending, table: defendedTable() }, () => {
+                handleBito();
+                assert.equal(run.gold, MIDAS_TOUCH_GOLD_ON_DEFEND, 'gold is granted as usual');
+                assert.equal(battle.enemyHP, 50 - GOLDEN_BULLET_DAMAGE, 'one payout - one hit, not a hit per dollar');
+            });
+        });
+
+        it('golden_bullet: every coin_magnet six (own and enemy) hits the enemy', () => {
+            game({ relics: [{ id: 'coin_magnet' }, { id: 'golden_bullet' }] }, { enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK }, () => {
+                onPlayerCardPlayed(testCard('p1', 'Pikes', 6));
+                assert.equal(battle.enemyHP, 50 - GOLDEN_BULLET_DAMAGE);
+                onEnemyCardPlayed(testCard('e1', 'Clubs', 6));
+                assert.equal(battle.enemyHP, 50 - 2 * GOLDEN_BULLET_DAMAGE);
+                onPlayerCardPlayed(testCard('p2', 'Pikes', 9));
+                assert.equal(battle.enemyHP, 50 - 2 * GOLDEN_BULLET_DAMAGE, 'not a six - no gold, no damage');
+            });
+        });
+
+        it('golden_bullet: with no gold-source relic the bullet is silent, and gold from outside relics does not trigger it', () => {
+            game({ relics: [{ id: 'golden_bullet' }] }, { ...defending, table: defendedTable() }, () => {
+                handleBito();
+                assert.equal(battle.enemyHP, 50, 'no midas_touch / coin_magnet - no gold - no damage');
+                changeGold(7);
+                assert.equal(battle.enemyHP, 50, 'gold not from a relic (shop, reward) does not fire the bullet');
+            });
+        });
+
+        it('golden_bullet: gold loss and gold at enemy 0 HP deal no damage', () => {
+            game({ relics: [{ id: 'golden_bullet' }], gold: 10 }, { enemyHP: 50 }, () => {
+                changeGold(-4);
+                assert.equal(battle.enemyHP, 50);
+            });
+        });
+    });
+
+    runner.describe('11c. Hook dispatch, safety_rope, cascade_transfer and victory priority', (it, assert) => {
+        const { game, enemyTakes, playerTakes } = makeRelicFixtures();
+
+        it('safety_rope: saves from lethal damage once per run, clears the table and leaves the inventory', () => {
+            game({ playerHP: 5, relics: [{ id: 'safety_rope' }] }, { table: [testPair(testCard('a', 'Hearts', 6))] }, () => {
+                const first = applyPlayerDamage(100);
+                assert.isTrue(first.savedBySafetyRope);
+                assert.isFalse(first.isDefeated);
+                assert.equal(run.playerHP, 1);
+                assert.equal(battle.table.length, 0);
+                assert.isFalse(hasRelic('safety_rope'), 'Relic must be removed from the inventory after firing');
+                assert.equal(run.relics.length, 0);
+
+                battle.table = [];
+                const second = applyPlayerDamage(100);
+                assert.isFalse(second.savedBySafetyRope);
+                assert.isTrue(second.isDefeated);
+            });
+        });
+
+        it('safety_rope: after firing it can be sold in the shop again', () => {
+            game({ playerHP: 5, gold: 100, relics: [{ id: 'safety_rope' }] }, {
+                defender: 'player',
+                enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
+            }, () => {
+                applyPlayerDamage(100); // fires and consumes safety_rope
+                assert.isFalse(hasRelic('safety_rope'));
+
+                assert.isTrue(getShopAvailableRelics().some(r => r.id === 'safety_rope'),
+                    'After firing, the rope must return to the shop pool - deliberate behavior confirmed by the user');
+
+                // The draft is random, so put the rope on offer explicitly and check it is shown.
+                run.shopOffer = ['safety_rope'];
+                openShop();
+                const shopList = getEl('shop-relics-list');
+                const offersSafetyRope = Array.from(shopList.children)
+                    .some(item => item.textContent.includes('Страховочный трос'));
+                assert.isTrue(offersSafetyRope, 'If the draft offered the rope, it must be shown in the buy list');
+
+                buyRelic('safety_rope');
+                assert.isTrue(hasRelic('safety_rope'), 'Buying again must return the relic to the inventory');
+                assert.equal(run.gold, 100 - 18, 'Price (18$) must be charged on the repeat purchase');
+                closeTestUI();
+            });
+        });
+
+        it('safety_rope: after firing, the slot in the battle relic panel is freed', () => {
+            game({
+                playerHP: 5,
+                relics: [{ id: 'safety_rope', name: 'Страховочный трос', icon: '🪢', desc: 'x', price: 18 }]
+            }, {
+                defender: 'player',
+                enemyHP: 100, phase: BATTLE_PHASES.PLAYER_DEFENSE
+            }, () => {
+                renderAll();
+                const relicsBar = getEl('relics-bar');
+                assert.isTrue(relicsBar.children[0].className.includes('relic-slot-filled'), 'Before firing, slot 0 must be occupied');
+
+                applyPlayerDamage(100);
+                renderAll();
+                assert.isTrue(relicsBar.children[0].className.includes('relic-slot-empty'), 'After firing, the slot must visually free up');
+            });
+        });
+
+        it('cascade_transfer: deals damage once per turn, a repeat call in the same turn does not hit again', () => {
+            game({ relics: [{ id: 'cascade_transfer' }] }, { enemyHP: 20 }, () => {
+                triggerCascadeTransfer();
+                assert.equal(battle.enemyHP, 16); // 20 - CASCADE_TRANSFER_DAMAGE(4)
+                assert.isTrue(battle.cascadeTransferUsedThisTurn);
+
+                triggerCascadeTransfer(); // same turn - must not fire again
+                assert.equal(battle.enemyHP, 16);
+
+                resetTurnScopedFlags(); // new turn
+                triggerCascadeTransfer();
+                assert.equal(battle.enemyHP, 12);
+            });
+        });
+
+        it('cascade_transfer: triggerCascadeTransfer uses fireAllHooks - a cascade_transfer already fired this turn does not block other onTransfer handlers', () => {
+            // Guards against accidentally switching triggerCascadeTransfer() to
+            // fireHook(): with a single onTransfer owner (cascade_transfer
+            // itself) fireHook vs fireAllHooks look identical, so this test
+            // adds a throwaway second owner to prove the dispatch really
+            // doesn't stop early once cascade_transfer has spent its charge.
+            let otherHookCalled = false;
+            RELIC_EFFECTS.__test_transfer = { onTransfer: () => { otherHookCalled = true; } };
+            try {
+                game({ relics: [{ id: 'cascade_transfer' }, { id: '__test_transfer' }] }, { enemyHP: 20 }, () => {
+                    triggerCascadeTransfer();
+                    assert.equal(battle.enemyHP, 16, 'cascade_transfer must still deal damage');
+                    assert.isTrue(otherHookCalled, 'The second onTransfer owner must fire in the same call even if cascade_transfer already spent its charge this turn');
+                });
+            } finally {
+                delete RELIC_EFFECTS.__test_transfer;
+            }
+        });
+
+        it('cascade_transfer: deals damage also when the opponent initiates the transfer via the ai_transfer ability (deliberate decision)', () => {
+            // Confirms the deliberate design decision that cascade_transfer
+            // fires on ANY transfer this turn, not just player-initiated ones.
+            // Exercises the real AI code path (executeEnemyAI's ai_transfer
+            // branch) rather than calling triggerCascadeTransfer() directly,
+            // so a future refactor of that branch can't silently drop the call
+            // without a test noticing.
+            const transferFloorIndex = ENEMIES.findIndex(e => e.activeAbilities.has('ai_transfer'));
+            game({ floor: transferFloorIndex + 1, relics: [{ id: 'cascade_transfer' }] }, {
+                playerHand: [
+                    testCard('p1', 'Pikes', 10),
+                    testCard('p2', 'Pikes', 11)
+                ],
+                enemyHand: [testCard('e1', 'Clubs', 8)],
+                table: [testPair(testCard('a1', 'Clubs', 8))], phase: BATTLE_PHASES.AI_WAITING
+            }, () => {
+                executeEnemyAI();
+                assert.equal(battle.defender, 'player', 'After the opponent transfer the player is the defender again');
+                assert.equal(battle.enemyHP, 36, 'cascade_transfer must deal damage even when the opponent initiated the transfer');
+            });
+        });
+
         it('registry integrity: every RELIC_EFFECTS key is an existing relic, every handler is a known hook', () => {
             // A misspelled relic id or hook name doesn't throw anywhere: the
             // dispatchers just never find it and the relic silently does
@@ -9670,75 +9867,34 @@ function runGameUnitTests() {
             });
         });
 
-        it('ace_sleeve: when the enemy takes cards adds +ACE_SLEEVE_BONUS_DAMAGE to damage (via the onEnemyTookCards hook); bonuses stack with salted_wound; no relic - no bonus', () => {
-            const sixCards = testCards('e', 'Pikes', 6);
-            // enemyHand 6 + 1 (from the table) = 7 -> excess 1 -> salted_wound: +1 x SALTED_WOUND_DAMAGE_PER_CARD
-            const cases = [
-                { name: 'ace_sleeve', relics: ['ace_sleeve'], enemyHand: [testCard('e1', 'Pikes', 9)], damage: TAKE_DAMAGE_PER_CARD + ACE_SLEEVE_BONUS_DAMAGE },
-                { name: 'ace_sleeve + salted_wound', relics: ['ace_sleeve', 'salted_wound'], enemyHand: sixCards, damage: TAKE_DAMAGE_PER_CARD + ACE_SLEEVE_BONUS_DAMAGE + SALTED_WOUND_DAMAGE_PER_CARD },
-                { name: 'no relic', relics: [], enemyHand: [testCard('e1', 'Pikes', 9)], damage: TAKE_DAMAGE_PER_CARD }
-            ];
-            for (const c of cases) {
-                enemyTakes(c.relics, { playerHand: [testCard('p1', 'Pikes', 8)], enemyHand: c.enemyHand },
-                    () => assert.equal(battle.enemyHP, 50 - c.damage, c.name));
+        it('fireAllHooks calls all hook owners (does not stop at the first); fireHook stops at the first truthy', () => {
+            // Registered relics with real gameplay effects (coin_magnet, sharp_suit)
+            // are single-owner today, so nothing else exercises the dispatch
+            // mechanism itself. This test adds two throwaway handlers directly
+            // to the registry to prove fireAllHooks/fireHook's actual semantics,
+            // independent of any one relic's business logic.
+            const calls = [];
+            RELIC_EFFECTS.__test_a = { onTestHook: () => { calls.push('a'); return true; } };
+            RELIC_EFFECTS.__test_b = { onTestHook: () => { calls.push('b'); return true; } };
+            try {
+                game({ relics: [{ id: '__test_a' }, { id: '__test_b' }] }, {}, () => {
+                    fireAllHooks('onTestHook');
+                    assert.equal(calls.join(','), 'a,b', 'fireAllHooks must call both handlers in slot order without stopping at the first');
+
+                    calls.length = 0;
+                    const result = fireHook('onTestHook');
+                    assert.equal(calls.join(','), 'a', 'fireHook must stop right after the first truthy result and not call the second handler');
+                    assert.equal(result, true, 'fireHook must return the result of the first handler that fired');
+                });
+            } finally {
+                delete RELIC_EFFECTS.__test_a;
+                delete RELIC_EFFECTS.__test_b;
             }
         });
+    });
 
-        it('ballast_drop: on taking cards discards 2 non-trump cards of the lowest rank', () => {
-            playerTakes(['ballast_drop'], {
-                drawDeck: [testCard('d1', 'Hearts', 6)],
-                playerHand: [
-                    testCard('p1', 'Pikes', 7),
-                    testCard('p2', 'Pikes', 6),
-                ],
-                enemyHand: [testCard('e1', 'Pikes', 9)],
-                table: [
-                    testPair(testCard('x1', 'Hearts', 6)),
-                    testPair(testCard('x2', 'Pikes', 8)),
-                ]
-            }, () => {
-                // When two cards are taken the relic discards p1 and p2 from the hand.
-                assert.equal(battle.discardPile.filter(c => c.id === 'p1' || c.id === 'p2').length, 2);
-                assert.isFalse(battle.playerHand.some(c => c.id === 'p1' || c.id === 'p2'));
-                assert.isTrue(battle.playerHand.some(c => c.id === 'x1'));
-                assert.isTrue(battle.playerHand.some(c => c.id === 'x2'));
-            }, { playerHP: 100, maxHP: 100 });
-        });
-
-        it('ballast_drop: does not fire if only one card was taken from the table', () => {
-            playerTakes(['ballast_drop'], {
-                playerHand: [testCard('p1', 'Pikes', 7)],
-                enemyHand: [testCard('e1', 'Pikes', 9)],
-                table: [testPair(testCard('x1', 'Pikes', 6))]
-            }, () => {
-                assert.equal(battle.playerHand.length, 2, 'Both cards must stay in hand');
-                assert.equal(battle.discardPile.filter(c => c.id === 'p1' || c.id === 'x1').length, 0,
-                    'Ballast drop must not discard cards when one card is taken');
-            }, { playerHP: 100, maxHP: 100 });
-        });
-
-        it('ballast_drop: does not fire if the take finished the enemy via mirror_ring (victory takes priority)', () => {
-            playerTakes(['mirror_ring', 'ballast_drop'], {
-                drawDeck: [testCard('d1', 'Hearts', 6)],
-                playerHand: [
-                    testCard('p1', 'Pikes', 7),
-                    testCard('p2', 'Pikes', 6),
-                ],
-                enemyHand: [testCard('e1', 'Pikes', 9)],
-                table: [testPair(testCard('x1', 'Hearts', 6))],
-                enemyHP: 1
-            }, () => {
-                assert.equal(battle.enemyHP, 0);
-                assert.equal(battle.discardPile.filter(c => c.id === 'p1' || c.id === 'p2').length, 0, 'Ballast drop must not fire after victory');
-
-                closeModal();
-            }, { playerHP: 100, maxHP: 100 });
-        });
-
-        it('ballast_drop: description names the same card count as BALLAST_DROP_DISCARD_COUNT', () => {
-            const relic = ALL_RELICS.find(r => r.id === 'ballast_drop');
-            assert.isTrue(relic.desc.includes(`${BALLAST_DROP_DISCARD_COUNT} некозырные`), `Description must name ${BALLAST_DROP_DISCARD_COUNT} non-trump cards: ${relic.desc}`);
-        });
+    runner.describe('11d. Gold and trump relics (coin_magnet, sharp_suit, midas_touch)', (it, assert) => {
+        const { game, playerTakes } = makeRelicFixtures();
 
         it('coin_magnet: +1$ for every six played by the player', () => {
             game({ relics: [{ id: 'coin_magnet' }] }, {
@@ -9795,31 +9951,6 @@ function runGameUnitTests() {
             });
         });
 
-        it('fireAllHooks calls all hook owners (does not stop at the first); fireHook stops at the first truthy', () => {
-            // Registered relics with real gameplay effects (coin_magnet, sharp_suit)
-            // are single-owner today, so nothing else exercises the dispatch
-            // mechanism itself. This test adds two throwaway handlers directly
-            // to the registry to prove fireAllHooks/fireHook's actual semantics,
-            // independent of any one relic's business logic.
-            const calls = [];
-            RELIC_EFFECTS.__test_a = { onTestHook: () => { calls.push('a'); return true; } };
-            RELIC_EFFECTS.__test_b = { onTestHook: () => { calls.push('b'); return true; } };
-            try {
-                game({ relics: [{ id: '__test_a' }, { id: '__test_b' }] }, {}, () => {
-                    fireAllHooks('onTestHook');
-                    assert.equal(calls.join(','), 'a,b', 'fireAllHooks must call both handlers in slot order without stopping at the first');
-
-                    calls.length = 0;
-                    const result = fireHook('onTestHook');
-                    assert.equal(calls.join(','), 'a', 'fireHook must stop right after the first truthy result and not call the second handler');
-                    assert.equal(result, true, 'fireHook must return the result of the first handler that fired');
-                });
-            } finally {
-                delete RELIC_EFFECTS.__test_a;
-                delete RELIC_EFFECTS.__test_b;
-            }
-        });
-
         it('sharp_suit: damages the enemy when defending with a trump card', () => {
             game({ relics: [{ id: 'sharp_suit' }] }, {
                 playerHand: [testCard('p1', 'Hearts', 9)],
@@ -9852,6 +9983,76 @@ function runGameUnitTests() {
                 assert.equal(battle.enemyHP, 50, 'an enemy trump deals no damage');
             });
         });
+
+        it('midas_touch: +MIDAS_TOUCH_GOLD_ON_DEFEND once per round when the player beat all cards and the round ended with bito', () => {
+            game({ relics: [{ id: 'midas_touch' }] }, {
+                playerHand: [testCard('p9', 'Pikes', 8)],
+                table: [testPair(testCard('a1', 'Pikes', 6), testCard('d1', 'Pikes', 7)), testPair(testCard('a2', 'Pikes', 10), testCard('d2', 'Pikes', 11))],
+                defender: 'player',
+                enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
+            }, () => {
+                handleBito();
+                assert.equal(run.gold, MIDAS_TOUCH_GOLD_ON_DEFEND, 'Gold must be granted once per round, not per beaten card');
+            });
+        });
+
+        it('midas_touch: same when bito is called by the AI (handleBito(true)) and the player already beat everything', () => {
+            game({ relics: [{ id: 'midas_touch' }] }, {
+                playerHand: [testCard('p9', 'Pikes', 8)],
+                table: [testPair(testCard('a1', 'Pikes', 6), testCard('d1', 'Pikes', 7))],
+                defender: 'player',
+                enemyHP: 50, phase: BATTLE_PHASES.AI_WAITING
+            }, () => {
+                handleBito(true);
+                assert.equal(run.gold, MIDAS_TOUCH_GOLD_ON_DEFEND);
+            });
+        });
+
+        it('midas_touch: no gold without the relic', () => {
+            game({}, {
+                playerHand: [testCard('p9', 'Pikes', 8)],
+                table: [testPair(testCard('a1', 'Pikes', 6), testCard('d1', 'Pikes', 7)), testPair(testCard('a2', 'Pikes', 10), testCard('d2', 'Pikes', 11))],
+                defender: 'player',
+                enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
+            }, () => {
+                handleBito();
+                assert.equal(run.gold, 0);
+            });
+        });
+
+        it('midas_touch: does NOT fire when the player took cards (handlePlayerTake) or the enemy defended successfully', () => {
+            playerTakes(['midas_touch'], {
+                playerHand: [testCard('p9', 'Pikes', 8)],
+                table: [testPair(testCard('a1', 'Pikes', 6))],
+                enemyHP: 50
+            }, () => {
+                assert.equal(run.gold, 0, 'Player took cards - this is not a successful defense');
+            });
+            game({ relics: [{ id: 'midas_touch' }] }, {
+                playerHand: [testCard('p9', 'Pikes', 8)],
+                table: [testPair(testCard('a1', 'Pikes', 6), testCard('d1', 'Pikes', 7))],
+                enemyHP: 50
+            }, () => {
+                handleBito();
+                assert.equal(run.gold, 0, 'When the enemy defends, no gold is given (behavior before this change)');
+            });
+        });
+
+        it('midas_touch: does NOT fire mid-round - beating one card gives no gold', () => {
+            game({ relics: [{ id: 'midas_touch' }] }, {
+                playerHand: [testCard('p9', 'Pikes', 9)],
+                table: [testPair(testCard('a1', 'Pikes', 8))],
+                defender: 'player',
+                enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
+            }, () => {
+                onPlayerCardClick(0);
+                assert.equal(run.gold, 0, 'Gold is granted only when the round ends, not per card');
+            });
+        });
+    });
+
+    runner.describe('11e. Active abilities and relic UI (popover, pocket_discard, jester_discard, sleight_of_hand)', (it, assert) => {
+        const { game } = makeRelicFixtures();
 
         it('showRelicPopover(): active ability - button enabled/disabled by isReady(), clicking it really works', () => {
             // All earlier pocket_discard/jester_discard tests called
@@ -10150,188 +10351,6 @@ function runGameUnitTests() {
                     ['all attacks on the table are already beaten - nothing to swap', () => { battle.defender = 'player'; battle.table = [testPair(testCard('a1', 'Pikes', 14), testCard('d0', 'Pikes', 8))]; }, false],
                     ['no cards in the deck to swap with - unavailable', () => { battle.table = [testPair(testCard('a1', 'Pikes', 14))]; battle.drawDeck = []; }, false]
                 ]);
-            });
-        });
-
-        it('midas_touch: +MIDAS_TOUCH_GOLD_ON_DEFEND once per round when the player beat all cards and the round ended with bito', () => {
-            game({ relics: [{ id: 'midas_touch' }] }, {
-                playerHand: [testCard('p9', 'Pikes', 8)],
-                table: [testPair(testCard('a1', 'Pikes', 6), testCard('d1', 'Pikes', 7)), testPair(testCard('a2', 'Pikes', 10), testCard('d2', 'Pikes', 11))],
-                defender: 'player',
-                enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
-            }, () => {
-                handleBito();
-                assert.equal(run.gold, MIDAS_TOUCH_GOLD_ON_DEFEND, 'Gold must be granted once per round, not per beaten card');
-            });
-        });
-
-        it('midas_touch: same when bito is called by the AI (handleBito(true)) and the player already beat everything', () => {
-            game({ relics: [{ id: 'midas_touch' }] }, {
-                playerHand: [testCard('p9', 'Pikes', 8)],
-                table: [testPair(testCard('a1', 'Pikes', 6), testCard('d1', 'Pikes', 7))],
-                defender: 'player',
-                enemyHP: 50, phase: BATTLE_PHASES.AI_WAITING
-            }, () => {
-                handleBito(true);
-                assert.equal(run.gold, MIDAS_TOUCH_GOLD_ON_DEFEND);
-            });
-        });
-
-        it('midas_touch: no gold without the relic', () => {
-            game({}, {
-                playerHand: [testCard('p9', 'Pikes', 8)],
-                table: [testPair(testCard('a1', 'Pikes', 6), testCard('d1', 'Pikes', 7)), testPair(testCard('a2', 'Pikes', 10), testCard('d2', 'Pikes', 11))],
-                defender: 'player',
-                enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
-            }, () => {
-                handleBito();
-                assert.equal(run.gold, 0);
-            });
-        });
-
-        it('midas_touch: does NOT fire when the player took cards (handlePlayerTake) or the enemy defended successfully', () => {
-            playerTakes(['midas_touch'], {
-                playerHand: [testCard('p9', 'Pikes', 8)],
-                table: [testPair(testCard('a1', 'Pikes', 6))],
-                enemyHP: 50
-            }, () => {
-                assert.equal(run.gold, 0, 'Player took cards - this is not a successful defense');
-            });
-            game({ relics: [{ id: 'midas_touch' }] }, {
-                playerHand: [testCard('p9', 'Pikes', 8)],
-                table: [testPair(testCard('a1', 'Pikes', 6), testCard('d1', 'Pikes', 7))],
-                enemyHP: 50
-            }, () => {
-                handleBito();
-                assert.equal(run.gold, 0, 'When the enemy defends, no gold is given (behavior before this change)');
-            });
-        });
-
-        it('midas_touch: does NOT fire mid-round - beating one card gives no gold', () => {
-            game({ relics: [{ id: 'midas_touch' }] }, {
-                playerHand: [testCard('p9', 'Pikes', 9)],
-                table: [testPair(testCard('a1', 'Pikes', 8))],
-                defender: 'player',
-                enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
-            }, () => {
-                onPlayerCardClick(0);
-                assert.equal(run.gold, 0, 'Gold is granted only when the round ends, not per card');
-            });
-        });
-    });
-
-    // The two newest artifacts. Their kill paths are covered in suite 8h.
-    runner.describe('11b. Moonshine Flask and Golden Bullet', (it, assert) => {
-        // Same bare-run fixture as suite 11 (empty deck; run overrides come first).
-        const { inGame } = makeTestFixtures({}, { deck: [] });
-        const game = (runOverrides, battleOverrides, fn) => inGame(battleOverrides, fn, runOverrides);
-        const playerTakes = (relicIds, battleOverrides, check, runOverrides) => game(
-            { relics: relicIds.map(id => ({ id })), ...runOverrides },
-            { defender: 'player', phase: BATTLE_PHASES.PLAYER_DEFENSE, enemyHP: 100, ...battleOverrides },
-            () => { handlePlayerTake(); check(); }
-        );
-        const defendedTable = () => [
-            testPair(testCard('bt1', 'Pikes', 6), testCard('bt2', 'Pikes', 7)),
-            testPair(testCard('bt3', 'Pikes', 10), testCard('bt4', 'Pikes', 11))
-        ];
-        // The enemy keeps cards: an empty enemy hand would end the round and cost the player HP.
-        const enemyCards = () => [testCard('bz1', 'Clubs', 13), testCard('bz2', 'Clubs', 14)];
-        const defending = { playerHand: [testCard('bz9', 'Pikes', 8)], enemyHand: enemyCards(), defender: 'player', enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE };
-
-        it('moonshine_flask: relic data (name, price 12$) and heal by FLASK_HEAL_ON_DEFEND', () => {
-            const relic = ALL_RELICS.find(r => r.id === 'moonshine_flask');
-            assert.equal(relic.name, 'Фляжка с пойлом');
-            assert.equal(relic.price, 12);
-            assert.isTrue(relic.desc.includes(String(FLASK_HEAL_ON_DEFEND)), 'description takes the number from the constant');
-        });
-
-        it('moonshine_flask: heals once per successful round defense, not per beaten card', () => {
-            game({ relics: [{ id: 'moonshine_flask' }] }, { ...defending, table: defendedTable() }, () => {
-                run.playerHP = run.maxHP - 10;
-                const before = run.playerHP;
-                handleBito();
-                assert.equal(run.playerHP, before + FLASK_HEAL_ON_DEFEND);
-            });
-        });
-
-        it('moonshine_flask: no per-battle limit - every successful defense heals again', () => {
-            game({ relics: [{ id: 'moonshine_flask' }] }, { ...defending, table: defendedTable() }, () => {
-                run.playerHP = run.maxHP - 10;
-                const before = run.playerHP;
-                handleBito();
-                battle.table = defendedTable();
-                battle.defender = 'player';
-                battle.phase = BATTLE_PHASES.PLAYER_DEFENSE;
-                handleBito();
-                assert.equal(run.playerHP, before + 2 * FLASK_HEAL_ON_DEFEND);
-            });
-        });
-
-        it('moonshine_flask: does not heal above max HP', () => {
-            game({ relics: [{ id: 'moonshine_flask' }] }, { ...defending, table: defendedTable() }, () => {
-                run.playerHP = run.maxHP;
-                handleBito();
-                assert.equal(run.playerHP, run.maxHP);
-            });
-        });
-
-        it('moonshine_flask: does NOT heal when the player took cards or the enemy defended; without the relic HP is unchanged', () => {
-            playerTakes(['moonshine_flask'], { table: [testPair(testCard('a1', 'Pikes', 6))] }, () => {
-                assert.isTrue(run.playerHP < 20, 'taking cards does not heal: the take penalty stays');
-            }, { playerHP: 20 });
-            game({ relics: [{ id: 'moonshine_flask' }] }, {
-                playerHand: [testCard('bz9', 'Pikes', 8)], enemyHand: enemyCards(),
-                table: [testPair(testCard('bz3', 'Pikes', 6), testCard('bz4', 'Pikes', 7))], enemyHP: 50
-            }, () => {
-                run.playerHP = run.maxHP - 10;
-                handleBito();
-                assert.equal(run.playerHP, run.maxHP - 10, 'when the enemy defends, the player does not heal');
-            });
-            game({}, { ...defending, table: defendedTable() }, () => {
-                run.playerHP = run.maxHP - 10;
-                handleBito();
-                assert.equal(run.playerHP, run.maxHP - 10, 'no relic - no heal');
-            });
-        });
-
-        it('golden_bullet: relic data (name, price 8$)', () => {
-            const relic = ALL_RELICS.find(r => r.id === 'golden_bullet');
-            assert.equal(relic.name, 'Золотая пуля');
-            assert.equal(relic.price, 8);
-        });
-
-        it('golden_bullet: midas_touch gold turns into GOLDEN_BULLET_DAMAGE damage for each payout', () => {
-            game({ relics: [{ id: 'midas_touch' }, { id: 'golden_bullet' }] }, { ...defending, table: defendedTable() }, () => {
-                handleBito();
-                assert.equal(run.gold, MIDAS_TOUCH_GOLD_ON_DEFEND, 'gold is granted as usual');
-                assert.equal(battle.enemyHP, 50 - GOLDEN_BULLET_DAMAGE, 'one payout - one hit, not a hit per dollar');
-            });
-        });
-
-        it('golden_bullet: every coin_magnet six (own and enemy) hits the enemy', () => {
-            game({ relics: [{ id: 'coin_magnet' }, { id: 'golden_bullet' }] }, { enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK }, () => {
-                onPlayerCardPlayed(testCard('p1', 'Pikes', 6));
-                assert.equal(battle.enemyHP, 50 - GOLDEN_BULLET_DAMAGE);
-                onEnemyCardPlayed(testCard('e1', 'Clubs', 6));
-                assert.equal(battle.enemyHP, 50 - 2 * GOLDEN_BULLET_DAMAGE);
-                onPlayerCardPlayed(testCard('p2', 'Pikes', 9));
-                assert.equal(battle.enemyHP, 50 - 2 * GOLDEN_BULLET_DAMAGE, 'not a six - no gold, no damage');
-            });
-        });
-
-        it('golden_bullet: with no gold-source relic the bullet is silent, and gold from outside relics does not trigger it', () => {
-            game({ relics: [{ id: 'golden_bullet' }] }, { ...defending, table: defendedTable() }, () => {
-                handleBito();
-                assert.equal(battle.enemyHP, 50, 'no midas_touch / coin_magnet - no gold - no damage');
-                changeGold(7);
-                assert.equal(battle.enemyHP, 50, 'gold not from a relic (shop, reward) does not fire the bullet');
-            });
-        });
-
-        it('golden_bullet: gold loss and gold at enemy 0 HP deal no damage', () => {
-            game({ relics: [{ id: 'golden_bullet' }], gold: 10 }, { enemyHP: 50 }, () => {
-                changeGold(-4);
-                assert.equal(battle.enemyHP, 50);
             });
         });
     });
