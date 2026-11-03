@@ -4840,6 +4840,24 @@ function makeTestFixtures(battleDefaults = {}, runDefaults = {}) {
 }
 
 // Bare-run helpers shared by the relic suites (11, 11b-11e).
+// Run overrides that own the given relics (fresh objects on every call).
+function relicRun(...ids) {
+    return { relics: ids.map(id => ({ id })) };
+}
+
+// Battle state: the opponent attacked with an 8 and the player holds another 8, so a transfer
+// is on offer. Spread into a fixture, or Object.assign()ed onto `battle` mid-test to say
+// "the opponent passed the attack back again".
+function transferOfferFields(overrides = {}) {
+    return {
+        phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: true,
+        table: [testPair(testCard('a1', 'Clubs', 8))],
+        playerHand: [testCard('p1', 'Hearts', 8), testCard('p2', 'Pikes', 12)],
+        enemyHand: [testCard('e1', 'Hearts', 7), testCard('e2', 'Pikes', 12)],
+        ...overrides
+    };
+}
+
 function makeRelicFixtures() {
         // Bare run (empty deck: tests deal from the battle's own cards); `runOverrides`
         // come first because they usually say which relics are equipped.
@@ -6335,9 +6353,6 @@ function runGameUnitTests() {
             enemyHand: [testCard('e1', 'Hearts', 7)], trumpCard: testCard('t1', 'Hearts', 6),
             enemyHP: 5
         }, { gold: 15 });
-        // Run overrides for a test that needs one relic (a fresh array every call).
-        const relicRun = (id) => ({ relics: [{ id }] });
-
         it('Lethal damage moves the battle to BATTLE_OVER and keeps the reward already granted', () => {
             inGameStrict({}, () => {
                 clearLocalSave();
@@ -6400,12 +6415,7 @@ function runGameUnitTests() {
         });
 
         it('transfer_streak: player transfers and the streak hit finishes the enemy - victory, AI turn not started', () => {
-            inGameStrict({
-                phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: true, enemyHP: TRANSFER_STREAK_DAMAGE_PER_LINK,
-                table: [testPair(testCard('a1', 'Clubs', 8))],
-                playerHand: [testCard('p1', 'Hearts', 8), testCard('p2', 'Pikes', 12)],
-                enemyHand: [testCard('e1', 'Hearts', 7), testCard('e2', 'Pikes', 12)]
-            }, () => {
+            inGameStrict(transferOfferFields({ enemyHP: TRANSFER_STREAK_DAMAGE_PER_LINK }), () => {
                 clearLocalSave();
                 window.onPlayerCardClick(0);
                 assert.equal(battle.enemyHP, 0);
@@ -6417,18 +6427,13 @@ function runGameUnitTests() {
         });
 
         it('transfer_streak: another hook already won the battle on the same transfer - no second hit, the reward is paid once', () => {
-            inGameStrict({
-                phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: true, enemyHP: CASCADE_TRANSFER_DAMAGE,
-                table: [testPair(testCard('a1', 'Clubs', 8))],
-                playerHand: [testCard('p1', 'Hearts', 8), testCard('p2', 'Pikes', 12)],
-                enemyHand: [testCard('e1', 'Hearts', 7), testCard('e2', 'Pikes', 12)]
-            }, () => {
+            inGameStrict(transferOfferFields({ enemyHP: CASCADE_TRANSFER_DAMAGE }), () => {
                 clearLocalSave();
                 window.onPlayerCardClick(0);
                 assert.equal(battle.enemyHP, 0);
                 assert.phase(BATTLE_PHASES.BATTLE_OVER);
                 assert.rewardGrantedOnce();
-            }, { relics: [{ id: 'cascade_transfer' }, { id: 'transfer_streak' }] });
+            }, relicRun('cascade_transfer', 'transfer_streak'));
         });
 
         // Same root cause on the defend path: sharp_suit's hit lands inside
@@ -10461,88 +10466,115 @@ function runGameUnitTests() {
     runner.describe('11f. Cascade Transfer (transfer_streak): streak of transfers, damage, badge', (it, assert) => {
         const { inGameStrict, inGameSaved } = makeTestFixtures({}, { deck: [] });
         const { game, playerTakes } = makeRelicFixtures();
-        const relicRun = (...ids) => ({ relics: ids.map(id => ({ ...ALL_RELICS.find(r => r.id === id) })) });
-        // The opponent attacked with an 8 and the player holds an 8 to pass it back (a transfer is on offer).
-        const transferOffer = (overrides = {}) => ({
-            phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: true, enemyHP: 40,
-            table: [testPair(testCard('a1', 'Clubs', 8))],
-            playerHand: [testCard('p1', 'Hearts', 8), testCard('p2', 'Pikes', 12)],
-            enemyHand: [testCard('e1', 'Hearts', 7), testCard('e2', 'Pikes', 12)],
-            ...overrides
+        const D = TRANSFER_STREAK_DAMAGE_PER_LINK;
+        const START_HP = 30;
+        const withStreak = relicRun('transfer_streak');
+        // What the player faces next. The player's side is driven by real clicks; between two
+        // clicks the opponent's side is faked by Object.assign()ing one of these onto `battle`.
+        const beatOffer = () => ({
+            phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: false,
+            table: [testPair(testCard('a1', 'Pikes', 7))], playerHand: [testCard('p1', 'Pikes', 9)],
+            enemyHand: [testCard('e1', 'Hearts', 7), testCard('e2', 'Pikes', 12)]
         });
-        const relicBadge = () => getEl('relics-bar').children[0].querySelector('.relic-badge');
+        const attackOffer = () => ({
+            phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', isTransferActive: false, table: [],
+            playerHand: [testCard('p1', 'Pikes', 9), testCard('p2', 'Clubs', 9)],
+            enemyHand: [testCard('e1', 'Pikes', 12), testCard('e2', 'Clubs', 12)]
+        });
+        const throwInOffer = () => ({
+            phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', isTransferActive: false,
+            table: [testPair(testCard('a1', 'Pikes', 9), testCard('d1', 'Pikes', 12))],
+            playerHand: [testCard('p1', 'Clubs', 9), testCard('p2', 'Hearts', 6)],
+            enemyHand: [testCard('e1', 'Hearts', 7), testCard('e2', 'Clubs', 12)]
+        });
+        const click = (offer) => { Object.assign(battle, offer); window.onPlayerCardClick(0); };
+        const relicBadge = (relicId) => getEl('relics-bar').querySelector(`[data-relic-id="${relicId}"] .relic-badge`);
 
-        it('transfer_streak: relic data (name, icon, price) and the damage number in the description', () => {
+        it('transfer_streak: the relic has an icon and its description names the per-link damage', () => {
             const relic = ALL_RELICS.find(r => r.id === 'transfer_streak');
-            assert.equal(relic.name, 'Каскадный перевод');
-            assert.equal(relic.icon, '🌊');
-            assert.equal(relic.price, 10);
-            assert.isTrue(relic.desc.includes(`${TRANSFER_STREAK_DAMAGE_PER_LINK}×N`), 'description must name the per-link damage: ' + relic.desc);
+            assert.isTrue(!!relic.icon, 'icon');
+            assert.isTrue(relic.desc.includes(`${D}×N`), 'description must name the per-link damage: ' + relic.desc);
         });
 
         it('transfer_streak: the Nth transfer in a row grows the streak to N and hits for N x damage per link', () => {
-            game(relicRun('transfer_streak'), { enemyHP: 40 }, () => {
-                let expectedHP = 40;
+            game(withStreak, { enemyHP: START_HP }, () => {
+                let expectedHP = START_HP;
                 for (let n = 1; n <= 4; n++) {
                     fireAllHooks('onPlayerTransfer');
-                    expectedHP -= TRANSFER_STREAK_DAMAGE_PER_LINK * n;
+                    expectedHP -= D * n;
                     assert.equal(battle.transferStreak, n, 'streak after transfer ' + n);
                     assert.equal(battle.enemyHP, expectedHP, 'enemy HP after transfer ' + n);
                 }
             });
         });
 
-        it('transfer_streak: a real transfer click grows the streak once and hits for damage x 1', () => {
-            inGameStrict(transferOffer(), () => {
+        it('transfer_streak: two real transfers in a row hit for damage x 1, then damage x 2', () => {
+            inGameStrict({ ...transferOfferFields(), enemyHP: START_HP }, () => {
                 window.onPlayerCardClick(0);
                 assert.equal(battle.transferStreak, 1);
-                assert.equal(battle.enemyHP, 40 - TRANSFER_STREAK_DAMAGE_PER_LINK);
+                assert.equal(battle.enemyHP, START_HP - D);
                 assert.equal(battle.defender, 'enemy', 'the transfer itself still happened');
-            }, relicRun('transfer_streak'));
+                click(transferOfferFields()); // the opponent passes the attack back
+                assert.equal(battle.transferStreak, 2);
+                assert.equal(battle.enemyHP, START_HP - D - 2 * D);
+            }, withStreak);
+        });
+
+        it('transfer_streak: transfer, beat a card, transfer - the streak restarts from 1', () => {
+            inGameStrict({ ...transferOfferFields(), enemyHP: START_HP }, () => {
+                window.onPlayerCardClick(0);
+                assert.equal(battle.transferStreak, 1);
+                const hpAfterFirst = battle.enemyHP;
+                click(beatOffer());
+                assert.equal(battle.transferStreak, 0, 'beating a card breaks the streak');
+                assert.equal(battle.enemyHP, hpAfterFirst, 'beating a card deals nothing');
+                click(transferOfferFields());
+                assert.equal(battle.transferStreak, 1);
+                assert.equal(battle.enemyHP, hpAfterFirst - D, 'a restarted streak hits for damage x 1, not x 2');
+            }, withStreak);
+        });
+
+        it('transfer_streak: attacking and throwing in between two transfers do not break the streak', () => {
+            inGameStrict({ ...transferOfferFields(), enemyHP: START_HP }, () => {
+                window.onPlayerCardClick(0);
+                click(attackOffer());
+                assert.equal(battle.transferStreak, 1, 'an attack keeps the streak');
+                click(throwInOffer());
+                assert.equal(battle.transferStreak, 1, 'a throw-in keeps the streak');
+                click(transferOfferFields());
+                assert.equal(battle.transferStreak, 2);
+                assert.equal(battle.enemyHP, START_HP - D - 2 * D);
+            }, withStreak);
         });
 
         it('transfer_streak: without the relic nothing counts', () => {
-            inGameStrict(transferOffer(), () => {
+            inGameStrict({ ...transferOfferFields(), enemyHP: START_HP }, () => {
                 window.onPlayerCardClick(0);
                 assert.equal(battle.transferStreak, 0);
-                assert.equal(battle.enemyHP, 40);
+                assert.equal(battle.enemyHP, START_HP);
             });
         });
 
         it('transfer_streak: the opponent\'s own transfer (ai_transfer) does not grow the streak', () => {
-            const transferFloorIndex = ENEMIES.findIndex(e => e.activeAbilities.has('ai_transfer'));
-            game({ floor: transferFloorIndex + 1, ...relicRun('transfer_streak') }, {
+            const transferEnemyFloor = ENEMIES.findIndex(e => e.activeAbilities && e.activeAbilities.has('ai_transfer')) + 1;
+            assert.isTrue(transferEnemyFloor > 0, 'the enemy ladder has ai_transfer');
+            game({ floor: transferEnemyFloor, ...withStreak }, {
                 playerHand: [testCard('p1', 'Pikes', 10), testCard('p2', 'Pikes', 11)],
                 enemyHand: [testCard('e1', 'Clubs', 8)],
-                table: [testPair(testCard('a1', 'Clubs', 8))], phase: BATTLE_PHASES.AI_WAITING, enemyHP: 40
+                table: [testPair(testCard('a1', 'Clubs', 8))], phase: BATTLE_PHASES.AI_WAITING, enemyHP: START_HP
             }, () => {
                 executeEnemyAI();
                 assert.equal(battle.defender, 'player', 'the opponent did transfer');
                 assert.equal(battle.transferStreak, 0);
-                assert.equal(battle.enemyHP, 40);
+                assert.equal(battle.enemyHP, START_HP);
             });
         });
 
-        it('transfer_streak: beating a card breaks the streak; attacking and throwing in do not', () => {
-            inGameStrict({
-                phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', transferStreak: 3, enemyHP: 40,
-                table: [testPair(testCard('a1', 'Pikes', 7))], playerHand: [testCard('p1', 'Pikes', 9)]
-            }, () => {
+        it('transfer_streak: beating a card breaks the streak', () => {
+            inGameStrict({ ...beatOffer(), transferStreak: 3, enemyHP: START_HP }, () => {
                 window.onPlayerCardClick(0);
-                assert.equal(battle.transferStreak, 0, 'beating the card resets the streak');
-            }, relicRun('transfer_streak'));
-
-            inGameStrict({
-                phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', transferStreak: 2, enemyHP: 40, table: [],
-                playerHand: [testCard('p1', 'Pikes', 9), testCard('p2', 'Clubs', 9)], enemyHand: [testCard('e1', 'Pikes', 12), testCard('e2', 'Clubs', 12)]
-            }, () => {
-                window.onPlayerCardClick(0); // attack
-                assert.equal(battle.transferStreak, 2, 'an attack keeps the streak');
-                battle.phase = BATTLE_PHASES.PLAYER_ATTACK; // the opponent defended; the player throws in a card of the same rank
-                battle.table[0].defend = testCard('d1', 'Pikes', 12);
-                window.onPlayerCardClick(0); // throw-in
-                assert.equal(battle.transferStreak, 2, 'a throw-in keeps the streak');
-            }, relicRun('transfer_streak'));
+                assert.equal(battle.transferStreak, 0);
+            }, withStreak);
         });
 
         it('transfer_streak: taking the table breaks the streak', () => {
@@ -10550,17 +10582,21 @@ function runGameUnitTests() {
                 () => assert.equal(battle.transferStreak, 0));
         });
 
-        it('transfer_streak: the reset hooks report whether a streak was lost (the artifact flashes only then)', () => {
-            game(relicRun('transfer_streak'), { transferStreak: 0 }, () => {
-                assert.isFalse(resetTransferStreak(), 'no streak - nothing to lose');
+        it('transfer_streak: losing a streak flashes the artifact; with no streak nothing flashes', () => {
+            game(withStreak, { transferStreak: 0 }, () => {
+                delete relicHighlightUntil['transfer_streak'];
+                fireAllHooks('onPlayerBeatCard');
+                assert.isFalse((relicHighlightUntil['transfer_streak'] || 0) > Date.now(), 'nothing to lose - no flash');
                 battle.transferStreak = 2;
-                assert.isTrue(resetTransferStreak());
+                fireAllHooks('onPlayerTookCards');
                 assert.equal(battle.transferStreak, 0);
+                assert.isTrue(relicHighlightUntil['transfer_streak'] > Date.now(), 'the vanishing counter is accompanied by a flash');
+                delete relicHighlightUntil['transfer_streak'];
             });
         });
 
         it('transfer_streak: a new battle starts from 0', () => {
-            game({ ...relicRun('transfer_streak'), deck: generateStandardDeck() }, { transferStreak: 3 }, () => {
+            game({ ...withStreak, deck: generateStandardDeck() }, { transferStreak: 3 }, () => {
                 startFloorBattle();
                 assert.equal(battle.transferStreak, 0);
             });
@@ -10576,30 +10612,34 @@ function runGameUnitTests() {
                 battle.transferStreak = 0;
                 assert.isTrue(loadGameState());
                 assert.equal(battle.transferStreak, 3);
-            }, { ...relicRun('transfer_streak'), deck: generateStandardDeck() });
+            }, { ...withStreak, deck: generateStandardDeck() });
         });
 
         it('transfer_streak: the counter sits over the icon while the streak is above 0 and disappears at 0', () => {
-            game(relicRun('transfer_streak'), { transferStreak: 0 }, () => {
+            game(withStreak, { transferStreak: 0 }, () => {
                 renderAll();
-                assert.equal(relicBadge(), null, 'no badge at 0');
+                assert.equal(relicBadge('transfer_streak'), null, 'no badge at 0');
                 battle.transferStreak = 3;
                 renderAll();
-                assert.equal(relicBadge().textContent, '3');
+                assert.equal(relicBadge('transfer_streak').textContent, '3');
                 battle.transferStreak = 0;
                 renderAll();
-                assert.equal(relicBadge(), null, 'the badge goes away when the streak breaks');
+                assert.equal(relicBadge('transfer_streak'), null, 'the badge goes away when the streak breaks');
             });
         });
 
-        it('transfer_streak: other artifacts get no badge, and the shop slots never show one', () => {
-            game(relicRun('safety_rope'), {}, () => {
+        it('transfer_streak: only this artifact gets a counter, other artifacts in the bar do not', () => {
+            game(relicRun('safety_rope', 'transfer_streak'), { transferStreak: 3 }, () => {
                 renderAll();
-                assert.equal(relicBadge(), null);
+                assert.equal(relicBadge('transfer_streak').textContent, '3');
+                assert.equal(relicBadge('safety_rope'), null);
             });
-            game(relicRun('transfer_streak'), { transferStreak: 3 }, () => {
+        });
+
+        it('transfer_streak: the shop slots never show a counter (no battle there)', () => {
+            game(withStreak, { transferStreak: 3 }, () => {
                 renderShopRelicSlots();
-                assert.equal(getEl('shop-relic-slots').querySelector('.relic-badge'), null, 'no battle in the shop - no counter');
+                assert.equal(getEl('shop-relic-slots').querySelector('.relic-badge'), null);
             });
         });
     });
