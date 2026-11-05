@@ -189,7 +189,7 @@
             letter-spacing: 0.04em;
             text-transform: uppercase;
         }
-        /* Small count over a relic icon (transfer_streak), bottom-right corner. */
+        /* Small count over a relic icon (transfer_streak, defense_streak, take_streak), bottom-right corner. */
         .relic-badge {
             position: absolute;
             right: 2px;
@@ -582,7 +582,7 @@ const BATTLE_SAVED_FIELDS = Object.freeze([
     'cascadeTransferUsedThisTurn', 'heavyBallastAppliedThisTurn',
     'jesterDiscardUsedThisBattle', 'sleightOfHandUsedThisBattle',
     'pocketDiscardUsedThisRound',
-    'transferStreak'
+    'transferStreak', 'defenseStreak', 'takeStreak'
 ]);
 
 const SUITS = { Pikes: '♠', Hearts: '♥', Tiles: '♦', Clovers: '♣' };
@@ -646,6 +646,12 @@ const CASCADE_TRANSFER_DAMAGE = 4;
 
 // transfer_streak: damage per link of the streak. The Nth transfer in a row hits for N times this.
 const TRANSFER_STREAK_DAMAGE_PER_LINK = 2;
+
+// take_streak: damage per take in the charge, dealt when a transfer or a successful defense
+// spends it. A transfer pays more: it needs a matching rank, a defense does not.
+const TAKE_STREAK_TRANSFER_DAMAGE_PER_TAKE = 3;
+
+const TAKE_STREAK_DEFENSE_DAMAGE_PER_TAKE = 2;
 
 const COIN_MAGNET_GOLD_PER_SIX = 1;
 
@@ -771,7 +777,9 @@ const ALL_RELICS = [
     { id: "sharp_suit", rarity: RARITY.UNCOMMON, icon: "🗡️", price: 9 },
     { id: "moonshine_flask", rarity: RARITY.UNCOMMON, icon: "🍶", price: 12 },
     { id: "golden_bullet", rarity: RARITY.UNCOMMON, icon: "🔫", price: 8 },
-    { id: "transfer_streak", rarity: RARITY.UNCOMMON, icon: "🌊", price: 10 }
+    { id: "transfer_streak", rarity: RARITY.UNCOMMON, icon: "🌊", price: 10 },
+    { id: "defense_streak", rarity: RARITY.UNCOMMON, icon: "🦏", price: 10 },
+    { id: "take_streak", rarity: RARITY.UNCOMMON, icon: "🔋", price: 10 }
 ];
 
 // Numbers that are interpolated into a relic description (the text itself is in I18N).
@@ -787,7 +795,8 @@ const RELIC_DESC_PARAMS = {
     ballast_drop: () => ({ n: BALLAST_DROP_DISCARD_COUNT }),
     coin_magnet: () => ({ n: COIN_MAGNET_GOLD_PER_SIX }),
     cascade_transfer: () => ({ n: CASCADE_TRANSFER_DAMAGE }),
-    transfer_streak: () => ({ n: TRANSFER_STREAK_DAMAGE_PER_LINK })
+    transfer_streak: () => ({ n: TRANSFER_STREAK_DAMAGE_PER_LINK }),
+    take_streak: () => ({ transfer: TAKE_STREAK_TRANSFER_DAMAGE_PER_TAKE, defense: TAKE_STREAK_DEFENSE_DAMAGE_PER_TAKE })
 };
 
 // Relic text is looked up by id, so a relic saved in one language is shown in the current one.
@@ -1150,6 +1159,10 @@ const I18N = {
         "relic.golden_bullet.desc": "Каждый раз, когда артефакт приносит вам $, соперник получает {n} ед. урона.",
         "relic.transfer_streak.name": "Каскадный перевод",
         "relic.transfer_streak.desc": "Каждый ваш перевод увеличивает серию на 1 и наносит сопернику {n}×N ед. урона (N — длина серии). Серия сбрасывается, когда вы бьёте карту или берёте карты, и длится до конца боя.",
+        "relic.defense_streak.name": "Толстая кожа",
+        "relic.defense_streak.desc": "Каждая ваша успешная защита раунда увеличивает серию на 1. Когда вы берёте карты, N из них (N — длина серии) не наносят вам урона, и серия сбрасывается. Перевод тоже её сбрасывает. Длится до конца боя.",
+        "relic.take_streak.name": "Аккумулятор",
+        "relic.take_streak.desc": "Каждое ваше взятие карт увеличивает заряд на 1. Перевод тратит заряд и наносит сопернику {transfer}×N ед. урона, успешная защита — {defense}×N (N — заряд). Длится до конца боя.",
         "enemy.plain.ability": "Стандартный соперник",
         "enemy.rookie.name": "Начинающий Шулер",
         "enemy.swindler.name": "Уличный Мошенник",
@@ -1316,6 +1329,10 @@ const I18N = {
         "relic.golden_bullet.desc": "Whenever a relic brings you $, deal {n} damage to the opponent.",
         "relic.transfer_streak.name": "Cascade Transfer",
         "relic.transfer_streak.desc": "Each transfer you make adds 1 to your streak and deals {n}×N damage to the opponent (N = streak length). The streak resets when you beat a card or take cards, and lasts until the end of the battle.",
+        "relic.defense_streak.name": "Thick Skin",
+        "relic.defense_streak.desc": "Each round you defend successfully adds 1 to your streak. When you take cards, N of them (N = streak length) deal no damage to you, and the streak resets. A transfer resets it too. Lasts until the end of the battle.",
+        "relic.take_streak.name": "Battery",
+        "relic.take_streak.desc": "Each time you take cards, the charge grows by 1. A transfer spends it and deals {transfer}×N damage to the opponent; a successful defense deals {defense}×N (N = charge). Lasts until the end of the battle.",
         "enemy.plain.ability": "Plain old opponent",
         "enemy.rookie.name": "Rookie Hustler",
         "enemy.swindler.name": "Street Hustler",
@@ -1625,7 +1642,11 @@ let battle = {
     // Round-scoped guard for pocket_discard (once per round)
     pocketDiscardUsedThisRound: false,
     // Battle-scoped counter for transfer_streak: the player's transfers in a row (0 = no streak)
-    transferStreak: 0
+    transferStreak: 0,
+    // Battle-scoped counter for defense_streak: rounds the player defended successfully in a row
+    defenseStreak: 0,
+    // Battle-scoped counter for take_streak: the player's takes in a row, not yet spent by a transfer or a defense
+    takeStreak: 0
 };
 
 // ---- AI scheduler ----------------------------------------------------
@@ -1914,6 +1935,8 @@ function startFloorBattle() {
     battle.jesterDiscardUsedThisBattle = false;
     battle.sleightOfHandUsedThisBattle = false;
     battle.transferStreak = 0;
+    battle.defenseStreak = 0;
+    battle.takeStreak = 0;
 
     startNewRound();
 }
@@ -2718,7 +2741,11 @@ function applyPlayerTake() {
 
     const enemyData = getCurrentEnemy();
     const levelMultiplier = enemyData.abilityId === 'double_penalty' ? 2 : 1;
-    const baseSelfDamage = cardsTakenCount * enemyData.level * levelMultiplier;
+    // Cards a relic makes free (defense_streak) are still taken and still count for the hooks
+    // below (mirror_ring); they only drop out of the self-damage. Read BEFORE those hooks, because
+    // the same relic spends its streak in onPlayerTookCards.
+    const freeCards = fireHookSum('getTakeCardDiscount', { cardsTakenCount });
+    const baseSelfDamage = Math.max(0, cardsTakenCount - freeCards) * enemyData.level * levelMultiplier;
 
     // Hooks receive the raw number of cards taken (the same baseline the
     // enemy's own take-damage uses), NOT the already-scaled selfDamage above.
@@ -3639,6 +3666,51 @@ const RELIC_EFFECTS = {
             return battle.transferStreak;
         }
     },
+    defense_streak: {
+        // The streak (battle.defenseStreak) is the number of rounds the PLAYER defended successfully
+        // in a row this battle. It grows on onDefenseSucceeded (once per round, not per beaten card)
+        // and ends when the player transfers (onPlayerTransfer) or takes the table. A take spends it:
+        // that many of the taken cards deal no self-damage (getTakeCardDiscount, read in
+        // applyPlayerTake() before anything resets), then onPlayerTookCards clears it. Attacking and
+        // throwing in neither grow nor break it. startFloorBattle() zeroes it.
+        onDefenseSucceeded() {
+            battle.defenseStreak++;
+            return true;
+        },
+        onPlayerTransfer() {
+            return resetDefenseStreak();
+        },
+        // Only counts cards that were really taken, so the artifact flashes exactly when it saved some.
+        getTakeCardDiscount({ cardsTakenCount }) {
+            return Math.min(battle.defenseStreak, cardsTakenCount);
+        },
+        onPlayerTookCards() {
+            return resetDefenseStreak();
+        },
+        getBadge() {
+            return battle.defenseStreak;
+        }
+    },
+    take_streak: {
+        // The charge (battle.takeStreak) is the number of takes the PLAYER made in a row this battle.
+        // A take adds 1 and deals nothing (taking needs no skill, so it is not rewarded by itself).
+        // The first transfer or successful defense after it spends the whole charge as a hit of N
+        // times the per-take damage. Attacking, throwing in and beating single cards leave it alone.
+        // startFloorBattle() zeroes it, so a charge never outlives its battle.
+        onPlayerTookCards() {
+            battle.takeStreak++;
+            return true;
+        },
+        onPlayerTransfer() {
+            return dischargeTakeStreak(TAKE_STREAK_TRANSFER_DAMAGE_PER_TAKE);
+        },
+        onDefenseSucceeded() {
+            return dischargeTakeStreak(TAKE_STREAK_DEFENSE_DAMAGE_PER_TAKE);
+        },
+        getBadge() {
+            return battle.takeStreak;
+        }
+    },
     heavy_ballast: {
         // Fired once at the start of the enemy's attacking turn (from
         // executeEnemyAI's "enemy is attacker" branch), not on every
@@ -3881,6 +3953,25 @@ function isPocketDiscardCard(card) {
 function resetTransferStreak() {
     if (battle.transferStreak === 0) return false;
     battle.transferStreak = 0;
+    return true;
+}
+
+// defense_streak: the streak ends. Returns true if there was a streak to lose.
+function resetDefenseStreak() {
+    if (battle.defenseStreak === 0) return false;
+    battle.defenseStreak = 0;
+    return true;
+}
+
+// take_streak: spends the charge as `damagePerTake` damage for every take in it.
+// Returns true if there was a charge to spend.
+function dischargeTakeStreak(damagePerTake) {
+    const charge = battle.takeStreak;
+    if (charge === 0) return false;
+    battle.takeStreak = 0;
+    // An earlier hook on this very event may already have won the battle: a second hit
+    // would pay the victory out twice. The charge is spent either way.
+    if (battle.phase !== BATTLE_PHASES.BATTLE_OVER) damageEnemyHP(damagePerTake * charge);
     return true;
 }
 
@@ -4145,7 +4236,7 @@ function renderRelicSlots(containerId, { sellable = false } = {}) {
             const ready = ACTIVE_RELIC_IDS.includes(relic.id) && RELIC_EFFECTS[relic.id].isReady();
             slot.className += (highlighted ? ' relic-highlight' : '') + (ready ? ' relic-ready-glow' : '');
             slot.onclick = () => showRelicPopover(relic.id);
-            // A relic that tracks a count (transfer_streak) shows it over the icon; 0 shows nothing.
+            // A relic that tracks a count (transfer_streak, defense_streak, take_streak) shows it over the icon; 0 shows nothing.
             const badge = RELIC_EFFECTS[relic.id]?.getBadge?.();
             if (badge > 0) {
                 const badgeEl = document.createElement('span');
@@ -4803,7 +4894,7 @@ function makeTestBattle(defaults = {}, overrides = {}) {
         enemyHP: 40, phase: BATTLE_PHASES.PLAYER_ATTACK, aiTimer: null, actionToken: 0,
         cascadeTransferUsedThisTurn: false, heavyBallastAppliedThisTurn: false,
         jesterDiscardUsedThisBattle: false, sleightOfHandUsedThisBattle: false, pocketDiscardUsedThisRound: false,
-        transferStreak: 0
+        transferStreak: 0, defenseStreak: 0, takeStreak: 0
     }, defaults, overrides);
 }
 
@@ -9879,6 +9970,8 @@ function runGameUnitTests() {
                 'onTransfer', 'onPlayerTransfer', 'onPlayerBeatCard', 'onEnemyTookCards', 'onPlayerTookCards', 'onEnemyTurnStart',
                 'onCardPlayed', 'onPlayerCardPlayed', 'onLethalDamage', 'onDefenseSucceeded',
                 'onPlayerTakePenalty', 'onEnemyCollectedTable', 'onGoldGained',
+                // Numeric modifier summed by fireHookSum: cards of a take that deal no self-damage (defense_streak).
+                'getTakeCardDiscount',
                 // Passive relic queries (cheat_eye, transfer_streak's badge) - read while rendering, never fired.
                 'getRevealedEnemyCard', 'getBadge',
                 // Active (button-triggered) relic ability hooks — see pocket_discard.
@@ -10644,6 +10737,428 @@ function runGameUnitTests() {
         });
     });
 
+    runner.describe('11g. Thick Skin (defense_streak): defended rounds in a row make taken cards free', (it, assert) => {
+        const { inGameStrict, inGameSaved } = makeTestFixtures({}, { deck: [] });
+        const { game } = makeRelicFixtures();
+        const START_HP = 100;
+        const withSkin = relicRun('defense_streak');
+        // A round the player has beaten completely: handleBito() counts it as a successful defense.
+        const defendedRound = () => ({
+            phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: false, enemyHP: START_HP,
+            table: [testPair(testCard('bt1', 'Pikes', 6), testCard('bt2', 'Pikes', 7))],
+            playerHand: [testCard('bz9', 'Pikes', 8)],
+            enemyHand: [testCard('bz1', 'Clubs', 13), testCard('bz2', 'Clubs', 14)]
+        });
+        // The player is about to take `cards` unbeaten attacks (ranks 6, 7, 8, ...). The opponent holds one
+        // card that cannot be thrown in, so the take resolves at once and the battle goes on.
+        const takeRound = (streak, cards) => ({
+            phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', enemyHP: START_HP, defenseStreak: streak,
+            drawDeck: [testCard('d1', 'Hearts', 6)], enemyHand: [testCard('e1', 'Pikes', 14)],
+            table: Array.from({ length: cards }, (_, i) => testPair(testCard('x' + i, 'Hearts', 6 + i)))
+        });
+        const takeWith = (relicIds, streak, cards, check, runOverrides) => game(
+            { ...relicRun(...relicIds), ...runOverrides }, takeRound(streak, cards),
+            () => { handlePlayerTake(); check(); });
+        const hpLost = () => run.maxHP - run.playerHP;
+        const relicBadge = (relicId) => getEl('relics-bar').querySelector(`[data-relic-id="${relicId}"] .relic-badge`);
+
+        it('defense_streak: the relic has a name, an icon and a description that explains N', () => {
+            const relic = ALL_RELICS.find(r => r.id === 'defense_streak');
+            assert.equal(relic.name, 'Толстая кожа');
+            assert.isTrue(!!relic.icon, 'icon');
+            assert.isTrue(relic.desc.includes('N'), 'description must explain N: ' + relic.desc);
+        });
+
+        it('defense_streak: every successful defense of a round adds 1 to the streak', () => {
+            game(withSkin, defendedRound(), () => {
+                for (let n = 1; n <= 3; n++) {
+                    handleBito();
+                    assert.equal(battle.defenseStreak, n, 'streak after defense ' + n);
+                    Object.assign(battle, defendedRound());
+                }
+            });
+        });
+
+        it('defense_streak: beating a single card is not a finished defense - only the round counts', () => {
+            inGameStrict({
+                phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: false, enemyHP: START_HP,
+                table: [testPair(testCard('a1', 'Pikes', 7))], playerHand: [testCard('p1', 'Pikes', 9)],
+                enemyHand: [testCard('e1', 'Hearts', 7), testCard('e2', 'Pikes', 12)]
+            }, () => {
+                window.onPlayerCardClick(0);
+                assert.equal(battle.defenseStreak, 0);
+            }, withSkin);
+        });
+
+        it('defense_streak: the opponent defending (the player attacked) does not count', () => {
+            game(withSkin, {
+                ...defendedRound(), phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy',
+                table: [testPair(testCard('bt1', 'Pikes', 6), testCard('bt2', 'Pikes', 7))]
+            }, () => {
+                handleBito();
+                assert.equal(battle.defenseStreak, 0);
+            });
+        });
+
+        it('defense_streak: taking cards - N of them deal no damage, all are still taken, the streak is spent', () => {
+            takeWith(['defense_streak'], 2, 3, () => {
+                assert.equal(hpLost(), (3 - 2) * getCurrentEnemy().level);
+                assert.equal(battle.playerHand.length, 3, 'every card is still taken');
+                assert.equal(battle.defenseStreak, 0);
+            });
+        });
+
+        it('defense_streak: a streak longer than the take makes it free - no cap on N', () => {
+            takeWith(['defense_streak'], 7, 3, () => {
+                assert.equal(hpLost(), 0);
+                assert.equal(battle.defenseStreak, 0, 'the whole streak is spent, not only the part that was needed');
+            });
+        });
+
+        it('defense_streak: free cards from several relics together never push the damage below 0 (a take never heals)', () => {
+            RELIC_EFFECTS.__test_free = { getTakeCardDiscount() { return 5; } };
+            try {
+                takeWith(['defense_streak', '__test_free'], 2, 2, () => {
+                    assert.equal(hpLost(), 0, 'the discount is floored at the number of cards');
+                });
+            } finally {
+                delete RELIC_EFFECTS.__test_free;
+            }
+        });
+
+        it('defense_streak: no streak - a take costs the full damage, with or without the relic', () => {
+            takeWith(['defense_streak'], 0, 3, () => assert.equal(hpLost(), 3 * getCurrentEnemy().level));
+            takeWith([], 0, 3, () => assert.equal(hpLost(), 3 * getCurrentEnemy().level));
+        });
+
+        it('defense_streak: without the relic nothing counts and a stored streak is ignored', () => {
+            game({}, defendedRound(), () => {
+                handleBito();
+                assert.equal(battle.defenseStreak, 0);
+            });
+            takeWith([], 2, 3, () => assert.equal(hpLost(), 3 * getCurrentEnemy().level));
+        });
+
+        it('defense_streak: double_penalty doubles the damage that is left after the free cards', () => {
+            takeWith(['defense_streak'], 1, 3, () => {
+                const enemy = getCurrentEnemy();
+                assert.equal(enemy.abilityId, 'double_penalty', 'floor 12 is the double_penalty boss');
+                assert.equal(hpLost(), (3 - 1) * enemy.level * 2);
+            }, { floor: 12, playerHP: 100, maxHP: 100 });
+        });
+
+        it('defense_streak: mirror_ring still reflects every taken card, free ones included', () => {
+            takeWith(['defense_streak', 'mirror_ring'], 3, 3, () => {
+                assert.equal(hpLost(), 0, 'all three cards are free');
+                assert.equal(battle.enemyHP, START_HP - 3 * TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER);
+            });
+        });
+
+        it('defense_streak: a transfer ends the streak', () => {
+            inGameStrict({ ...transferOfferFields(), defenseStreak: 3, enemyHP: START_HP }, () => {
+                window.onPlayerCardClick(0);
+                assert.equal(battle.defenseStreak, 0);
+            }, withSkin);
+        });
+
+        it('defense_streak: attacking and throwing in do not end the streak', () => {
+            inGameStrict({
+                phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', isTransferActive: false, table: [],
+                defenseStreak: 2, enemyHP: START_HP,
+                playerHand: [testCard('p1', 'Pikes', 9), testCard('p2', 'Clubs', 9)],
+                enemyHand: [testCard('e1', 'Pikes', 12), testCard('e2', 'Clubs', 12)]
+            }, () => {
+                window.onPlayerCardClick(0);
+                assert.equal(battle.defenseStreak, 2);
+            }, withSkin);
+        });
+
+        it('defense_streak: a streak, a take, then a new defense - the next streak starts from 1', () => {
+            game(withSkin, takeRound(2, 3), () => {
+                handlePlayerTake();
+                assert.equal(battle.defenseStreak, 0);
+                Object.assign(battle, defendedRound());
+                handleBito();
+                assert.equal(battle.defenseStreak, 1);
+            });
+        });
+
+        it('defense_streak: the artifact flashes when it saves cards; with no streak nothing flashes', () => {
+            game(withSkin, takeRound(0, 2), () => {
+                delete relicHighlightUntil['defense_streak'];
+                handlePlayerTake();
+                assert.isFalse((relicHighlightUntil['defense_streak'] || 0) > Date.now(), 'nothing saved - no flash');
+            });
+            game(withSkin, takeRound(2, 2), () => {
+                delete relicHighlightUntil['defense_streak'];
+                handlePlayerTake();
+                assert.isTrue(relicHighlightUntil['defense_streak'] > Date.now(), 'the saved cards are accompanied by a flash');
+                delete relicHighlightUntil['defense_streak'];
+            });
+        });
+
+        it('defense_streak: a new battle starts from 0', () => {
+            game({ ...withSkin, deck: generateStandardDeck() }, { defenseStreak: 3 }, () => {
+                startFloorBattle();
+                assert.equal(battle.defenseStreak, 0);
+            });
+        });
+
+        it('defense_streak: the streak survives a save and load', () => {
+            inGameSaved({
+                defenseStreak: 3, drawDeck: [testCard('d1', 'Hearts', 6)],
+                playerHand: [testCard('p1', 'Pikes', 9)], enemyHand: [testCard('e1', 'Clubs', 9)]
+            }, () => {
+                saveGameState();
+                battle.defenseStreak = 0;
+                assert.isTrue(loadGameState());
+                assert.equal(battle.defenseStreak, 3);
+            }, { ...withSkin, deck: generateStandardDeck() });
+        });
+
+        it('defense_streak: the counter sits over the icon while the streak is above 0 and disappears at 0', () => {
+            game(withSkin, { defenseStreak: 0 }, () => {
+                renderAll();
+                assert.equal(relicBadge('defense_streak'), null, 'no badge at 0');
+                battle.defenseStreak = 3;
+                renderAll();
+                assert.equal(relicBadge('defense_streak').textContent, '3');
+                battle.defenseStreak = 0;
+                renderAll();
+                assert.equal(relicBadge('defense_streak'), null, 'the badge goes away when the streak ends');
+            });
+        });
+    });
+
+    runner.describe('11h. Battery (take_streak): takes charge it, a transfer or a defense spends the charge', (it, assert) => {
+        const { inGameStrict, inGameSaved } = makeTestFixtures({}, { deck: [] });
+        const { game } = makeRelicFixtures();
+        const T = TAKE_STREAK_TRANSFER_DAMAGE_PER_TAKE;
+        const B = TAKE_STREAK_DEFENSE_DAMAGE_PER_TAKE;
+        const START_HP = 100;
+        const withBattery = relicRun('take_streak');
+        const defendedRound = (overrides = {}) => ({
+            phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: false, enemyHP: START_HP,
+            table: [testPair(testCard('bt1', 'Pikes', 6), testCard('bt2', 'Pikes', 7))],
+            playerHand: [testCard('bz9', 'Pikes', 8)],
+            enemyHand: [testCard('bz1', 'Clubs', 13), testCard('bz2', 'Clubs', 14)],
+            ...overrides
+        });
+        const takeRound = (charge) => ({
+            phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', enemyHP: START_HP, takeStreak: charge,
+            drawDeck: [testCard('d1', 'Hearts', 6)], enemyHand: [testCard('e1', 'Pikes', 14)],
+            table: [testPair(testCard('x0', 'Hearts', 6)), testPair(testCard('x1', 'Hearts', 7))]
+        });
+        const beatOffer = () => ({
+            phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: false,
+            table: [testPair(testCard('a1', 'Pikes', 7))], playerHand: [testCard('p1', 'Pikes', 9)],
+            enemyHand: [testCard('e1', 'Hearts', 7), testCard('e2', 'Pikes', 12)]
+        });
+        const relicBadge = (relicId) => getEl('relics-bar').querySelector(`[data-relic-id="${relicId}"] .relic-badge`);
+        const flashed = (relicId) => (relicHighlightUntil[relicId] || 0) > Date.now();
+
+        it('take_streak: the relic has a name, an icon and a description naming both per-take damages', () => {
+            const relic = ALL_RELICS.find(r => r.id === 'take_streak');
+            assert.equal(relic.name, 'Аккумулятор');
+            assert.isTrue(!!relic.icon, 'icon');
+            assert.isTrue(relic.desc.includes(`${T}×N`) && relic.desc.includes(`${B}×N`), 'description must name both: ' + relic.desc);
+            assert.isTrue(T > B, 'a transfer (needs a matching rank) pays more than a defense');
+        });
+
+        it('take_streak: every take adds 1 to the charge and deals nothing by itself', () => {
+            game(withBattery, { enemyHP: START_HP }, () => {
+                for (let n = 1; n <= 3; n++) {
+                    fireAllHooks('onPlayerTookCards', { cardsTakenCount: 2 });
+                    assert.equal(battle.takeStreak, n, 'charge after take ' + n);
+                }
+                assert.equal(battle.enemyHP, START_HP);
+            });
+        });
+
+        it('take_streak: a real take adds 1 and the enemy keeps all its HP', () => {
+            game(withBattery, takeRound(0), () => {
+                handlePlayerTake();
+                assert.equal(battle.takeStreak, 1);
+                assert.equal(battle.enemyHP, START_HP);
+            });
+        });
+
+        it('take_streak: a transfer spends the charge and hits for N x damage per take', () => {
+            inGameStrict({ ...transferOfferFields(), takeStreak: 3, enemyHP: START_HP }, () => {
+                window.onPlayerCardClick(0);
+                assert.equal(battle.takeStreak, 0);
+                assert.equal(battle.enemyHP, START_HP - 3 * T);
+                assert.equal(battle.defender, 'enemy', 'the transfer itself still happened');
+            }, withBattery);
+        });
+
+        it('take_streak: a successful defense spends the charge and hits for N x damage per take', () => {
+            game(withBattery, defendedRound({ takeStreak: 2 }), () => {
+                handleBito();
+                assert.equal(battle.takeStreak, 0);
+                assert.equal(battle.enemyHP, START_HP - 2 * B);
+            });
+        });
+
+        it('take_streak: take, then a transfer - the one take pays damage x 1', () => {
+            game(withBattery, takeRound(0), () => {
+                handlePlayerTake();
+                Object.assign(battle, transferOfferFields());
+                window.onPlayerCardClick(0);
+                assert.equal(battle.takeStreak, 0);
+                assert.equal(battle.enemyHP, START_HP - T);
+            });
+        });
+
+        it('take_streak: with no charge a transfer or a defense deals nothing and the artifact does not flash', () => {
+            game(withBattery, defendedRound({ takeStreak: 0 }), () => {
+                delete relicHighlightUntil['take_streak'];
+                handleBito();
+                assert.equal(battle.enemyHP, START_HP);
+                assert.isFalse(flashed('take_streak'));
+                fireAllHooks('onPlayerTransfer');
+                assert.equal(battle.enemyHP, START_HP);
+                assert.isFalse(flashed('take_streak'));
+            });
+        });
+
+        it('take_streak: beating a card, attacking and throwing in leave the charge alone', () => {
+            inGameStrict({ ...beatOffer(), takeStreak: 2, enemyHP: START_HP }, () => {
+                window.onPlayerCardClick(0);
+                assert.equal(battle.takeStreak, 2, 'beating a card');
+                assert.equal(battle.enemyHP, START_HP);
+                Object.assign(battle, {
+                    phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', table: [],
+                    playerHand: [testCard('p2', 'Pikes', 9), testCard('p3', 'Clubs', 9)],
+                    enemyHand: [testCard('e3', 'Pikes', 12), testCard('e4', 'Clubs', 12)]
+                });
+                window.onPlayerCardClick(0);
+                assert.equal(battle.takeStreak, 2, 'attacking');
+                assert.equal(battle.enemyHP, START_HP);
+            }, withBattery);
+        });
+
+        it('take_streak: the opponent defending does not spend the charge', () => {
+            game(withBattery, defendedRound({ takeStreak: 2, phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy' }), () => {
+                handleBito();
+                assert.equal(battle.takeStreak, 2);
+                assert.equal(battle.enemyHP, START_HP);
+            });
+        });
+
+        it('take_streak: the opponent\'s own transfer (ai_transfer) does not spend the charge', () => {
+            const transferEnemyFloor = ENEMIES.findIndex(e => e.activeAbilities && e.activeAbilities.has('ai_transfer')) + 1;
+            assert.isTrue(transferEnemyFloor > 0, 'the enemy ladder has ai_transfer');
+            game({ floor: transferEnemyFloor, ...withBattery }, {
+                playerHand: [testCard('p1', 'Pikes', 10), testCard('p2', 'Pikes', 11)],
+                enemyHand: [testCard('e1', 'Clubs', 8)], takeStreak: 2,
+                table: [testPair(testCard('a1', 'Clubs', 8))], phase: BATTLE_PHASES.AI_WAITING, enemyHP: START_HP
+            }, () => {
+                executeEnemyAI();
+                assert.equal(battle.defender, 'player', 'the opponent did transfer');
+                assert.equal(battle.takeStreak, 2);
+                assert.equal(battle.enemyHP, START_HP);
+            });
+        });
+
+        it('take_streak: without the relic nothing is charged or spent', () => {
+            game({}, takeRound(0), () => {
+                handlePlayerTake();
+                assert.equal(battle.takeStreak, 0);
+            });
+            game({}, defendedRound({ takeStreak: 2 }), () => {
+                handleBito();
+                assert.equal(battle.enemyHP, START_HP);
+            });
+        });
+
+        it('take_streak: the transfer hit finishes the enemy - victory, reward once, AI turn not started', () => {
+            inGameStrict(transferOfferFields({ enemyHP: T, takeStreak: 1 }), () => {
+                clearLocalSave();
+                window.onPlayerCardClick(0);
+                assert.equal(battle.enemyHP, 0);
+                assert.phase(BATTLE_PHASES.BATTLE_OVER, 'victory must not be overwritten by the AI_WAITING phase');
+                assert.aiNotScheduled();
+                assert.modalTitle('Победа в Бою!');
+                assert.rewardGrantedOnce(0);
+            }, withBattery);
+        });
+
+        it('take_streak: the defense hit finishes the enemy - victory, reward once, AI turn not started', () => {
+            inGameStrict(defendedRound({ enemyHP: B, takeStreak: 1 }), () => {
+                clearLocalSave();
+                handleBito();
+                assert.equal(battle.enemyHP, 0);
+                assert.phase(BATTLE_PHASES.BATTLE_OVER, 'victory must not be overwritten by a player or AI turn');
+                assert.aiNotScheduled();
+                assert.modalTitle('Победа в Бою!');
+                assert.rewardGrantedOnce(0);
+            }, withBattery);
+        });
+
+        it('take_streak: another hook already won the battle on the same transfer - no second hit, the charge is spent, the reward is paid once', () => {
+            inGameStrict(transferOfferFields({ enemyHP: CASCADE_TRANSFER_DAMAGE, takeStreak: 2 }), () => {
+                clearLocalSave();
+                window.onPlayerCardClick(0);
+                assert.equal(battle.enemyHP, 0);
+                assert.phase(BATTLE_PHASES.BATTLE_OVER);
+                assert.equal(battle.takeStreak, 0);
+                assert.rewardGrantedOnce(0);
+            }, relicRun('cascade_transfer', 'take_streak'));
+        });
+
+        it('streak artifacts together: every action grows one streak and resets the other two', () => {
+            game(relicRun('transfer_streak', 'defense_streak', 'take_streak'), { enemyHP: START_HP }, () => {
+                const state = () => [battle.transferStreak, battle.defenseStreak, battle.takeStreak].join();
+                const transfer = () => fireAllHooks('onPlayerTransfer');
+                // A real defense beats a card (onPlayerBeatCard) and then ends the round (onDefenseSucceeded).
+                const defend = () => { fireAllHooks('onPlayerBeatCard'); fireAllHooks('onDefenseSucceeded'); };
+                const take = () => fireAllHooks('onPlayerTookCards', { cardsTakenCount: 2 });
+                transfer(); assert.equal(state(), '1,0,0');
+                transfer(); assert.equal(state(), '2,0,0');
+                defend();   assert.equal(state(), '0,1,0');
+                defend();   assert.equal(state(), '0,2,0');
+                take();     assert.equal(state(), '0,0,1');
+                take();     assert.equal(state(), '0,0,2');
+                transfer(); assert.equal(state(), '1,0,0', 'the transfer spends the charge and starts its own streak');
+                take();     assert.equal(state(), '0,0,1');
+                defend();   assert.equal(state(), '0,1,0', 'the defense spends the charge and starts its own streak');
+            });
+        });
+
+        it('take_streak: a new battle starts from 0', () => {
+            game({ ...withBattery, deck: generateStandardDeck() }, { takeStreak: 3 }, () => {
+                startFloorBattle();
+                assert.equal(battle.takeStreak, 0);
+            });
+        });
+
+        it('take_streak: the charge survives a save and load', () => {
+            inGameSaved({
+                takeStreak: 3, drawDeck: [testCard('d1', 'Hearts', 6)],
+                playerHand: [testCard('p1', 'Pikes', 9)], enemyHand: [testCard('e1', 'Clubs', 9)]
+            }, () => {
+                saveGameState();
+                battle.takeStreak = 0;
+                assert.isTrue(loadGameState());
+                assert.equal(battle.takeStreak, 3);
+            }, { ...withBattery, deck: generateStandardDeck() });
+        });
+
+        it('take_streak: each streak artifact shows its own counter over its icon, and only while it is above 0', () => {
+            game(relicRun('defense_streak', 'take_streak', 'safety_rope'), { defenseStreak: 2, takeStreak: 4 }, () => {
+                renderAll();
+                assert.equal(relicBadge('defense_streak').textContent, '2');
+                assert.equal(relicBadge('take_streak').textContent, '4');
+                assert.equal(relicBadge('safety_rope'), null);
+                battle.takeStreak = 0;
+                renderAll();
+                assert.equal(relicBadge('take_streak'), null, 'the badge goes away when the charge is spent');
+                assert.equal(relicBadge('defense_streak').textContent, '2');
+            });
+        });
+    });
+
     runner.describe('12. Enemy header rendering (renderAll as the single state projection)', (it, assert) => {
         it('renderAll() redraws the enemy name, level and avatar from the current run.floor', () => {
             const expected = getCurrentEnemy();
@@ -11069,6 +11584,7 @@ function runGameUnitTests() {
                     assert.isTrue(desc('coin_magnet').includes(`+${COIN_MAGNET_GOLD_PER_SIX}$`), lang + ' coin_magnet');
                     assert.isTrue(desc('cascade_transfer').includes(String(CASCADE_TRANSFER_DAMAGE)), lang + ' cascade_transfer');
                     assert.isTrue(desc('transfer_streak').includes(String(TRANSFER_STREAK_DAMAGE_PER_LINK)), lang + ' transfer_streak');
+                    assert.isTrue(desc('take_streak').includes(`${TAKE_STREAK_TRANSFER_DAMAGE_PER_TAKE}×N`) && desc('take_streak').includes(`${TAKE_STREAK_DEFENSE_DAMAGE_PER_TAKE}×N`), lang + ' take_streak');
                     ALL_RELICS.forEach(r => assert.isFalse(/\{\w+\}/.test(r.desc), `${lang} ${r.id}: unresolved placeholder`));
                     const enemy = (id) => ENEMIES.find(e => e.abilityId === id).abilityDesc;
                     assert.isTrue(enemy('swindle').includes(`${SWINDLE_GOLD_LOSS}$`), lang + ' swindle');
