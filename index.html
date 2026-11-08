@@ -653,6 +653,9 @@ const TAKE_STREAK_TRANSFER_DAMAGE_PER_TAKE = 3;
 
 const TAKE_STREAK_DEFENSE_DAMAGE_PER_TAKE = 2;
 
+// take_streak: the charge never grows past this many takes.
+const TAKE_STREAK_MAX_CHARGE = 5;
+
 const COIN_MAGNET_GOLD_PER_SIX = 1;
 
 const SHARP_SUIT_DAMAGE = 1;
@@ -796,7 +799,7 @@ const RELIC_DESC_PARAMS = {
     coin_magnet: () => ({ n: COIN_MAGNET_GOLD_PER_SIX }),
     cascade_transfer: () => ({ n: CASCADE_TRANSFER_DAMAGE }),
     transfer_streak: () => ({ n: TRANSFER_STREAK_DAMAGE_PER_LINK }),
-    take_streak: () => ({ transfer: TAKE_STREAK_TRANSFER_DAMAGE_PER_TAKE, defense: TAKE_STREAK_DEFENSE_DAMAGE_PER_TAKE })
+    take_streak: () => ({ transfer: TAKE_STREAK_TRANSFER_DAMAGE_PER_TAKE, defense: TAKE_STREAK_DEFENSE_DAMAGE_PER_TAKE, max: TAKE_STREAK_MAX_CHARGE })
 };
 
 // Relic text is looked up by id, so a relic saved in one language is shown in the current one.
@@ -1162,7 +1165,7 @@ const I18N = {
         "relic.defense_streak.name": "Толстая кожа",
         "relic.defense_streak.desc": "Каждая ваша успешная защита раунда увеличивает серию на 1. Когда вы берёте карты, N из них (N — длина серии) не наносят вам урона, и серия сбрасывается. Перевод тоже её сбрасывает. Длится до конца боя.",
         "relic.take_streak.name": "Аккумулятор",
-        "relic.take_streak.desc": "Каждое ваше взятие карт увеличивает заряд на 1. Перевод тратит заряд и наносит сопернику {transfer}×N ед. урона, успешная защита — {defense}×N (N — заряд). Длится до конца боя.",
+        "relic.take_streak.desc": "Каждое взятие карт, отнявшее у вас HP, увеличивает заряд на 1 (макс. {max}). Перевод тратит заряд и наносит сопернику {transfer}×N ед. урона, успешная защита — {defense}×N (N — заряд). Длится до конца боя.",
         "enemy.plain.ability": "Стандартный соперник",
         "enemy.rookie.name": "Начинающий Шулер",
         "enemy.swindler.name": "Уличный Мошенник",
@@ -1332,7 +1335,7 @@ const I18N = {
         "relic.defense_streak.name": "Thick Skin",
         "relic.defense_streak.desc": "Each round you defend successfully adds 1 to your streak. When you take cards, N of them (N = streak length) deal no damage to you, and the streak resets. A transfer resets it too. Lasts until the end of the battle.",
         "relic.take_streak.name": "Battery",
-        "relic.take_streak.desc": "Each time you take cards, the charge grows by 1. A transfer spends it and deals {transfer}×N damage to the opponent; a successful defense deals {defense}×N (N = charge). Lasts until the end of the battle.",
+        "relic.take_streak.desc": "Each take that costs you HP adds 1 to the charge (max {max}). A transfer spends it and deals {transfer}×N damage to the opponent; a successful defense deals {defense}×N (N = charge). Lasts until the end of the battle.",
         "enemy.plain.ability": "Plain old opponent",
         "enemy.rookie.name": "Rookie Hustler",
         "enemy.swindler.name": "Street Hustler",
@@ -2768,6 +2771,9 @@ function applyPlayerTake() {
         const abilityExtra = selfDamage - baseSelfDamage;
         const abilityParts = abilityExtra > 0 ? [{ amount: abilityExtra, source: { kind: 'enemy' } }] : [];
         ({ isDefeated, savedBySafetyRope } = withChangeSource({ kind: 'table' }, () => applyPlayerDamage(selfDamage, abilityParts)));
+        // Only a take that really cost HP counts for take_streak: a free take (defense_streak) or
+        // one that ended with the enemy's death (skipped above) does not.
+        if (selfDamage > 0 && !isDefeated) fireAllHooks('onPlayerTakeDamaged', { damage: selfDamage });
     }
 
     return { enemyJustDied, isDefeated, savedBySafetyRope };
@@ -3692,12 +3698,14 @@ const RELIC_EFFECTS = {
         }
     },
     take_streak: {
-        // The charge (battle.takeStreak) is the number of takes the PLAYER made in a row this battle.
-        // A take adds 1 and deals nothing (taking needs no skill, so it is not rewarded by itself).
+        // The charge (battle.takeStreak) is the number of takes in a row that cost the PLAYER HP
+        // this battle, up to TAKE_STREAK_MAX_CHARGE. A take adds 1 (onPlayerTakeDamaged, fired after
+        // the damage landed, so a free take adds nothing) and deals nothing by itself.
         // The first transfer or successful defense after it spends the whole charge as a hit of N
         // times the per-take damage. Attacking, throwing in and beating single cards leave it alone.
         // startFloorBattle() zeroes it, so a charge never outlives its battle.
-        onPlayerTookCards() {
+        onPlayerTakeDamaged() {
+            if (battle.takeStreak >= TAKE_STREAK_MAX_CHARGE) return false;
             battle.takeStreak++;
             return true;
         },
@@ -9972,6 +9980,8 @@ function runGameUnitTests() {
                 'onPlayerTakePenalty', 'onEnemyCollectedTable', 'onGoldGained',
                 // Numeric modifier summed by fireHookSum: cards of a take that deal no self-damage (defense_streak).
                 'getTakeCardDiscount',
+                // Fired after a take's self-damage was applied (take_streak): only takes that cost HP.
+                'onPlayerTakeDamaged',
                 // Passive relic queries (cheat_eye, transfer_streak's badge) - read while rendering, never fired.
                 'getRevealedEnemyCard', 'getBadge',
                 // Active (button-triggered) relic ability hooks — see pocket_discard.
@@ -10962,13 +10972,14 @@ function runGameUnitTests() {
             assert.equal(relic.name, 'Аккумулятор');
             assert.isTrue(!!relic.icon, 'icon');
             assert.isTrue(relic.desc.includes(`${T}×N`) && relic.desc.includes(`${B}×N`), 'description must name both: ' + relic.desc);
+            assert.isTrue(relic.desc.includes(String(TAKE_STREAK_MAX_CHARGE)), 'description must name the cap: ' + relic.desc);
             assert.isTrue(T > B, 'a transfer (needs a matching rank) pays more than a defense');
         });
 
-        it('take_streak: every take adds 1 to the charge and deals nothing by itself', () => {
+        it('take_streak: every take that costs HP adds 1 to the charge and deals nothing by itself', () => {
             game(withBattery, { enemyHP: START_HP }, () => {
                 for (let n = 1; n <= 3; n++) {
-                    fireAllHooks('onPlayerTookCards', { cardsTakenCount: 2 });
+                    fireAllHooks('onPlayerTakeDamaged', { damage: 2 });
                     assert.equal(battle.takeStreak, n, 'charge after take ' + n);
                 }
                 assert.equal(battle.enemyHP, START_HP);
@@ -10981,6 +10992,52 @@ function runGameUnitTests() {
                 assert.equal(battle.takeStreak, 1);
                 assert.equal(battle.enemyHP, START_HP);
             });
+        });
+
+        it('take_streak: a take that costs no HP does not charge (Thick Skin made every card free)', () => {
+            game(relicRun('defense_streak', 'take_streak'), { ...takeRound(0), defenseStreak: 5 }, () => {
+                handlePlayerTake();
+                assert.equal(run.playerHP, run.maxHP, 'the take was free');
+                assert.equal(battle.takeStreak, 0);
+            });
+        });
+
+        it('take_streak: an enemy ability that still costs HP on a free take does charge it - the HP really was lost', () => {
+            const floor = ENEMIES.findIndex(e => e.abilityId === 'all_in') + 1;
+            assert.isTrue(floor > 0, 'the enemy ladder has all_in');
+            game({ floor, ...relicRun('defense_streak', 'take_streak') }, { ...takeRound(0), defenseStreak: 5 }, () => {
+                handlePlayerTake();
+                assert.equal(run.maxHP - run.playerHP, ALL_IN_EXTRA_TAKE_DAMAGE);
+                assert.equal(battle.takeStreak, 1);
+            });
+        });
+
+        it('take_streak: a take the enemy did not survive costs no HP and does not charge', () => {
+            game(relicRun('mirror_ring', 'take_streak'), { ...takeRound(0), enemyHP: 2 * TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER }, () => {
+                handlePlayerTake();
+                assert.equal(battle.enemyHP, 0);
+                assert.equal(run.playerHP, run.maxHP);
+                assert.equal(battle.takeStreak, 0);
+            });
+        });
+
+        it('take_streak: the charge stops at the cap and the artifact does not flash for a take that adds nothing', () => {
+            game(withBattery, takeRound(TAKE_STREAK_MAX_CHARGE - 1), () => {
+                handlePlayerTake();
+                assert.equal(battle.takeStreak, TAKE_STREAK_MAX_CHARGE);
+                Object.assign(battle, takeRound(TAKE_STREAK_MAX_CHARGE));
+                delete relicHighlightUntil['take_streak'];
+                handlePlayerTake();
+                assert.equal(battle.takeStreak, TAKE_STREAK_MAX_CHARGE, 'a full charge stays full');
+                assert.isFalse(flashed('take_streak'), 'nothing was added - no flash');
+            });
+        });
+
+        it('take_streak: a full charge pays for the cap at most', () => {
+            inGameStrict({ ...transferOfferFields(), takeStreak: TAKE_STREAK_MAX_CHARGE, enemyHP: START_HP }, () => {
+                window.onPlayerCardClick(0);
+                assert.equal(battle.enemyHP, START_HP - TAKE_STREAK_MAX_CHARGE * T);
+            }, withBattery);
         });
 
         it('take_streak: a transfer spends the charge and hits for N x damage per take', () => {
@@ -11113,7 +11170,7 @@ function runGameUnitTests() {
                 const transfer = () => fireAllHooks('onPlayerTransfer');
                 // A real defense beats a card (onPlayerBeatCard) and then ends the round (onDefenseSucceeded).
                 const defend = () => { fireAllHooks('onPlayerBeatCard'); fireAllHooks('onDefenseSucceeded'); };
-                const take = () => fireAllHooks('onPlayerTookCards', { cardsTakenCount: 2 });
+                const take = () => { fireAllHooks('onPlayerTookCards', { cardsTakenCount: 2 }); fireAllHooks('onPlayerTakeDamaged', { damage: 2 }); };
                 transfer(); assert.equal(state(), '1,0,0');
                 transfer(); assert.equal(state(), '2,0,0');
                 defend();   assert.equal(state(), '0,1,0');
@@ -11584,7 +11641,7 @@ function runGameUnitTests() {
                     assert.isTrue(desc('coin_magnet').includes(`+${COIN_MAGNET_GOLD_PER_SIX}$`), lang + ' coin_magnet');
                     assert.isTrue(desc('cascade_transfer').includes(String(CASCADE_TRANSFER_DAMAGE)), lang + ' cascade_transfer');
                     assert.isTrue(desc('transfer_streak').includes(String(TRANSFER_STREAK_DAMAGE_PER_LINK)), lang + ' transfer_streak');
-                    assert.isTrue(desc('take_streak').includes(`${TAKE_STREAK_TRANSFER_DAMAGE_PER_TAKE}×N`) && desc('take_streak').includes(`${TAKE_STREAK_DEFENSE_DAMAGE_PER_TAKE}×N`), lang + ' take_streak');
+                    assert.isTrue(desc('take_streak').includes(`${TAKE_STREAK_TRANSFER_DAMAGE_PER_TAKE}×N`) && desc('take_streak').includes(`${TAKE_STREAK_DEFENSE_DAMAGE_PER_TAKE}×N`) && desc('take_streak').includes(String(TAKE_STREAK_MAX_CHARGE)), lang + ' take_streak');
                     ALL_RELICS.forEach(r => assert.isFalse(/\{\w+\}/.test(r.desc), `${lang} ${r.id}: unresolved placeholder`));
                     const enemy = (id) => ENEMIES.find(e => e.abilityId === id).abilityDesc;
                     assert.isTrue(enemy('swindle').includes(`${SWINDLE_GOLD_LOSS}$`), lang + ' swindle');
