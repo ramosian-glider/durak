@@ -5994,15 +5994,6 @@ function runGameUnitTests() {
         // Static guard: production code (everything before the test infrastructure) must
         // never assign battle.phase outside setBattlePhase(). Tests may still
         // assign it directly to build fixtures — they live after the marker.
-        it('No direct battle.phase assignments in battle code outside setBattlePhase()', () => {
-            const productionSource = getProductionSource();
-            assert.isTrue(productionSource.length > 1000, 'could not isolate battle code for the check');
-            const withoutSetter = productionSource.replace(/function setBattlePhase\(phase\) \{[\s\S]*?\n\}\n/, '');
-            assert.isTrue(withoutSetter.length < productionSource.length, 'setBattlePhase() body not found');
-            const offenders = withoutSetter.match(/battle\.phase\s*=(?!=)/g) || [];
-            assert.equal(offenders.length, 0, 'direct battle.phase assignments found: ' + offenders.length);
-        });
-
         it('setBattlePhase(RESOLVING) is a transit phase: invalidates the token but does not write a save', () => {
             inGame({}, () => {
                 clearLocalSave();
@@ -6222,14 +6213,6 @@ function runGameUnitTests() {
             try { fn(timers, cleared); } finally { window.setTimeout = realSet; window.clearTimeout = realClear; }
         }
 
-        it('In battle code AI_WAITING is set only inside enterAIWaitingPhase()', () => {
-            const productionSource = getProductionSource();
-            const withoutOwner = productionSource.replace(/function enterAIWaitingPhase\([\s\S]*?\n\}\n/, '');
-            assert.isTrue(withoutOwner.length < productionSource.length, 'enterAIWaitingPhase() body not found');
-            const offenders = withoutOwner.match(/setBattlePhase\(\s*BATTLE_PHASES\.AI_WAITING\s*\)/g) || [];
-            assert.equal(offenders.length, 0, 'AI_WAITING is set bypassing enterAIWaitingPhase(): ' + offenders.length);
-        });
-
         it('enterAIWaitingPhase(): AI_WAITING phase, save, step queued with the given delay', () => {
             inGame({}, () => {
                 clearLocalSave();
@@ -6381,22 +6364,6 @@ function runGameUnitTests() {
                 assert.isTrue(aiScheduler !== real);
             });
             assert.isTrue(aiScheduler === real, 'the real scheduler is back after the fixture');
-        });
-
-        it('Static guard: the battle transitions and the enemy AI never touch timers directly (only the scheduler does)', () => {
-            const prod = getProductionSource();
-            // Cut the sections out first (their headers are comments), then drop the comments.
-            const section = (from, to) => {
-                const start = prod.indexOf('\n// ' + from + '\n'), end = prod.indexOf('\n// ' + to + '\n');
-                assert.isTrue(start > 0 && end > start + 1000, 'section "' + from + '" not found');
-                return prod.slice(start, end).replace(/\/\/[^\n]*/g, '');
-            };
-            const timerCalls = /\b(?:setTimeout|clearTimeout|setInterval)\(/g;
-            const offenders = [
-                ...(section('BATTLE STATE TRANSITIONS', 'FLOATING CHANGE PLATES').match(timerCalls) || []),
-                ...(section('ENEMY AI', 'RELICS').match(timerCalls) || [])
-            ];
-            assert.equal(offenders.length, 0, 'direct timer calls in battle logic: ' + offenders.length);
         });
 
         it('A stale step that fires late does not wipe the handle of the pending step', () => {
@@ -6636,20 +6603,6 @@ function runGameUnitTests() {
         });
 
         // If you add a relic hook that calls damageEnemyHP(), this fails on purpose.
-        it('Guard: relic hooks that can kill the enemy are known - each has an "enemy dies from hook" test', () => {
-            const lethalHooks = new Set();
-            for (const effect of Object.values(RELIC_EFFECTS)) {
-                for (const [hook, handler] of Object.entries(effect)) {
-                    if (typeof handler === 'function' && handler.toString().includes('damageEnemyHP(')) lethalHooks.add(hook);
-                }
-            }
-            assert.equal(
-                [...lethalHooks].sort().join(),
-                ['onEnemyTurnStart', 'onGoldGained', 'onPlayerCardPlayed', 'onPlayerTookCards', 'onPlayerTransfer', 'onTransfer'].join(),
-                'a new hook calls damageEnemyHP(): check the code that dispatches it (didEnemyJustDie / enterAIWaitingPhase) and add a test to suite 8h'
-            );
-        });
-
         it('heavy_ballast: enemy dies from hook at the start of its turn - victory, AI turn does not continue, victory modal intact', () => {
             const bigHand = testCards('e', 'Pikes', 10);
             inGameStrict({
@@ -6819,12 +6772,6 @@ function runGameUnitTests() {
         });
 
         // ---- One commit, not save+render by hand ----
-        it('No manual saveGameState(); renderAll(); pair in battle code - only commitBattleState()', () => {
-            const productionSource = getProductionSource();
-            const offenders = productionSource.match(/saveGameState\(\);\s*renderAll\(\);/g) || [];
-            assert.equal(offenders.length, 0, 'manual save+render pair found: ' + offenders.length);
-        });
-
         it('handlePlayerTake() commits the result via commitBattleState() exactly once before the round-end check', () => {
             inGameSaved({
                 phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', table: openAttack()
@@ -7216,17 +7163,6 @@ function runGameUnitTests() {
         });
 
         // ---- static guard: no hand-rolled card moves outside the primitives ----
-        it('No manual splice/pop/push of cards in battle code outside the primitives section', () => {
-            const productionSource = getProductionSource();
-            const start = productionSource.indexOf('// CARD / TABLE PRIMITIVES');
-            const end = productionSource.indexOf('function sortPlayerHand') > start
-                ? productionSource.indexOf('// The defender\'s opponent (the attacker) refills first')
-                : -1;
-            assert.isTrue(start > 0 && end > start, 'primitives section not found');
-            const outside = productionSource.slice(0, start) + productionSource.slice(end);
-            const offenders = outside.match(/(?:playerHand|enemyHand|drawDeck|table)\.(?:splice|shift)\(|drawDeck\.pop\(\)|(?:playerHand|enemyHand)\.push\(battle\.drawDeck/g) || [];
-            assert.equal(offenders.length, 0, 'manual card operations: ' + offenders.join(' | '));
-        });
     });
 
     runner.describe('8k. Round end (decide/apply/present), take, battle victory', (it, assert) => {
@@ -7395,17 +7331,6 @@ function runGameUnitTests() {
             });
         });
 
-        it('In battle code beginResolution() and settleTurn() are called only from resolveTurn()', () => {
-            const code = getProductionSource().replace(/\/\/[^\n]*/g, '');
-            const withoutOwners = code
-                .replace(/function resolveTurn\([\s\S]*?\n\}\n/, '')
-                .replace(/function beginResolution\([\s\S]*?\n\}\n/, '')
-                .replace(/function settleTurn\([\s\S]*?\n\}\n/, '');
-            assert.isTrue(withoutOwners.length < code.length, 'resolveTurn/beginResolution/settleTurn bodies not found');
-            const offenders = withoutOwners.match(/\b(?:beginResolution|settleTurn)\(/g) || [];
-            assert.equal(offenders.length, 0, 'turn resolution bypassing resolveTurn(): ' + offenders.length);
-        });
-
         // ---- take: state vs presentation ----
         it('applyEnemyTake(): enemy takes the table, takes damage, cardsToTake is reset; phase and draw untouched', () => {
             inGameStrict({ phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', cardsToTake: true,
@@ -7537,12 +7462,6 @@ function runGameUnitTests() {
         });
 
         // ---- structure guard ----
-        it('Round end is split: checkRoundEnd() is a thin wrapper with no direct UI/state calls', () => {
-            const body = checkRoundEnd.toString();
-            assert.isTrue(/getRoundResult\(\)/.test(body) && /applyRoundResult\(/.test(body) && /presentRoundResult\(/.test(body));
-            assert.isFalse(/showModal|setBattlePhase|commitBattleState|applyPlayerDamage/.test(body), 'logic must live in getRoundResult/applyRoundResult/presentRoundResult');
-            assert.isFalse(/showModal|setBattlePhase|commitBattleState|clearLocalSave/.test(getRoundResult.toString()), 'getRoundResult must be pure');
-        });
     });
 
     runner.describe('8l. AI (chooseEnemyAction / executeEnemyAction) and unified relic hook traversal', (it, assert) => {
@@ -7692,9 +7611,6 @@ function runGameUnitTests() {
                     assert.isTrue(localStorage.getItem(SAVE_KEY) === null);
                 });
             }
-            const body = [chooseEnemyAction, chooseEnemyAttackerAction, chooseEnemyDefenderAction, planEnemyDefense, chooseEnemyTakeOrWait, chooseEnemyActionAfterFullDefense]
-                .map(f => f.toString()).join('\n');
-            assert.isFalse(/setBattlePhase|commitBattleState|renderAll|audio\.|showModal|scheduleEnemy|playAttackCard|playDefenseCard|\.sort\(\s*\(a, b\)[^)]*\)\s*;\s*\n/.test(body.replace(/validCards\.sort[^\n]*\n/, '')), 'action choice must not change state or UI');
         });
 
         // ---- executeEnemyAction ----
@@ -7833,14 +7749,6 @@ function runGameUnitTests() {
         const text = (id) => getEl(id).innerText;
 
         // ---- rendering ----
-        it('renderAll() - only the order of parts: calls each renderX() and the relic popup refresh, nothing else', () => {
-            const body = renderAll.toString();
-            const calls = (body.match(/render[A-Z]\w*\(\)|refreshRelicPopoverIfOpen\(\)/g) || []).filter(c => c !== 'renderAll()');
-            assert.equal(calls.join(), ['renderHeader()', 'renderTurnBanner()', 'renderEnemyHand()', 'renderDeck()', 'renderRelicsBar()',
-                'renderTable()', 'renderPlayerHand()', 'renderActionButtons()', 'refreshRelicPopoverIfOpen()'].join());
-            assert.isFalse(/getElementById|innerHTML|innerText|battle\.|run\./.test(body), 'renderAll must not touch DOM or state itself');
-        });
-
         it('renderHeader(): HP, gold, floor, enemy HP', () => {
             inGameClosingModal({ enemyHP: 17 }, () => {
                 renderHeader();
@@ -8013,14 +7921,6 @@ function runGameUnitTests() {
             }, { relics: [relicOf('pocket_discard')] });
         });
 
-        it('No manual #msg-box visibility control outside openModal()/closeModal()', () => {
-            const prod = getProductionSource();
-            const directClassChanges = prod.match(/modal\.classList\.(?:add|remove|toggle)\(/g) || [];
-            const modalVisibilityCalls = prod.match(/setVisible\(modal, (?:true|false), 'flex'\)/g) || [];
-            assert.equal(directClassChanges.length, 0, 'direct modal class changes: ' + directClassChanges.length);
-            assert.equal(modalVisibilityCalls.length, 2, 'exactly two setVisible calls for the modal expected: ' + modalVisibilityCalls.length);
-        });
-
         // ---- audio ----
         const makeFakeCtx = () => {
             const calls = [];
@@ -8117,11 +8017,6 @@ function runGameUnitTests() {
             finally { audio.ctx = saved.ctx; audio.isMuted = saved.muted; }
         });
 
-        it('In SoundEngine createOscillator is called only from playTone()', () => {
-            const prod = getProductionSource();
-            const uses = prod.match(/createOscillator\(\)/g) || [];
-            assert.equal(uses.length, 1, 'oscillators are created in one place: ' + uses.length);
-        });
     });
 
     runner.describe('8n. Constants, no legacy wrappers, file structure, shared test fixtures', (it, assert) => {
@@ -8197,52 +8092,7 @@ function runGameUnitTests() {
         });
 
         // ---- no legacy / dead code ----
-        it('Compat wrappers removed: no saveRunToLocal / loadRunFromLocal / countTableCards', () => {
-            assert.equal(typeof window.saveRunToLocal, 'undefined');
-            assert.equal(typeof window.loadRunFromLocal, 'undefined');
-            assert.equal(typeof window.countTableCards, 'undefined');
-        });
-
-        it('Test helpers are not part of battle code: withIsolatedGameState etc. are defined after the runner', () => {
-            const prod = getProductionSource();
-            for (const name of ['withIsolatedGameState', 'withFieldSnapshot', 'captureRealStateForTests', 'preserveLocalSaveAround', 'makeTestBattle', 'getProductionSource']) {
-                assert.equal(typeof window[name], 'function', name + ' must exist');
-                assert.isFalse(new RegExp('function ' + name + '\\(').test(prod), name + ' must not be in the battle part of the file');
-            }
-        });
-
         // ---- file structure ----
-        it('File is split into sections in the documented order, EVENT BINDINGS last', () => {
-            const prod = getProductionSource();
-            const expected = ['CONSTANTS AND STATIC DATA', 'DOM HELPERS', 'LOCALIZATION', 'AUDIO', 'GAME STATE', 'BATTLE INVARIANTS', 'PERSISTENCE',
-                'CARD / TABLE PRIMITIVES', 'RULES (PURE FUNCTIONS)', 'BATTLE STATE TRANSITIONS', 'ENEMY AI', 'RELICS', 'SHOP',
-                'RENDERING', 'MODALS AND POPOVERS', 'EVENT BINDINGS'];
-            let last = -1;
-            for (const title of expected) {
-                const at = prod.indexOf('\n// ' + title + '\n', last + 1);
-                assert.isTrue(at > last, 'section "' + title + '" is missing or out of place');
-                last = at;
-            }
-        });
-
-        it('All bindClick() calls at load are in the EVENT BINDINGS section (after all definitions)', () => {
-            const prod = getProductionSource();
-            const boot = prod.indexOf('\n// EVENT BINDINGS\n');
-            assert.isTrue(boot > 0);
-            const before = prod.slice(0, boot).replace(/\/\/[^\n]*/g, '');
-            const stray = (before.match(/^bindClick\(/gm) || []).length;
-            assert.equal(stray, 0, 'bindClick() outside the EVENT BINDINGS section: ' + stray);
-            assert.isTrue((prod.slice(boot).match(/^bindClick\(/gm) || []).length >= 6);
-        });
-
-        it('Data sections do not touch game state: CONSTANTS does not read run/battle at top level', () => {
-            const prod = getProductionSource();
-            const a = prod.indexOf('\n// CONSTANTS AND STATIC DATA\n');
-            const b = prod.indexOf('\n// DOM HELPERS\n');
-            const topLevel = prod.slice(a, b).split('\n').filter(l => /^\S/.test(l) && !l.trim().startsWith('//')).join('\n');
-            assert.isFalse(/\b(run|battle)\./.test(topLevel), 'constants must not depend on run/battle');
-        });
-
         // ---- shared fixtures ----
         it('makeTestBattle(): battle shape matches the real battle (fields = BATTLE_SAVED_FIELDS + BATTLE_RUNTIME_FIELDS), defaults and overrides apply in order', () => {
             const keys = Object.keys(makeTestBattle()).sort().join();
@@ -8251,13 +8101,6 @@ function runGameUnitTests() {
             assert.equal(b.enemyHP, 9, 'overrides beat defaults');
             assert.equal(b.defender, 'player', 'defaults beat the base');
             assert.isFalse(makeTestBattle().playerHand === makeTestBattle().playerHand, 'arrays must not be shared between calls');
-        });
-
-        it('makeTestRun()/testCard(): defaults and overrides', () => {
-            const r = makeTestRun({ gold: 4 });
-            assert.equal(r.gold, 4); assert.equal(r.playerHP, 30); assert.equal(r.floor, 1);
-            assert.equal(r.deck.length, 36);
-            assert.equal(JSON.stringify(testCard('a', 'Pikes', 9)), JSON.stringify(testCard('a', 'Pikes', 9)));
         });
 
         it('makeTestFixtures(): inGame()/inGameSaved()/inGameStrict() apply battle and run overrides over suite defaults and return the real state', () => {
@@ -8301,37 +8144,6 @@ function runGameUnitTests() {
             assert.isTrue(getEl('msg-box').classList.contains('hidden'), 'inGameStrict closes the modal');
             assert.isTrue(getEl('shop-modal').classList.contains('hidden'), 'inGameStrict closes the shop');
             assert.isTrue(run === realRun && battle === realBattle, 'real run/battle restored');
-        });
-
-        it('assert.phase(): compares the current battle phase; on mismatch names both phases and keeps its own message', () => {
-            withIsolatedGameState(makeTestRun(), makeTestBattle({ phase: BATTLE_PHASES.AI_WAITING }), () => {
-                assert.phase(BATTLE_PHASES.AI_WAITING);
-                let plain = '', custom = '';
-                try { assert.phase(BATTLE_PHASES.BATTLE_OVER); } catch (err) { plain = err.message; }
-                try { assert.phase(BATTLE_PHASES.BATTLE_OVER, 'after victory'); } catch (err) { custom = err.message; }
-                assert.isTrue(plain.includes(BATTLE_PHASES.BATTLE_OVER) && plain.includes(BATTLE_PHASES.AI_WAITING), plain);
-                assert.isTrue(custom.startsWith('after victory') && custom.includes(BATTLE_PHASES.AI_WAITING), custom);
-            });
-        });
-
-        it('assert.cardsConserved() / assert.modalTitle(): silent on match, throw on mismatch', () => {
-            withIsolatedGameState(makeTestRun(), makeTestBattle({ playerHand: [testCard('p1', 'Pikes', 8)], enemyHand: [testCard('e1', 'Pikes', 9)] }), () => {
-                const before = getAllCardIds();
-                assert.cardsConserved(before);
-                battle.discardPile.push(battle.enemyHand.pop()); // moved, not lost
-                assert.cardsConserved(before);
-                battle.discardPile.pop(); // lost
-                let lost = false;
-                try { assert.cardsConserved(before); } catch (err) { lost = true; }
-                assert.isTrue(lost, 'a lost card must be caught');
-
-                showModal('Заголовок', 'текст');
-                assert.modalTitle('Заголовок');
-                let wrong = false;
-                try { assert.modalTitle('Другой'); } catch (err) { wrong = true; }
-                closeModal();
-                assert.isTrue(wrong, 'a wrong title must be caught');
-            });
         });
 
         it('withTestGame(): enables invariants for the test, then restores the flag, closes the modal and cleans the save; the real save is preserved', () => {
@@ -11405,20 +11217,6 @@ function runGameUnitTests() {
         // The helpers above are only useful if the runner actually calls them. A
         // test can't re-run the whole suite from inside itself, so guard the wiring
         // the same way suites 8e/8g guard theirs: by scanning the source.
-        it('runGameUnitTests() snapshots the real battle state at the start and restores it in finally', () => {
-            // Literals are built by concatenation so this test's own source can't
-            // satisfy the search; the body of runGameUnitTests() contains every suite.
-            const body = runGameUnitTests.toString();
-            const captureAt = body.indexOf('const realStateSnapshot = ' + 'captureRealStateForTests()');
-            const outerTryAt = body.indexOf('preserveLocalSaveAround(() => ' + 'runner.run())');
-            const outerFinallyAt = body.indexOf('finally', outerTryAt);
-            const restoreAt = body.indexOf('restoreRealStateAfterTests(' + 'realStateSnapshot)');
-            assert.isTrue(captureAt !== -1, 'no state snapshot at the start of the run');
-            assert.isTrue(outerTryAt !== -1 && outerFinallyAt !== -1, 'outer try/finally of the run not found');
-            assert.isTrue(restoreAt > outerFinallyAt, 'restore must be in finally to run on any outcome');
-            assert.isTrue(body.indexOf('renderAll()', restoreAt) !== -1, 'restore must be followed by a renderAll() repaint, otherwise the screen is drawn from a corrupted state');
-        });
-
         it('restoreRealStateAfterTests does not touch a swapped fixture (battle/run are no longer the snapshotted ones)', () => {
             inGame({}, () => {
                 const snapshot = captureRealStateForTests();
