@@ -4985,6 +4985,11 @@ function testCard(id, suit, value) {
     return { id, suit, value };
 }
 
+// Suit shorthands for the three suits fixtures use most: pike('p1', 9) is testCard('p1', 'Pikes', 9).
+const heart = (id, value) => testCard(id, 'Hearts', value);
+const pike = (id, value) => testCard(id, 'Pikes', value);
+const club = (id, value) => testCard(id, 'Clubs', value);
+
 // Builds one battle.table entry: an attack card and, once answered, its defender.
 function testPair(attack, defend = null) {
     return { attack, defend };
@@ -5535,7 +5540,7 @@ function runGameUnitTests() {
     runner.describe('7. Battle state transitions', (it, assert) => {
         // Bare run, enemy to move. Tests that end a round start from `roundEnd`.
         const { inGameStrict: game } = makeTestFixtures({ phase: BATTLE_PHASES.AI_WAITING }, { deck: [] });
-        const roundEnd = { trumpCard: testCard('t1', 'Pikes', 6), trumpSuit: 'Pikes', enemyHP: 50 };
+        const roundEnd = { trumpCard: pike('t1', 6), trumpSuit: 'Pikes', enemyHP: 50 };
 
         it('Player can act only in own phases', () => {
             game({}, () => {
@@ -5561,8 +5566,8 @@ function runGameUnitTests() {
         it('First player attack moves the battle to AI waiting', () => {
             game({
                 phase: BATTLE_PHASES.PLAYER_ATTACK,
-                playerHand: [testCard('test_attack', 'Pikes', 6)],
-                enemyHand: [testCard('test_defend', 'Pikes', 10)]
+                playerHand: [pike('test_attack', 6)],
+                enemyHand: [pike('test_defend', 10)]
             }, () => {
                 window.onPlayerCardClick(0);
 
@@ -5577,8 +5582,8 @@ function runGameUnitTests() {
         it('If AI cannot beat a card and the player can throw in, the turn returns to the player', () => {
             game({
                 table: [
-                    testPair(testCard('test_attack_1', 'Pikes', 6), testCard('test_defend', 'Pikes', 10)),
-                    testPair(testCard('test_throw', 'Hearts', 8))
+                    testPair(pike('test_attack_1', 6), pike('test_defend', 10)),
+                    testPair(heart('test_throw', 8))
                 ],
                 playerHand: [testCard('test_more_throw', 'Tiles', 8)],
                 enemyHand: [testCard('test_low', 'Clovers', 7), testCard('test_low_2', 'Clovers', 9)]
@@ -5593,8 +5598,8 @@ function runGameUnitTests() {
         it('If AI cannot beat a card and nothing can be thrown in, it takes the table automatically', () => {
             game({
                 table: [
-                    testPair(testCard('test_attack_1', 'Pikes', 6), testCard('test_defend', 'Pikes', 10)),
-                    testPair(testCard('test_throw', 'Hearts', 8))
+                    testPair(pike('test_attack_1', 6), pike('test_defend', 10)),
+                    testPair(heart('test_throw', 8))
                 ],
                 playerHand: [testCard('test_no_throw', 'Tiles', 9)],
                 enemyHand: [testCard('test_low', 'Clovers', 7), testCard('test_low_2', 'Clovers', 12)]
@@ -5609,9 +5614,9 @@ function runGameUnitTests() {
 
         it('After the AI response, control returns to the player', () => {
             game({
-                table: [testPair(testCard('test_attack', 'Pikes', 6))],
+                table: [testPair(pike('test_attack', 6))],
                 playerHand: [testCard('test_player', 'Tiles', 7)],
-                enemyHand: [testCard('test_defend', 'Pikes', 10), testCard('test_reserve', 'Tiles', 8)]
+                enemyHand: [pike('test_defend', 10), testCard('test_reserve', 'Tiles', 8)]
             }, () => {
                 executeEnemyAI();
 
@@ -5624,7 +5629,7 @@ function runGameUnitTests() {
         it('When AI finishes throwing in, it schedules the bito with a delay', () => {
             game({
                 defender: 'player',
-                table: [testPair(testCard('test_attack', 'Pikes', 6), testCard('test_defend', 'Pikes', 10))],
+                table: [testPair(pike('test_attack', 6), pike('test_defend', 10))],
                 playerHand: [testCard('test_player', 'Tiles', 7)],
                 enemyHand: [testCard('test_other', 'Clovers', 9)]
             }, () => {
@@ -5639,7 +5644,7 @@ function runGameUnitTests() {
         // ran out of cards" branches (the "playerEmpty" branch is also exercised
         // via the pocket_discard/jester_discard round-end regressions).
         it('checkRoundEnd(): enemy runs out of cards first - round lost, player survives', () => {
-            game({ ...roundEnd, playerHand: [testCard('p1', 'Hearts', 6), testCard('p2', 'Pikes', 7)] }, () => {
+            game({ ...roundEnd, playerHand: [heart('p1', 6), pike('p2', 7)] }, () => {
                 assert.isTrue(checkRoundEnd(), 'checkRoundEnd() must report that the round is over');
                 assert.phase(BATTLE_PHASES.ROUND_OVER);
                 assert.modalTitle('Раунд Проигран!');
@@ -5649,7 +5654,7 @@ function runGameUnitTests() {
         });
 
         it('checkRoundEnd(): enemy runs out of cards first, damage is lethal and no safety rope - defeat', () => {
-            game({ ...roundEnd, playerHand: [testCard('p1', 'Hearts', 6)] }, () => {
+            game({ ...roundEnd, playerHand: [heart('p1', 6)] }, () => {
                 assert.isTrue(checkRoundEnd());
                 assert.phase(BATTLE_PHASES.ROUND_OVER);
                 assert.modalTitle('Поражение!');
@@ -5668,13 +5673,13 @@ function runGameUnitTests() {
         });
 
         it('checkRoundEnd(): deck or table not empty - round does not end', () => {
-            game({ ...roundEnd, drawDeck: [testCard('d1', 'Hearts', 6)] }, () => {
+            game({ ...roundEnd, drawDeck: [heart('d1', 6)] }, () => {
                 // Empty hands alone do not mean the round is over while
                 // the deck has cards - a normal draw-up can still happen.
                 assert.isFalse(checkRoundEnd(), 'deck is not empty - too early to end the round');
 
                 battle.drawDeck = [];
-                battle.table = [testPair(testCard('a1', 'Pikes', 6))];
+                battle.table = [testPair(pike('a1', 6))];
                 assert.isFalse(checkRoundEnd(), 'unresolved cards on the table - too early to end the round');
             });
         });
@@ -5694,7 +5699,7 @@ function runGameUnitTests() {
                 run.floor = 4;
                 run.gold = 77;
                 battle.enemyHP = 42;
-                battle.playerHand = [testCard('test_save_card', 'Hearts', 9)];
+                battle.playerHand = [heart('test_save_card', 9)];
                 saveGameState();
 
                 const parsed = readSavedGame();
@@ -5710,7 +5715,7 @@ function runGameUnitTests() {
             game({ phase: BATTLE_PHASES.IDLE, trumpSuit: null, enemyHP: 0 }, () => {
                 run.floor = 3;
                 battle.enemyHP = 55;
-                battle.playerHand = [testCard('restore_card', 'Pikes', 11)];
+                battle.playerHand = [pike('restore_card', 11)];
                 saveGameState();
 
                 run.floor = 1;
@@ -5855,10 +5860,10 @@ function runGameUnitTests() {
                 version: SAVE_VERSION,
                 run: { floor: 2, playerHP: 20, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() },
                 battle: {
-                    drawDeck: [testCard('d1', 'Hearts', 6)],
+                    drawDeck: [heart('d1', 6)],
                     discardPile: [],
-                    playerHand: [testCard('p1', 'Hearts', 7)],
-                    enemyHand: [testCard('e1', 'Hearts', 8)],
+                    playerHand: [heart('p1', 7)],
+                    enemyHand: [heart('e1', 8)],
                     table: [],
                     defender: 'enemy',
                     phase: BATTLE_PHASES.PLAYER_ATTACK,
@@ -5922,11 +5927,11 @@ function runGameUnitTests() {
         // restore the game rolled back to the start of the round.
         it('commitBattleState() saves the current battle state after a phase change', () => {
             game({
-                drawDeck: [testCard('d1', 'Hearts', 6)],
-                playerHand: [testCard('p1', 'Hearts', 6)],
-                enemyHand: [testCard('e1', 'Hearts', 7)],
-                table: [testPair(testCard('a1', 'Hearts', 9))],
-                trumpCard: testCard('t1', 'Hearts', 6),
+                drawDeck: [heart('d1', 6)],
+                playerHand: [heart('p1', 6)],
+                enemyHand: [heart('e1', 7)],
+                table: [testPair(heart('a1', 9))],
+                trumpCard: heart('t1', 6),
                 defender: 'enemy', phase: BATTLE_PHASES.AI_WAITING
             }, () => {
                 clearLocalSave();
@@ -5941,11 +5946,11 @@ function runGameUnitTests() {
 
         it('scheduleEnemyAI() saves the game on entering ai_waiting - the exact "opponent threw in a card" moment', () => {
             game({
-                playerHand: [testCard('p1', 'Hearts', 6)],
-                enemyHand: [testCard('e1', 'Hearts', 7)],
+                playerHand: [heart('p1', 6)],
+                enemyHand: [heart('e1', 7)],
                 table: [
-                    testPair(testCard('a1', 'Hearts', 9), testCard('d1', 'Hearts', 10)),
-                    testPair(testCard('a2', 'Hearts', 8))
+                    testPair(heart('a1', 9), heart('d1', 10)),
+                    testPair(heart('a2', 8))
                 ], trumpSuit: 'Spades',
                 enemyHP: 20, actionToken: 5
             }, () => {
@@ -5962,8 +5967,8 @@ function runGameUnitTests() {
         it('REGRESSION: a single player move (onPlayerCardClick) survives a full page reload (tab unload emulation)', () => {
             game({
                 drawDeck: [testCard('d1', 'Spades', 6)],
-                playerHand: [testCard('p1', 'Hearts', 6), testCard('p2', 'Hearts', 7)],
-                enemyHand: [testCard('e1', 'Hearts', 9)],
+                playerHand: [heart('p1', 6), heart('p2', 7)],
+                enemyHand: [heart('e1', 9)],
                 trumpCard: testCard('t1', 'Spades', 6), trumpSuit: 'Spades'
             }, () => {
                 clearLocalSave();
@@ -5983,11 +5988,11 @@ function runGameUnitTests() {
 
     runner.describe('8e. Phase transition centralization (setBattlePhase is the only writer of battle.phase)', (it, assert) => {
         const { makeFixtureBattle, makeFixtureRun, inGameSaved: inGame } = makeTestFixtures({
-            drawDeck: [testCard('d1', 'Hearts', 6)],
-            playerHand: [testCard('p1', 'Hearts', 6)],
-            enemyHand: [testCard('e1', 'Hearts', 7)],
-            table: [testPair(testCard('a1', 'Hearts', 9))],
-            trumpCard: testCard('t1', 'Hearts', 6),
+            drawDeck: [heart('d1', 6)],
+            playerHand: [heart('p1', 6)],
+            enemyHand: [heart('e1', 7)],
+            table: [testPair(heart('a1', 9))],
+            trumpCard: heart('t1', 6),
             defender: 'player', phase: BATTLE_PHASES.PLAYER_DEFENSE
         });
 
@@ -6101,9 +6106,9 @@ function runGameUnitTests() {
     runner.describe('8f. validateRunState / validateBattleState (separate validation)', (it, assert) => {
         const goodRun = () => ({ floor: 2, playerHP: 20, maxHP: 30, gold: 15, relics: [], deck: generateStandardDeck() });
         const goodBattle = () => ({
-            drawDeck: [testCard('d1', 'Hearts', 6)], discardPile: [],
-            playerHand: [testCard('p1', 'Hearts', 7)],
-            enemyHand: [testCard('e1', 'Hearts', 8)],
+            drawDeck: [heart('d1', 6)], discardPile: [],
+            playerHand: [heart('p1', 7)],
+            enemyHand: [heart('e1', 8)],
             table: [], defender: 'enemy', phase: BATTLE_PHASES.PLAYER_ATTACK, enemyHP: 30
         });
 
@@ -6160,7 +6165,7 @@ function runGameUnitTests() {
 
         it('isImpossibleActiveBattleState(): any non-empty deck/table or both non-empty hands make the state possible', () => {
             const active = BATTLE_PHASES.PLAYER_ATTACK;
-            const card = testCard('x', 'Hearts', 6);
+            const card = heart('x', 6);
             assert.isFalse(isImpossibleActiveBattleState(Object.assign(goodBattle(), { phase: active, drawDeck: [], table: [] })), 'both hands non-empty');
             assert.isFalse(isImpossibleActiveBattleState(Object.assign(goodBattle(), { phase: active, drawDeck: [card], table: [], playerHand: [] })), 'deck not empty');
             assert.isFalse(isImpossibleActiveBattleState(Object.assign(goodBattle(), { phase: active, drawDeck: [], table: [testPair(card)], playerHand: [] })), 'cards on the table');
@@ -6196,11 +6201,11 @@ function runGameUnitTests() {
 
     runner.describe('8g. enterAIWaitingPhase and the AI scheduler (the single point handing the turn to the AI)', (it, assert) => {
         const { inGameSaved: inGame } = makeTestFixtures({
-            drawDeck: [testCard('d1', 'Hearts', 6)],
-            playerHand: [testCard('p1', 'Hearts', 6)],
-            enemyHand: [testCard('e1', 'Hearts', 7)],
-            table: [testPair(testCard('a1', 'Hearts', 9))],
-            trumpCard: testCard('t1', 'Hearts', 6)
+            drawDeck: [heart('d1', 6)],
+            playerHand: [heart('p1', 6)],
+            enemyHand: [heart('e1', 7)],
+            table: [testPair(heart('a1', 9))],
+            trumpCard: heart('t1', 6)
         });
 
         // Runs fn with setTimeout/clearTimeout replaced by recorders, restoring them afterwards.
@@ -6274,8 +6279,8 @@ function runGameUnitTests() {
             drawDeck: testCards('d', 'Pikes', 4, i => 7 + i),
             playerHand: testCards('p', 'Tiles', 5, i => 6 + i),
             enemyHand: testCards('e', 'Tiles', 4, i => 6 + i),
-            table: [testPair(testCard('a1', 'Pikes', 14))],
-            trumpCard: testCard('t1', 'Hearts', 6),
+            table: [testPair(pike('a1', 14))],
+            trumpCard: heart('t1', 6),
             defender: 'enemy', phase: BATTLE_PHASES.PLAYER_ATTACK
         });
 
@@ -6414,9 +6419,9 @@ function runGameUnitTests() {
 
     runner.describe('8h. Victory over the opponent and game continuation (enemy at 0 HP)', (it, assert) => {
         const { inGame, inGameStrict } = makeTestFixtures({
-            drawDeck: [testCard('d1', 'Hearts', 6)],
-            playerHand: [testCard('p1', 'Hearts', 6)],
-            enemyHand: [testCard('e1', 'Hearts', 7)], trumpCard: testCard('t1', 'Hearts', 6),
+            drawDeck: [heart('d1', 6)],
+            playerHand: [heart('p1', 6)],
+            enemyHand: [heart('e1', 7)], trumpCard: heart('t1', 6),
             enemyHP: 5
         }, { gold: 15 });
         it('Lethal damage moves the battle to BATTLE_OVER and keeps the reward already granted', () => {
@@ -6447,8 +6452,8 @@ function runGameUnitTests() {
         it('Cascade transfer: enemy transfers the attack and dies from damage - victory, victory modal not covered', () => {
             inGameStrict({
                 phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', enemyHP: CASCADE_TRANSFER_DAMAGE,
-                table: [testPair(testCard('a1', 'Clubs', 8))],
-                enemyHand: [testCard('e1', 'Hearts', 8), testCard('e2', 'Pikes', 12)]
+                table: [testPair(club('a1', 8))],
+                enemyHand: [heart('e1', 8), pike('e2', 12)]
             }, () => {
                 clearLocalSave();
                 executeEnemyAction({ type: 'transfer', card: battle.enemyHand[0] });
@@ -6465,9 +6470,9 @@ function runGameUnitTests() {
         it('Cascade transfer: player transfers the attack and finishes the enemy - victory, AI turn not started', () => {
             inGameStrict({
                 phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: true, enemyHP: CASCADE_TRANSFER_DAMAGE,
-                table: [testPair(testCard('a1', 'Clubs', 8))],
-                playerHand: [testCard('p1', 'Hearts', 8), testCard('p2', 'Pikes', 12)],
-                enemyHand: [testCard('e1', 'Hearts', 7), testCard('e2', 'Pikes', 12)]
+                table: [testPair(club('a1', 8))],
+                playerHand: [heart('p1', 8), pike('p2', 12)],
+                enemyHand: [heart('e1', 7), pike('e2', 12)]
             }, () => {
                 clearLocalSave();
                 window.onPlayerCardClick(0);
@@ -6507,8 +6512,8 @@ function runGameUnitTests() {
         it('sharp_suit: enemy dies from damage when defended with a trump - victory, AI turn not started', () => {
             inGameStrict({
                 phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', enemyHP: SHARP_SUIT_DAMAGE,
-                table: [testPair(testCard('a1', 'Pikes', 7))],
-                playerHand: [testCard('p1', 'Hearts', 9)]
+                table: [testPair(pike('a1', 7))],
+                playerHand: [heart('p1', 9)]
             }, () => {
                 clearLocalSave();
                 window.onPlayerCardClick(0);
@@ -6524,8 +6529,8 @@ function runGameUnitTests() {
         it('golden_bullet: enemy dies from the bullet after midas_touch gold in bito - victory, reward once, AI turn not started', () => {
             inGameStrict({
                 phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', enemyHP: GOLDEN_BULLET_DAMAGE,
-                table: [testPair(testCard('bx1', 'Pikes', 6), testCard('bx2', 'Pikes', 7))],
-                playerHand: [testCard('bx3', 'Pikes', 8)]
+                table: [testPair(pike('bx1', 6), pike('bx2', 7))],
+                playerHand: [pike('bx3', 8)]
             }, () => {
                 clearLocalSave();
                 handleBito();
@@ -6540,7 +6545,7 @@ function runGameUnitTests() {
         it('golden_bullet: enemy dies from the bullet for a player six (coin_magnet) - victory, AI turn not started', () => {
             inGameStrict({
                 phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', enemyHP: GOLDEN_BULLET_DAMAGE, table: [],
-                playerHand: [testCard('p1', 'Pikes', 6), testCard('p2', 'Clubs', 9)]
+                playerHand: [pike('p1', 6), club('p2', 9)]
             }, () => {
                 clearLocalSave();
                 window.onPlayerCardClick(0);
@@ -6554,8 +6559,8 @@ function runGameUnitTests() {
         it('golden_bullet: enemy dies from the bullet for its OWN six in defense (coin_magnet pays for enemy sixes too) - victory, remaining cards not played', () => {
             inGameStrict({
                 phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', enemyHP: GOLDEN_BULLET_DAMAGE,
-                table: [testPair(testCard('a1', 'Pikes', 5)), testPair(testCard('a2', 'Clubs', 5))],
-                enemyHand: [testCard('e1', 'Pikes', 6), testCard('e2', 'Clubs', 6), testCard('e3', 'Hearts', 12)]
+                table: [testPair(pike('a1', 5)), testPair(club('a2', 5))],
+                enemyHand: [pike('e1', 6), club('e2', 6), heart('e3', 12)]
             }, () => {
                 clearLocalSave();
                 const [first, second] = battle.table;
@@ -6574,8 +6579,8 @@ function runGameUnitTests() {
         it('golden_bullet: victory reward from damage by another relic does not fire the bullet (no double reward)', () => {
             inGameStrict({
                 phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', enemyHP: SHARP_SUIT_DAMAGE,
-                table: [testPair(testCard('a1', 'Pikes', 7))],
-                playerHand: [testCard('p1', 'Hearts', 9)]
+                table: [testPair(pike('a1', 7))],
+                playerHand: [heart('p1', 9)]
             }, () => {
                 clearLocalSave();
                 window.onPlayerCardClick(0);
@@ -6624,8 +6629,8 @@ function runGameUnitTests() {
         it('Cascade transfer: non-lethal damage - transfer proceeds as usual', () => {
             inGameStrict({
                 phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', enemyHP: CASCADE_TRANSFER_DAMAGE + 1,
-                table: [testPair(testCard('a1', 'Clubs', 8))],
-                enemyHand: [testCard('e1', 'Hearts', 8), testCard('e2', 'Pikes', 12)]
+                table: [testPair(club('a1', 8))],
+                enemyHand: [heart('e1', 8), pike('e2', 12)]
             }, () => {
                 clearLocalSave();
                 executeEnemyAction({ type: 'transfer', card: battle.enemyHand[0] });
@@ -6728,12 +6733,12 @@ function runGameUnitTests() {
 
     runner.describe('8i. State discipline (checks before phase change, single commit, save allow-list, invariants)', (it, assert) => {
         const { makeFixtureBattle, inGame, inGameSaved, inGameStrict } = makeTestFixtures({
-            drawDeck: [testCard('d1', 'Hearts', 6), testCard('d2', 'Hearts', 8)],
-            playerHand: [testCard('p1', 'Hearts', 6)],
-            enemyHand: [testCard('e1', 'Hearts', 7)], trumpCard: testCard('d1', 'Hearts', 6)
+            drawDeck: [heart('d1', 6), heart('d2', 8)],
+            playerHand: [heart('p1', 6)],
+            enemyHand: [heart('e1', 7)], trumpCard: heart('d1', 6)
         });
         const closeUi = closeModal;
-        const openAttack = () => [testPair(testCard('a1', 'Hearts', 9))];
+        const openAttack = () => [testPair(heart('a1', 9))];
         // The exact pair the original bug needed: a handler entered with a valid phase
         // but nothing on the table used to set RESOLVING and then bail out.
         const assertNoStrandedPhase = (fn, phase, overrides) => {
@@ -6788,11 +6793,11 @@ function runGameUnitTests() {
 
         // ---- Invariants ----
         const goodBattle = () => ({
-            drawDeck: [testCard('d1', 'Hearts', 6)], discardPile: [testCard('x1', 'Pikes', 6)],
-            playerHand: [testCard('p1', 'Hearts', 7)],
-            enemyHand: [testCard('e1', 'Hearts', 8)],
-            table: [testPair(testCard('a1', 'Pikes', 9), testCard('a2', 'Pikes', 10))],
-            trumpCard: testCard('d1', 'Hearts', 6), // same card as drawDeck[0]: not a duplicate
+            drawDeck: [heart('d1', 6)], discardPile: [pike('x1', 6)],
+            playerHand: [heart('p1', 7)],
+            enemyHand: [heart('e1', 8)],
+            table: [testPair(pike('a1', 9), pike('a2', 10))],
+            trumpCard: heart('d1', 6), // same card as drawDeck[0]: not a duplicate
             defender: 'enemy', phase: BATTLE_PHASES.PLAYER_ATTACK, enemyHP: 30
         });
 
@@ -6801,11 +6806,11 @@ function runGameUnitTests() {
         });
 
         it('Card invariant: one card in two zones is a violation', () => {
-            const inHandAndTable = goodBattle(); inHandAndTable.playerHand.push(testCard('a1', 'Pikes', 9));
+            const inHandAndTable = goodBattle(); inHandAndTable.playerHand.push(pike('a1', 9));
             assert.isTrue(getBattleInvariantViolations(inHandAndTable).length > 0, 'hand + table');
-            const inDeckAndDiscard = goodBattle(); inDeckAndDiscard.discardPile.push(testCard('d1', 'Hearts', 6));
+            const inDeckAndDiscard = goodBattle(); inDeckAndDiscard.discardPile.push(heart('d1', 6));
             assert.isTrue(getBattleInvariantViolations(inDeckAndDiscard).length > 0, 'deck + discard');
-            const twoHands = goodBattle(); twoHands.enemyHand.push(testCard('p1', 'Hearts', 7));
+            const twoHands = goodBattle(); twoHands.enemyHand.push(heart('p1', 7));
             assert.isTrue(getBattleInvariantViolations(twoHands).length > 0, 'two hands');
         });
 
@@ -6828,7 +6833,7 @@ function runGameUnitTests() {
         it('Table and enemy HP invariants: broken pair and negative/non-numeric HP are violations', () => {
             const noAttack = goodBattle(); noAttack.table = [testPair(null)];
             assert.isTrue(getBattleInvariantViolations(noAttack).length > 0, 'pair without an attack');
-            const badDefend = goodBattle(); badDefend.table = [testPair(testCard('a1', 'Pikes', 9), 5)];
+            const badDefend = goodBattle(); badDefend.table = [testPair(pike('a1', 9), 5)];
             assert.isTrue(getBattleInvariantViolations(badDefend).length > 0, 'defend is not a card');
             const negHP = goodBattle(); negHP.enemyHP = -1;
             assert.isTrue(getBattleInvariantViolations(negHP).length > 0, 'HP < 0');
@@ -6838,7 +6843,7 @@ function runGameUnitTests() {
 
         it('validateBattleState() rejects a save with a duplicate card or a phase/defender mismatch', () => {
             assert.isTrue(validateBattleState(goodBattle()));
-            const dup = goodBattle(); dup.playerHand.push(testCard('a1', 'Pikes', 9));
+            const dup = goodBattle(); dup.playerHand.push(pike('a1', 9));
             assert.isFalse(validateBattleState(dup), 'duplicate card');
             const mismatch = goodBattle(); mismatch.defender = 'player';
             assert.isFalse(validateBattleState(mismatch), 'PLAYER_ATTACK with defender player');
@@ -6871,7 +6876,7 @@ function runGameUnitTests() {
             }, () => handlePlayerTake());
             inGameStrict({
                 phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy',
-                table: [testPair(testCard('a1', 'Hearts', 9), testCard('a2', 'Hearts', 10))]
+                table: [testPair(heart('a1', 9), heart('a2', 10))]
             }, () => handleBito());
             inGameStrict({
                 phase: BATTLE_PHASES.AI_WAITING, defender: 'enemy', cardsToTake: true, table: openAttack()
@@ -6923,23 +6928,22 @@ function runGameUnitTests() {
     });
 
     runner.describe('8j. Card and table primitives (moveCard, removeCard, dealCard, table API)', (it, assert) => {
-        const C = testCard;
         const { inGame, inGameStrict } = makeTestFixtures({
-            drawDeck: [C('d1', 'Hearts', 6), C('d2', 'Hearts', 8), C('d3', 'Pikes', 9)],
-            playerHand: [C('p1', 'Hearts', 6), C('p2', 'Pikes', 9)],
-            enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 9)], trumpCard: C('d1', 'Hearts', 6)
+            drawDeck: [heart('d1', 6), heart('d2', 8), pike('d3', 9)],
+            playerHand: [heart('p1', 6), pike('p2', 9)],
+            enemyHand: [heart('e1', 7), pike('e2', 9)], trumpCard: heart('d1', 6)
         });
 
         // ---- generic card primitives ----
         it('removeCard(): by reference and by id; missing card -> null, array unchanged', () => {
-            const a = C('a', 'Hearts', 6), b = C('b', 'Pikes', 7);
+            const a = heart('a', 6), b = pike('b', 7);
             const cards = [a, b];
-            assert.isTrue(removeCard(cards, C('b', 'Pikes', 7)) !== null, 'by id (clone)');
+            assert.isTrue(removeCard(cards, pike('b', 7)) !== null, 'by id (clone)');
             assert.equal(cards.length, 1);
             assert.isTrue(removeCard(cards, a) === a, 'by reference');
             assert.equal(cards.length, 0);
             const rest = [a];
-            assert.isTrue(removeCard(rest, C('zzz', 'Hearts', 6)) === null);
+            assert.isTrue(removeCard(rest, heart('zzz', 6)) === null);
             assert.isTrue(removeCard(rest, undefined) === null);
             assert.equal(rest.length, 1);
         });
@@ -6957,7 +6961,7 @@ function runGameUnitTests() {
         it('moveCard(): card missing in source or already in target -> false, nothing changes', () => {
             inGame({}, () => {
                 const before = getAllCardIds();
-                assert.isFalse(moveCard(C('nope', 'Hearts', 6), battle.playerHand, battle.discardPile), 'not in the source');
+                assert.isFalse(moveCard(heart('nope', 6), battle.playerHand, battle.discardPile), 'not in the source');
                 assert.isFalse(moveCard(battle.enemyHand[0], battle.playerHand, battle.discardPile), 'lies in another zone');
                 battle.discardPile.push(battle.playerHand[0]); // duplicate: already in the target
                 assert.isFalse(moveCard(battle.playerHand[0], battle.playerHand, battle.discardPile), 'already in the target');
@@ -7015,7 +7019,7 @@ function runGameUnitTests() {
         });
 
         it('playDefenseCard(): closes a pair with a hand card; repeat close and foreign card -> false', () => {
-            inGame({ defender: 'player', phase: BATTLE_PHASES.PLAYER_DEFENSE, table: [testPair(C('a1', 'Pikes', 7))] }, () => {
+            inGame({ defender: 'player', phase: BATTLE_PHASES.PLAYER_DEFENSE, table: [testPair(pike('a1', 7))] }, () => {
                 const pair = battle.table[0];
                 const card = battle.playerHand[1]; // Pikes 9
                 assert.isFalse(playDefenseCard(battle.playerHand, pair, battle.enemyHand[0]), 'card not from this hand');
@@ -7031,8 +7035,8 @@ function runGameUnitTests() {
         it('getOpenAttacks / hasOpenAttacks / getDefendedPairCount / getTableCards / getTableRanks', () => {
             inGame({
                 table: [
-                    testPair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10)),
-                    testPair(C('a2', 'Hearts', 7))
+                    testPair(pike('a1', 7), pike('b1', 10)),
+                    testPair(heart('a2', 7))
                 ]
             }, () => {
                 assert.equal(getOpenAttacks().length, 1);
@@ -7044,7 +7048,7 @@ function runGameUnitTests() {
                 const ranks = getTableRanks();
                 assert.isTrue(ranks.has(7) && ranks.has(10) && ranks.size === 2);
                 assert.isTrue(isRankOnTable(10) && !isRankOnTable(11));
-                battle.table[1].defend = C('b2', 'Hearts', 12);
+                battle.table[1].defend = heart('b2', 12);
                 assert.isFalse(hasOpenAttacks());
                 battle.table = [];
                 assert.isFalse(hasOpenAttacks());
@@ -7053,7 +7057,7 @@ function runGameUnitTests() {
         });
 
         it('discardTable(): CARDS (not pairs) go to discard, table empty, card set intact', () => {
-            inGame({ table: [testPair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10)), testPair(C('a2', 'Hearts', 7))] }, () => {
+            inGame({ table: [testPair(pike('a1', 7), pike('b1', 10)), testPair(heart('a2', 7))] }, () => {
                 const before = getAllCardIds();
                 discardTable();
                 assert.equal(battle.table.length, 0);
@@ -7065,7 +7069,7 @@ function runGameUnitTests() {
         });
 
         it('collectTable(hand): all table cards to hand (attack, then defense), table empty, returns card count', () => {
-            inGame({ table: [testPair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10)), testPair(C('a2', 'Hearts', 7))] }, () => {
+            inGame({ table: [testPair(pike('a1', 7), pike('b1', 10)), testPair(heart('a2', 7))] }, () => {
                 const handBefore = battle.enemyHand.length;
                 assert.equal(collectTable(battle.enemyHand), 3);
                 assert.equal(battle.table.length, 0);
@@ -7096,7 +7100,7 @@ function runGameUnitTests() {
 
         // ---- behaviour preserved through the refactored call sites ----
         it('Full cycle under invariants: player attack -> enemy defense -> bito - no cards lost or duplicated', () => {
-            inGameStrict({ drawDeck: [], playerHand: [C('p1', 'Pikes', 7)], enemyHand: [C('e1', 'Pikes', 10), C('e2', 'Hearts', 9)] }, () => {
+            inGameStrict({ drawDeck: [], playerHand: [pike('p1', 7)], enemyHand: [pike('e1', 10), heart('e2', 9)] }, () => {
                 const before = getAllCardIds();
                 window.onPlayerCardClick(0);
                 assert.equal(battle.table.length, 1);
@@ -7112,11 +7116,11 @@ function runGameUnitTests() {
         it('handleBito(): after the beat, discard holds cards, not pairs; uniqueness invariant works on discard', () => {
             inGameStrict({
                 drawDeck: [], phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy',
-                table: [testPair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10))]
+                table: [testPair(pike('a1', 7), pike('b1', 10))]
             }, () => {
                 handleBito();
                 assert.equal(battle.discardPile.map(c => c.id).sort().join(), 'a1,b1');
-                battle.playerHand.push(C('a1', 'Pikes', 7)); // the same id is already in discard
+                battle.playerHand.push(pike('a1', 7)); // the same id is already in discard
                 assert.isTrue(getBattleInvariantViolations(battle).length > 0, 'a duplicate in discard must be caught');
             });
         });
@@ -7125,9 +7129,9 @@ function runGameUnitTests() {
             inGameStrict({
                 drawDeck: [], phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player',
                 // throw-in limit = number of cards in the defender hand (4 here)
-                playerHand: [C('p1', 'Hearts', 6), C('p2', 'Hearts', 10), C('p3', 'Hearts', 11), C('p4', 'Hearts', 12)],
-                enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Hearts', 9), C('e3', 'Hearts', 14)],
-                table: [testPair(C('a1', 'Pikes', 7)), testPair(C('a2', 'Hearts', 9))]
+                playerHand: [heart('p1', 6), heart('p2', 10), heart('p3', 11), heart('p4', 12)],
+                enemyHand: [pike('e1', 9), heart('e2', 9), heart('e3', 14)],
+                table: [testPair(pike('a1', 7)), testPair(heart('a2', 9))]
             }, () => {
                 const before = getAllCardIds();
                 handlePlayerTake();
@@ -7141,23 +7145,22 @@ function runGameUnitTests() {
         });
 
         it('tuckCardIntoDeck: card goes into the deck at a random spot above the bottom card (trump marker); foreign card untouched', () => {
-            const C = testCard;
             withTestGame(makeTestRun(), makeTestBattle({
-                drawDeck: [C('t0', 'Hearts', 6), C('d1', 'Pikes', 7), C('d2', 'Pikes', 8)],
-                enemyHand: [C('e1', 'Pikes', 9)]
+                drawDeck: [heart('t0', 6), pike('d1', 7), pike('d2', 8)],
+                enemyHand: [pike('e1', 9)]
             }), () => {
                 const positions = new Set();
                 for (let i = 0; i < 60; i++) {
-                    if (battle.enemyHand.length === 0) battle.enemyHand.push(C('e1', 'Pikes', 9));
+                    if (battle.enemyHand.length === 0) battle.enemyHand.push(pike('e1', 9));
                     assert.isTrue(tuckCardIntoDeck(battle.enemyHand[0], battle.enemyHand));
                     assert.equal(battle.drawDeck[0].id, 't0', 'bottom card in place');
                     assert.equal(battle.drawDeck.length, 4);
                     assert.equal(battle.enemyHand.length, 0);
                     positions.add(battle.drawDeck.findIndex(c => c.id === 'e1'));
-                    removeCard(battle.drawDeck, C('e1', 'Pikes', 9));
+                    removeCard(battle.drawDeck, pike('e1', 9));
                 }
                 assert.isTrue(positions.size > 1 && !positions.has(0) && !positions.has(-1), 'positions are random and always above the marker');
-                assert.isFalse(tuckCardIntoDeck(C('zz', 'Pikes', 6), battle.enemyHand), 'card not in hand - nothing changes');
+                assert.isFalse(tuckCardIntoDeck(pike('zz', 6), battle.enemyHand), 'card not in hand - nothing changes');
                 assert.equal(battle.drawDeck.length, 3);
             });
         });
@@ -7166,17 +7169,16 @@ function runGameUnitTests() {
     });
 
     runner.describe('8k. Round end (decide/apply/present), take, battle victory', (it, assert) => {
-        const C = testCard;
         const { inGameStrict } = makeTestFixtures({
-            playerHand: [C('p1', 'Hearts', 6)],
-            enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 9)], trumpCard: C('t1', 'Hearts', 6)
+            playerHand: [heart('p1', 6)],
+            enemyHand: [heart('e1', 7), pike('e2', 9)], trumpCard: heart('t1', 6)
         });
         const snapshot = () => JSON.stringify({ b: serializeGameState().battle, hp: run.playerHP, gold: run.gold, relics: run.relics });
 
         // ---- getRoundResult: decide ----
         it('getRoundResult(): round not over while the deck or table has cards, or both have cards', () => {
-            inGameStrict({ drawDeck: [C('d1', 'Hearts', 8)], playerHand: [] }, () => assert.isTrue(getRoundResult() === null, 'deck not empty'));
-            inGameStrict({ playerHand: [], table: [testPair(C('a1', 'Pikes', 7))] }, () => assert.isTrue(getRoundResult() === null, 'table not empty'));
+            inGameStrict({ drawDeck: [heart('d1', 8)], playerHand: [] }, () => assert.isTrue(getRoundResult() === null, 'deck not empty'));
+            inGameStrict({ playerHand: [], table: [testPair(pike('a1', 7))] }, () => assert.isTrue(getRoundResult() === null, 'table not empty'));
             inGameStrict({}, () => assert.isTrue(getRoundResult() === null, 'both have cards'));
         });
 
@@ -7303,7 +7305,7 @@ function runGameUnitTests() {
         });
 
         it('resolveTurn(): RESOLVING during mutate, mutate result goes to present, present runs after settleTurn (commit)', () => {
-            inGameStrict({ phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', table: [testPair(C('a1', 'Hearts', 9), C('d1', 'Hearts', 10))],
+            inGameStrict({ phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', table: [testPair(heart('a1', 9), heart('d1', 10))],
                 heavyBallastAppliedThisTurn: true, isTransferActive: true }, () => {
                 clearLocalSave();
                 const order = [];
@@ -7324,7 +7326,7 @@ function runGameUnitTests() {
         });
 
         it('resolveTurn(): cancels the scheduled AI move before resolving (a deferred timer cannot fire over the turn)', () => {
-            inGameStrict({ phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', table: [testPair(C('a1', 'Hearts', 9), C('d1', 'Hearts', 10))] }, () => {
+            inGameStrict({ phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', table: [testPair(heart('a1', 9), heart('d1', 10))] }, () => {
                 battle.aiTimer = setTimeout(() => {}, 60000);
                 resolveTurn(() => assert.isTrue(battle.aiTimer === null, 'timer must be cleared by mutate'), () => {});
                 assert.equal(battle.aiTimer, null);
@@ -7334,7 +7336,7 @@ function runGameUnitTests() {
         // ---- take: state vs presentation ----
         it('applyEnemyTake(): enemy takes the table, takes damage, cardsToTake is reset; phase and draw untouched', () => {
             inGameStrict({ phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', cardsToTake: true,
-                table: [testPair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10)), testPair(C('a2', 'Hearts', 8))] }, () => {
+                table: [testPair(pike('a1', 7), pike('b1', 10)), testPair(heart('a2', 8))] }, () => {
                 const out = applyEnemyTake();
                 assert.isFalse(out.enemyJustDied);
                 assert.equal(battle.table.length, 0);
@@ -7347,22 +7349,22 @@ function runGameUnitTests() {
 
         it('applyEnemyTake(): lethal take -> enemyJustDied, BATTLE_OVER and reward; at HP=0 in the fixture there is no death', () => {
             inGameStrict({ phase: BATTLE_PHASES.RESOLVING, enemyHP: 2, cardsToTake: true,
-                table: [testPair(C('a1', 'Pikes', 7)), testPair(C('a2', 'Hearts', 8))] }, () => {
+                table: [testPair(pike('a1', 7)), testPair(heart('a2', 8))] }, () => {
                 const out = applyEnemyTake();
                 assert.isTrue(out.enemyJustDied);
                 assert.phase(BATTLE_PHASES.BATTLE_OVER);
                 assert.equal(run.gold, WIN_GOLD_BASE + 1 * WIN_GOLD_PER_FLOOR);
             }, { gold: 0 });
-            inGameStrict({ phase: BATTLE_PHASES.RESOLVING, enemyHP: 0, cardsToTake: true, table: [testPair(C('a1', 'Pikes', 7))] }, () => {
+            inGameStrict({ phase: BATTLE_PHASES.RESOLVING, enemyHP: 0, cardsToTake: true, table: [testPair(pike('a1', 7))] }, () => {
                 assert.isFalse(applyEnemyTake().enemyJustDied);
             });
         });
 
         it('applyPlayerTake(): player takes the table and damage; returns the outcome, shows nothing; does not throw in itself', () => {
             inGameStrict({ phase: BATTLE_PHASES.RESOLVING, defender: 'player',
-                playerHand: [C('p1', 'Hearts', 6), C('p2', 'Hearts', 10), C('p3', 'Hearts', 11)],
-                enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Hearts', 14)],
-                table: [testPair(C('a1', 'Pikes', 9))] }, () => {
+                playerHand: [heart('p1', 6), heart('p2', 10), heart('p3', 11)],
+                enemyHand: [pike('e1', 9), heart('e2', 14)],
+                table: [testPair(pike('a1', 9))] }, () => {
                 const realShow = window.showModal;
                 let modals = 0;
                 window.showModal = () => { modals++; };
@@ -7381,14 +7383,14 @@ function runGameUnitTests() {
         });
 
         it('applyPlayerTake(): lethal take - isDefeated; with safety rope - savedBySafetyRope', () => {
-            const common = { phase: BATTLE_PHASES.RESOLVING, defender: 'player', enemyHand: [C('e1', 'Hearts', 14)],
-                table: [testPair(C('a1', 'Pikes', 7)), testPair(C('a2', 'Pikes', 8))] };
+            const common = { phase: BATTLE_PHASES.RESOLVING, defender: 'player', enemyHand: [heart('e1', 14)],
+                table: [testPair(pike('a1', 7)), testPair(pike('a2', 8))] };
             inGameStrict(common, () => {
                 const out = applyPlayerTake();
                 assert.isTrue(out.isDefeated);
                 assert.isFalse(out.savedBySafetyRope);
             }, { playerHP: 1 });
-            inGameStrict(Object.assign({}, common, { table: [testPair(C('a1', 'Pikes', 7)), testPair(C('a2', 'Pikes', 8))] }), () => {
+            inGameStrict(Object.assign({}, common, { table: [testPair(pike('a1', 7)), testPair(pike('a2', 8))] }), () => {
                 const out = applyPlayerTake();
                 assert.isFalse(out.isDefeated);
                 assert.isTrue(out.savedBySafetyRope);
@@ -7465,10 +7467,9 @@ function runGameUnitTests() {
     });
 
     runner.describe('8l. AI (chooseEnemyAction / executeEnemyAction) and unified relic hook traversal', (it, assert) => {
-        const C = testCard;
         const { inGameStrict } = makeTestFixtures({
-            playerHand: [C('p1', 'Hearts', 6), C('p2', 'Hearts', 7)],
-            enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Pikes', 12), C('e3', 'Hearts', 8)], trumpCard: C('t1', 'Hearts', 6),
+            playerHand: [heart('p1', 6), heart('p2', 7)],
+            enemyHand: [pike('e1', 9), pike('e2', 12), heart('e3', 8)], trumpCard: heart('t1', 6),
             defender: 'player', phase: BATTLE_PHASES.RESOLVING
         });
         const pair = testPair;
@@ -7484,37 +7485,37 @@ function runGameUnitTests() {
         });
 
         it('AI attacker: all attacks beaten - throws in a card of a matching rank, otherwise bito; waits on open pairs', () => {
-            inGameStrict({ defender: 'player', table: [pair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10))], enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 12)] }, () => {
+            inGameStrict({ defender: 'player', table: [pair(pike('a1', 7), pike('b1', 10))], enemyHand: [heart('e1', 7), pike('e2', 12)] }, () => {
                 const a = chooseEnemyAction();
                 assert.equal(a.type, 'throw');
                 assert.equal(a.card.id, 'e1');
             });
-            inGameStrict({ defender: 'player', table: [pair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10))], enemyHand: [C('e2', 'Pikes', 12)] }, () => {
+            inGameStrict({ defender: 'player', table: [pair(pike('a1', 7), pike('b1', 10))], enemyHand: [pike('e2', 12)] }, () => {
                 const a = chooseEnemyAction();
                 assert.equal(a.type, 'bito');
                 assert.equal(a.delay, AI_POST_THROW_DELAY_MS);
             });
-            inGameStrict({ defender: 'player', table: [pair(C('a1', 'Pikes', 7), null)] }, () => {
+            inGameStrict({ defender: 'player', table: [pair(pike('a1', 7), null)] }, () => {
                 assert.equal(chooseEnemyAction().type, 'wait');
             });
         });
 
         it('AI attacker: empty hand - bito if the table is closed, otherwise round-end check', () => {
-            inGameStrict({ defender: 'player', enemyHand: [], table: [pair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10))] }, () => {
+            inGameStrict({ defender: 'player', enemyHand: [], table: [pair(pike('a1', 7), pike('b1', 10))] }, () => {
                 assert.equal(chooseEnemyAction().type, 'bito');
             });
-            inGameStrict({ defender: 'player', enemyHand: [], table: [pair(C('a1', 'Pikes', 7), null)] }, () => {
+            inGameStrict({ defender: 'player', enemyHand: [], table: [pair(pike('a1', 7), null)] }, () => {
                 assert.equal(chooseEnemyAction().type, 'check_round');
             });
         });
 
         it('AI attacker: throw-ins capped by BASE_THROW_LIMIT - at the limit bito instead of throwing in', () => {
-            const defendedPairs = (n) => Array.from({ length: n }, (_, i) => pair(C('a' + i, 'Pikes', 7), C('b' + i, 'Pikes', 10)));
+            const defendedPairs = (n) => Array.from({ length: n }, (_, i) => pair(pike('a' + i, 7), pike('b' + i, 10)));
             const bigPlayerHand = testCards('p', 'Clubs', BASE_THROW_LIMIT + 2);
-            inGameStrict({ defender: 'player', playerHand: bigPlayerHand, table: defendedPairs(BASE_THROW_LIMIT - 1), enemyHand: [C('e1', 'Hearts', 7)] }, () => {
+            inGameStrict({ defender: 'player', playerHand: bigPlayerHand, table: defendedPairs(BASE_THROW_LIMIT - 1), enemyHand: [heart('e1', 7)] }, () => {
                 assert.equal(chooseEnemyAction().type, 'throw', 'one more card fits');
             });
-            inGameStrict({ defender: 'player', playerHand: bigPlayerHand, table: defendedPairs(BASE_THROW_LIMIT), enemyHand: [C('e1', 'Hearts', 7)] }, () => {
+            inGameStrict({ defender: 'player', playerHand: bigPlayerHand, table: defendedPairs(BASE_THROW_LIMIT), enemyHand: [heart('e1', 7)] }, () => {
                 assert.equal(chooseEnemyAction().type, 'bito', 'limit reached');
             });
         });
@@ -7522,8 +7523,8 @@ function runGameUnitTests() {
         // ---- chooseEnemyAction: defender ----
         it('AI defender: beats each attack with the cheapest card, each card used once', () => {
             inGameStrict({ defender: 'enemy', phase: BATTLE_PHASES.RESOLVING,
-                table: [pair(C('a1', 'Pikes', 7)), pair(C('a2', 'Pikes', 8))],
-                enemyHand: [C('e1', 'Pikes', 12), C('e2', 'Pikes', 9), C('e3', 'Hearts', 14)] }, () => {
+                table: [pair(pike('a1', 7)), pair(pike('a2', 8))],
+                enemyHand: [pike('e1', 12), pike('e2', 9), heart('e3', 14)] }, () => {
                 const a = chooseEnemyAction();
                 assert.equal(a.type, 'defend');
                 assert.isTrue(a.complete);
@@ -7535,8 +7536,8 @@ function runGameUnitTests() {
 
         it('AI defender: cannot beat everything - plan holds the already beaten pairs and complete=false', () => {
             inGameStrict({ defender: 'enemy',
-                table: [pair(C('a1', 'Pikes', 7)), pair(C('a2', 'Clubs', 13))],
-                enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Pikes', 10)] }, () => {
+                table: [pair(pike('a1', 7)), pair(club('a2', 13))],
+                enemyHand: [pike('e1', 9), pike('e2', 10)] }, () => {
                 const a = chooseEnemyAction();
                 assert.equal(a.type, 'defend');
                 assert.isFalse(a.complete);
@@ -7546,13 +7547,13 @@ function runGameUnitTests() {
         });
 
         it('AI defender: already decided to take (cardsToTake) - takes if the player has nothing to throw in, otherwise waits', () => {
-            const table = () => [pair(C('a1', 'Pikes', 7))];
-            inGameStrict({ defender: 'enemy', cardsToTake: true, table: table(), playerHand: [C('p1', 'Hearts', 10)] }, () => {
+            const table = () => [pair(pike('a1', 7))];
+            inGameStrict({ defender: 'enemy', cardsToTake: true, table: table(), playerHand: [heart('p1', 10)] }, () => {
                 const a = chooseEnemyAction();
                 assert.equal(a.type, 'take');
                 assert.equal(a.delay, AI_STANDARD_DELAY_MS);
             });
-            inGameStrict({ defender: 'enemy', cardsToTake: true, table: table(), playerHand: [C('p1', 'Hearts', 7)] }, () => {
+            inGameStrict({ defender: 'enemy', cardsToTake: true, table: table(), playerHand: [heart('p1', 7)] }, () => {
                 assert.equal(chooseEnemyAction().type, 'wait', 'player has a seven to throw in');
             });
             inGameStrict({ defender: 'enemy', cardsToTake: true, table: table(), playerHand: [] }, () => {
@@ -7561,12 +7562,12 @@ function runGameUnitTests() {
         });
 
         it('AI defender: all pairs closed - quick bito if the player has nothing to throw in, otherwise waits', () => {
-            inGameStrict({ defender: 'enemy', table: [pair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10))], playerHand: [C('p1', 'Hearts', 11)] }, () => {
+            inGameStrict({ defender: 'enemy', table: [pair(pike('a1', 7), pike('b1', 10))], playerHand: [heart('p1', 11)] }, () => {
                 const a = chooseEnemyAction();
                 assert.equal(a.type, 'bito');
                 assert.equal(a.delay, AI_QUICK_DELAY_MS);
             });
-            inGameStrict({ defender: 'enemy', table: [pair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10))], playerHand: [C('p1', 'Hearts', 10)] }, () => {
+            inGameStrict({ defender: 'enemy', table: [pair(pike('a1', 7), pike('b1', 10))], playerHand: [heart('p1', 10)] }, () => {
                 assert.equal(chooseEnemyAction().type, 'wait');
             });
         });
@@ -7575,20 +7576,20 @@ function runGameUnitTests() {
             const transferEnemyFloor = ENEMIES.findIndex(e => e.activeAbilities && e.activeAbilities.has('ai_transfer')) + 1;
             assert.isTrue(transferEnemyFloor > 0, 'the enemy ladder has ai_transfer');
             inGameStrict({ defender: 'enemy',
-                table: [pair(C('a1', 'Pikes', 7))], enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 12)],
-                playerHand: [C('p1', 'Hearts', 10), C('p2', 'Hearts', 11)] }, () => {
+                table: [pair(pike('a1', 7))], enemyHand: [heart('e1', 7), pike('e2', 12)],
+                playerHand: [heart('p1', 10), heart('p2', 11)] }, () => {
                 const a = chooseEnemyAction();
                 assert.equal(a.type, 'transfer');
                 assert.equal(a.card.id, 'e1');
             }, { floor: transferEnemyFloor });
             inGameStrict({ defender: 'enemy',
-                table: [pair(C('a1', 'Pikes', 7))], enemyHand: [C('e2', 'Pikes', 12)],
-                playerHand: [C('p1', 'Hearts', 10), C('p2', 'Hearts', 11)] }, () => {
+                table: [pair(pike('a1', 7))], enemyHand: [pike('e2', 12)],
+                playerHand: [heart('p1', 10), heart('p2', 11)] }, () => {
                 assert.equal(chooseEnemyAction().type, 'defend', 'no card of the same rank - regular defense');
             }, { floor: transferEnemyFloor });
             inGameStrict({ defender: 'enemy',
-                table: [pair(C('a1', 'Pikes', 7))], enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 12)],
-                playerHand: [C('p1', 'Hearts', 10)] }, () => {
+                table: [pair(pike('a1', 7))], enemyHand: [heart('e1', 7), pike('e2', 12)],
+                playerHand: [heart('p1', 10)] }, () => {
                 assert.equal(chooseEnemyAction().type, 'defend', 'player has nothing to accept the transfer with');
             }, { floor: transferEnemyFloor });
         });
@@ -7596,9 +7597,9 @@ function runGameUnitTests() {
         it('chooseEnemyAction(): pure function - cards, phase, HP and save unchanged, enemy hand order the same', () => {
             const shapes = [
                 { defender: 'player', table: [] },
-                { defender: 'enemy', table: [pair(C('a1', 'Pikes', 7)), pair(C('a2', 'Clubs', 13))] },
-                { defender: 'enemy', cardsToTake: true, table: [pair(C('a1', 'Pikes', 7))] },
-                { defender: 'player', table: [pair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10))] }
+                { defender: 'enemy', table: [pair(pike('a1', 7)), pair(club('a2', 13))] },
+                { defender: 'enemy', cardsToTake: true, table: [pair(pike('a1', 7))] },
+                { defender: 'player', table: [pair(pike('a1', 7), pike('b1', 10))] }
             ];
             for (const shape of shapes) {
                 inGameStrict(shape, () => {
@@ -7616,7 +7617,7 @@ function runGameUnitTests() {
         // ---- executeEnemyAction ----
         it('executeEnemyAction(defend, complete): cards go onto pairs, cardsToTake=false, then follows the table state', () => {
             inGameStrict({ defender: 'enemy', phase: BATTLE_PHASES.RESOLVING,
-                table: [pair(C('a1', 'Pikes', 7))], enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Hearts', 8)], playerHand: [C('p1', 'Hearts', 11)], cardsToTake: false }, () => {
+                table: [pair(pike('a1', 7))], enemyHand: [pike('e1', 9), heart('e2', 8)], playerHand: [heart('p1', 11)], cardsToTake: false }, () => {
                 const realRender = window.renderAll; window.renderAll = () => {};
                 try {
                     executeEnemyAction(chooseEnemyAction());
@@ -7628,7 +7629,7 @@ function runGameUnitTests() {
                 } finally { window.renderAll = realRender; clearAITimer(); }
             });
             inGameStrict({ defender: 'enemy', phase: BATTLE_PHASES.RESOLVING,
-                table: [pair(C('a1', 'Pikes', 7))], enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Hearts', 8)], playerHand: [] }, () => {
+                table: [pair(pike('a1', 7))], enemyHand: [pike('e1', 9), heart('e2', 8)], playerHand: [] }, () => {
                 const realRender = window.renderAll; window.renderAll = () => {};
                 try {
                     executeEnemyAction(chooseEnemyAction());
@@ -7639,7 +7640,7 @@ function runGameUnitTests() {
 
         it('executeEnemyAction(defend, incomplete): partial defense is kept, cardsToTake=true, enemy goes to take the table', () => {
             inGameStrict({ defender: 'enemy', phase: BATTLE_PHASES.RESOLVING,
-                table: [pair(C('a1', 'Pikes', 7)), pair(C('a2', 'Clubs', 13))], enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Pikes', 10)], playerHand: [] }, () => {
+                table: [pair(pike('a1', 7)), pair(club('a2', 13))], enemyHand: [pike('e1', 9), pike('e2', 10)], playerHand: [] }, () => {
                 const realRender = window.renderAll; window.renderAll = () => {};
                 try {
                     executeEnemyAction(chooseEnemyAction());
@@ -7652,7 +7653,7 @@ function runGameUnitTests() {
         });
 
         it('executeEnemyAction(attack/throw/wait): card goes to the table, turn returns to the player (PLAYER_DEFENSE)', () => {
-            inGameStrict({ defender: 'player', table: [], enemyHand: [C('e1', 'Hearts', 9), C('e2', 'Pikes', 6), C('e3', 'Pikes', 12)] }, () => {
+            inGameStrict({ defender: 'player', table: [], enemyHand: [heart('e1', 9), pike('e2', 6), pike('e3', 12)] }, () => {
                 executeEnemyAction(chooseEnemyAction());
                 assert.equal(battle.table.length, 1);
                 assert.equal(battle.table[0].attack.id, 'e2', 'weakest');
@@ -7662,7 +7663,7 @@ function runGameUnitTests() {
         });
 
         it('executeEnemyAction(transfer): attack goes to the player, defender - player, modal shown', () => {
-            inGameStrict({ defender: 'enemy', phase: BATTLE_PHASES.RESOLVING, table: [pair(C('a1', 'Pikes', 7))], enemyHand: [C('e1', 'Hearts', 7), C('e2', 'Pikes', 12)] }, () => {
+            inGameStrict({ defender: 'enemy', phase: BATTLE_PHASES.RESOLVING, table: [pair(pike('a1', 7))], enemyHand: [heart('e1', 7), pike('e2', 12)] }, () => {
                 executeEnemyAction({ type: 'transfer', card: battle.enemyHand[0] });
                 assert.equal(battle.defender, 'player');
                 assert.equal(battle.table.length, 2);
@@ -7675,7 +7676,7 @@ function runGameUnitTests() {
 
         it('executeEnemyAI(): a full AI defender turn under invariants loses and duplicates no cards', () => {
             inGameStrict({ defender: 'enemy', phase: BATTLE_PHASES.AI_WAITING,
-                table: [pair(C('a1', 'Pikes', 7))], enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Pikes', 12)], playerHand: [C('p1', 'Hearts', 10)] }, () => {
+                table: [pair(pike('a1', 7))], enemyHand: [pike('e1', 9), pike('e2', 12)], playerHand: [heart('p1', 10)] }, () => {
                 const ids = () => [...battle.playerHand, ...battle.enemyHand, ...battle.discardPile, ...battle.drawDeck, ...getTableCards()].map(c => c.id).sort().join();
                 const before = ids();
                 executeEnemyAI();
@@ -7694,10 +7695,10 @@ function runGameUnitTests() {
         });
 
         it('queryRelicHook(): first truthy result without highlight; no relic - null; cheat_eye shows the enemy highest card', () => {
-            inGameStrict({ enemyHand: [C('e1', 'Hearts', 8), C('e2', 'Pikes', 9)] }, () => {
+            inGameStrict({ enemyHand: [heart('e1', 8), pike('e2', 9)] }, () => {
                 assert.isTrue(queryRelicHook('getRevealedEnemyCard') === null, 'without cheat_eye nothing is revealed');
             }, { relics: [] });
-            inGameStrict({ enemyHand: [C('e1', 'Hearts', 8), C('e2', 'Pikes', 9)] }, () => {
+            inGameStrict({ enemyHand: [heart('e1', 8), pike('e2', 9)] }, () => {
                 const before = Object.keys(relicHighlightUntil).length;
                 const card = queryRelicHook('getRevealedEnemyCard');
                 assert.equal(card.id, 'e1', 'trump Hearts 8 outranks plain Pikes 9');
@@ -7722,13 +7723,13 @@ function runGameUnitTests() {
         });
 
         it('fireHook/fireAllHooks/fireHookSum: same behavior - first truthy / all / sum; a spent rope disappears', () => {
-            inGameStrict({ table: [pair(C('a1', 'Pikes', 7))] }, () => {
+            inGameStrict({ table: [pair(pike('a1', 7))] }, () => {
                 assert.isTrue(fireHook('onLethalDamage') === true, 'fireHook returns the first truthy');
                 assert.equal(run.relics.length, 0);
                 assert.isTrue(fireHook('onLethalDamage') === null, 'no second rope');
             }, { relics: [{ id: 'safety_rope' }], playerHP: 5 });
             inGameStrict({}, () => {
-                fireAllHooks('onCardPlayed', C('x', 'Hearts', 6));
+                fireAllHooks('onCardPlayed', heart('x', 6));
                 assert.equal(run.gold, COIN_MAGNET_GOLD_PER_SIX, 'coin_magnet pays for a six');
             }, { relics: [{ id: 'coin_magnet' }], gold: 0 });
             inGameStrict({}, () => assert.equal(fireHookSum('onEnemyTookCards'), 0), { relics: [] });
@@ -7736,11 +7737,10 @@ function runGameUnitTests() {
     });
 
     runner.describe('8m. Partial rendering, unified modal API, playTone', (it, assert) => {
-        const C = testCard;
         const { inGame } = makeTestFixtures({
-            drawDeck: [C('d1', 'Hearts', 6), C('d2', 'Pikes', 8)],
-            playerHand: [C('p1', 'Hearts', 7), C('p2', 'Pikes', 9)],
-            enemyHand: [C('e1', 'Pikes', 10), C('e2', 'Hearts', 8), C('e3', 'Clubs', 6)], trumpCard: C('d1', 'Hearts', 6)
+            drawDeck: [heart('d1', 6), pike('d2', 8)],
+            playerHand: [heart('p1', 7), pike('p2', 9)],
+            enemyHand: [pike('e1', 10), heart('e2', 8), club('e3', 6)], trumpCard: heart('d1', 6)
         }, { gold: 7 });
         const relicOf = (id) => Object.assign({}, ALL_RELICS.find(r => r.id === id));
         // Shared inGame plus: whatever modal the test left open is closed afterwards.
@@ -7797,21 +7797,21 @@ function runGameUnitTests() {
         });
 
         it('renderRelicsBar(): MAX_RELICS slots, filled and empty; counter; a ready active relic glows', () => {
-            inGameClosingModal({ playerHand: [C('p1', 'Hearts', 6)], defender: 'enemy' }, () => {
+            inGameClosingModal({ playerHand: [heart('p1', 6)], defender: 'enemy' }, () => {
                 renderRelicsBar();
                 const slots = getEl('relics-bar').children;
                 assert.equal(slots.length, MAX_RELICS);
                 assert.isTrue(slots[0].className.includes('relic-slot-filled') && slots[1].className.includes('relic-slot-empty'));
                 assert.equal(text('relic-count'), '1/' + MAX_RELICS);
                 assert.isTrue(slots[0].className.includes('relic-ready-glow'), 'six in hand - relic is ready');
-                battle.playerHand = [C('p1', 'Hearts', 9)];
+                battle.playerHand = [heart('p1', 9)];
                 renderRelicsBar();
                 assert.isFalse(getEl('relics-bar').children[0].className.includes('relic-ready-glow'));
             }, { relics: [relicOf('pocket_discard')] });
         });
 
         it('renderTable() / renderPlayerHand(): table pairs and player hand', () => {
-            inGameClosingModal({ table: [testPair(C('a1', 'Pikes', 7), C('b1', 'Pikes', 10)), testPair(C('a2', 'Hearts', 8))] }, () => {
+            inGameClosingModal({ table: [testPair(pike('a1', 7), pike('b1', 10)), testPair(heart('a2', 8))] }, () => {
                 renderTable();
                 assert.equal(getEl('table-pairs').children.length, 2);
                 renderPlayerHand();
@@ -7824,7 +7824,7 @@ function runGameUnitTests() {
                 renderActionButtons();
                 assert.isTrue(getEl('btn-action').disabled, 'nothing to bito with on an empty table');
                 assert.isTrue(getEl('btn-take').disabled);
-                battle.table = [testPair(C('a1', 'Pikes', 7))];
+                battle.table = [testPair(pike('a1', 7))];
                 renderActionButtons();
                 assert.isFalse(getEl('btn-action').disabled);
                 battle.phase = BATTLE_PHASES.AI_WAITING;
@@ -7897,12 +7897,12 @@ function runGameUnitTests() {
         });
 
         it('Relic popup: active - two buttons, activate is unavailable until the relic is ready; regular - one OK button', () => {
-            inGameClosingModal({ playerHand: [C('p1', 'Hearts', 9)] }, () => {
+            inGameClosingModal({ playerHand: [heart('p1', 9)] }, () => {
                 showRelicPopover('pocket_discard');
                 assert.isTrue(getEl('msg-btn').disabled, 'no 6/7 in hand');
                 assert.isTrue(getEl('msg-btn').classList.contains('opacity-40'));
                 assert.equal(getEl('msg-btn-cancel').innerText, 'ЗАКРЫТЬ');
-                battle.playerHand = [C('p1', 'Hearts', 6)];
+                battle.playerHand = [heart('p1', 6)];
                 refreshRelicPopoverIfOpen();
                 assert.isFalse(getEl('msg-btn').disabled, 'popup updates along with the game state');
                 showRelicPopover('cheat_eye');
@@ -8043,10 +8043,10 @@ function runGameUnitTests() {
 
         it('cardPower(): any trump beats any non-trump (bonus exceeds the value spread)', () => {
             withIsolatedGameState(makeTestRun(), makeTestBattle(), () => {
-                const weakestTrump = cardPower(testCard('t', 'Hearts', MIN_CARD_VALUE));
-                const strongestPlain = cardPower(testCard('p', 'Pikes', ACE_VALUE));
+                const weakestTrump = cardPower(heart('t', MIN_CARD_VALUE));
+                const strongestPlain = cardPower(pike('p', ACE_VALUE));
                 assert.isTrue(weakestTrump > strongestPlain);
-                assert.equal(cardPower(testCard('t', 'Hearts', 9)) - cardPower(testCard('p', 'Pikes', 9)), TRUMP_POWER_BONUS);
+                assert.equal(cardPower(heart('t', 9)) - cardPower(pike('p', 9)), TRUMP_POWER_BONUS);
             });
         });
 
@@ -8054,7 +8054,7 @@ function runGameUnitTests() {
             for (let v = MIN_CARD_VALUE; v <= ACE_VALUE; v++) {
                 assert.equal(isPocketDiscardCard(testCard('x', 'Hearts', v)), POCKET_DISCARD_VALUES.includes(v), 'value ' + v);
             }
-            assert.isTrue(isPocketDiscardCard(testCard('x', 'Hearts', 6)) && isPocketDiscardCard(testCard('x', 'Hearts', 7)));
+            assert.isTrue(isPocketDiscardCard(heart('x', 6)) && isPocketDiscardCard(heart('x', 7)));
         });
 
         it('buyHeal(): price HEAL_COST, heal HEAL_AMOUNT capped at max; no money or full HP - refused', () => {
@@ -8105,7 +8105,7 @@ function runGameUnitTests() {
 
         it('makeTestFixtures(): inGame()/inGameSaved()/inGameStrict() apply battle and run overrides over suite defaults and return the real state', () => {
             const { inGame, inGameSaved, inGameStrict } = makeTestFixtures(
-                { enemyHP: 7, playerHand: [testCard('p1', 'Pikes', 6)] },
+                { enemyHP: 7, playerHand: [pike('p1', 6)] },
                 { gold: 15, playerHP: 20 }
             );
             const realRun = run, realBattle = battle;
@@ -8182,14 +8182,13 @@ function runGameUnitTests() {
     });
 
     runner.describe('8o. Player take: enemy throws in step by step (ENEMY_THROWING_IN)', (it, assert) => {
-        const C = testCard;
         const { inGameStrict } = makeTestFixtures({
             drawDeck: [], phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player',
             // throw-in limit = number of cards in the defender hand (4 here)
-            playerHand: [C('p1', 'Hearts', 6), C('p2', 'Hearts', 10), C('p3', 'Hearts', 11), C('p4', 'Hearts', 12)],
-            enemyHand: [C('e1', 'Pikes', 9), C('e2', 'Hearts', 9), C('e3', 'Hearts', 14)],
-            table: [testPair(C('a1', 'Pikes', 7)), testPair(C('a2', 'Hearts', 9))],
-            trumpCard: C('t1', 'Spades', 6)
+            playerHand: [heart('p1', 6), heart('p2', 10), heart('p3', 11), heart('p4', 12)],
+            enemyHand: [pike('e1', 9), heart('e2', 9), heart('e3', 14)],
+            table: [testPair(pike('a1', 7)), testPair(heart('a2', 9))],
+            trumpCard: testCard('t1', 'Spades', 6)
         });
 
         it('handlePlayerTake(): if the enemy can throw in, the take is announced but table, hand and HP are untouched', () => {
@@ -8231,7 +8230,7 @@ function runGameUnitTests() {
         });
 
         it('handlePlayerTake(): if nothing can be thrown in, the take resolves at once, without the ENEMY_THROWING_IN phase', () => {
-            inGameStrict({ enemyHand: [C('e1', 'Hearts', 14)], table: [testPair(C('a1', 'Pikes', 7))] }, () => {
+            inGameStrict({ enemyHand: [heart('e1', 14)], table: [testPair(pike('a1', 7))] }, () => {
                 handlePlayerTake();
                 assert.phase(BATTLE_PHASES.AI_WAITING);
                 assert.equal(battle.table.length, 0);
@@ -8711,8 +8710,8 @@ function runGameUnitTests() {
         // The player, defending, takes a table of three cards; the enemy stays alive.
         const { inGame, inGameStrict } = makeTestFixtures({}, { deck: [], playerHP: 100, maxHP: 100 });
         const threeCardTake = () => ({
-            drawDeck: [testCard('d1', 'Hearts', 6)],
-            enemyHand: [testCard('e1', 'Pikes', 9)],
+            drawDeck: [heart('d1', 6)],
+            enemyHand: [pike('e1', 9)],
             table: testCards('x', 'Hearts', 3, i => 6 + i).map(c => testPair(c)),
             defender: 'player',
             enemyHP: 10,
@@ -8767,9 +8766,9 @@ function runGameUnitTests() {
         // The enemy throws a matching card, then the player takes the whole table.
         const takeScenario = (extra = {}) => ({
             phase: BATTLE_PHASES.RESOLVING, defender: 'player',
-            playerHand: [testCard('p1', 'Hearts', 6), testCard('p2', 'Hearts', 10), testCard('p3', 'Hearts', 11)],
-            enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Hearts', 14)],
-            table: [testPair(testCard('a1', 'Pikes', 9))],
+            playerHand: [heart('p1', 6), heart('p2', 10), heart('p3', 11)],
+            enemyHand: [pike('e1', 9), heart('e2', 14)],
+            table: [testPair(pike('a1', 9))],
             ...extra
         });
         const cardsJustTaken = () => battle.playerHand.length - 3;
@@ -8863,9 +8862,9 @@ function runGameUnitTests() {
         // ---- lucky_start / stacked_deck ----
         it('lucky_start: the enemy weakest card goes to the deck and the strongest non-trump comes in; hand and deck sizes unchanged', () => {
             inFight('lucky_start', {
-                trumpSuit: 'Hearts', trumpCard: testCard('t0', 'Hearts', 6),
-                drawDeck: [testCard('t0', 'Hearts', 6), testCard('k1', 'Pikes', 14), testCard('x1', 'Pikes', 7), testCard('h1', 'Hearts', 12)],
-                enemyHand: [testCard('e1', 'Pikes', 6), testCard('e2', 'Pikes', 10)]
+                trumpSuit: 'Hearts', trumpCard: heart('t0', 6),
+                drawDeck: [heart('t0', 6), pike('k1', 14), pike('x1', 7), heart('h1', 12)],
+                enemyHand: [pike('e1', 6), pike('e2', 10)]
             }, {}, () => {
                 assert.isTrue(ENEMY_ABILITY_EFFECTS.lucky_start.onRoundStart());
                 const handIds = battle.enemyHand.map(c => c.id).sort().join();
@@ -8878,17 +8877,17 @@ function runGameUnitTests() {
 
         it('lucky_start: hand is unchanged if the swap would not strengthen it or there is nothing to swap', () => {
             inFight('lucky_start', {
-                trumpSuit: 'Hearts', trumpCard: testCard('t0', 'Hearts', 6),
-                drawDeck: [testCard('t0', 'Hearts', 6), testCard('x1', 'Pikes', 7)],
-                enemyHand: [testCard('e1', 'Pikes', 14)]
+                trumpSuit: 'Hearts', trumpCard: heart('t0', 6),
+                drawDeck: [heart('t0', 6), pike('x1', 7)],
+                enemyHand: [pike('e1', 14)]
             }, {}, () => {
                 assert.isFalse(ENEMY_ABILITY_EFFECTS.lucky_start.onRoundStart(), 'a seven is no better than an ace');
                 assert.equal(battle.enemyHand[0].id, 'e1');
             });
             inFight('lucky_start', {
-                trumpSuit: 'Hearts', trumpCard: testCard('t0', 'Hearts', 6),
-                drawDeck: [testCard('t0', 'Hearts', 6), testCard('x1', 'Pikes', 14)],
-                enemyHand: [testCard('e1', 'Hearts', 7)]
+                trumpSuit: 'Hearts', trumpCard: heart('t0', 6),
+                drawDeck: [heart('t0', 6), pike('x1', 14)],
+                enemyHand: [heart('e1', 7)]
             }, {}, () => {
                 assert.isFalse(ENEMY_ABILITY_EFFECTS.lucky_start.onRoundStart(), 'only a trump in hand - nothing to swap');
                 assert.equal(battle.enemyHand[0].id, 'e1');
@@ -8905,9 +8904,9 @@ function runGameUnitTests() {
 
         it('stacked_deck: the enemy weakest non-trump is swapped for a trump from the deck, but not for the marker card', () => {
             inFight('stacked_deck', {
-                trumpSuit: 'Hearts', trumpCard: testCard('t0', 'Hearts', 6),
-                drawDeck: [testCard('t0', 'Hearts', 6), testCard('t1', 'Hearts', 9), testCard('x1', 'Pikes', 7)],
-                enemyHand: [testCard('e1', 'Pikes', 6), testCard('e2', 'Pikes', 10)]
+                trumpSuit: 'Hearts', trumpCard: heart('t0', 6),
+                drawDeck: [heart('t0', 6), heart('t1', 9), pike('x1', 7)],
+                enemyHand: [pike('e1', 6), pike('e2', 10)]
             }, {}, () => {
                 assert.isTrue(ENEMY_ABILITY_EFFECTS.stacked_deck.onRoundStart());
                 assert.equal(battle.enemyHand.map(c => c.id).sort().join(), 'e2,t1', 'trump t1 instead of the six, not the marker t0');
@@ -8919,9 +8918,9 @@ function runGameUnitTests() {
 
         it('stacked_deck: if the deck has no trumps besides the marker, the hand is unchanged', () => {
             inFight('stacked_deck', {
-                trumpSuit: 'Hearts', trumpCard: testCard('t0', 'Hearts', 6),
-                drawDeck: [testCard('t0', 'Hearts', 6), testCard('x1', 'Pikes', 7)],
-                enemyHand: [testCard('e1', 'Pikes', 6)]
+                trumpSuit: 'Hearts', trumpCard: heart('t0', 6),
+                drawDeck: [heart('t0', 6), pike('x1', 7)],
+                enemyHand: [pike('e1', 6)]
             }, {}, () => {
                 assert.isFalse(ENEMY_ABILITY_EFFECTS.stacked_deck.onRoundStart());
                 assert.equal(battle.enemyHand[0].id, 'e1');
@@ -8949,10 +8948,10 @@ function runGameUnitTests() {
             const maxHP = enemyOf('hearty').hp;
             inFight('hearty', {
                 phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', enemyHP: maxHP - 6,
-                playerHand: [testCard('p1', 'Hearts', 6)],
-                enemyHand: [testCard('e1', 'Pikes', 8), testCard('e2', 'Pikes', 12)],
+                playerHand: [heart('p1', 6)],
+                enemyHand: [pike('e1', 8), pike('e2', 12)],
                 drawDeck: [testCard('d1', 'Spades', 7), testCard('d2', 'Spades', 8)],
-                table: [testPair(testCard('a1', 'Pikes', 7), testCard('b1', 'Pikes', 9))]
+                table: [testPair(pike('a1', 7), pike('b1', 9))]
             }, {}, () => {
                 handleBito();
                 assert.equal(battle.enemyHP, maxHP - 6 + HEARTY_REGEN_ON_DEFENSE);
@@ -8971,7 +8970,7 @@ function runGameUnitTests() {
             inFight('hearty', {
                 phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', cardsToTake: true,
                 enemyHP: enemyOf('hearty').hp,
-                table: [testPair(testCard('a1', 'Pikes', 7))]
+                table: [testPair(pike('a1', 7))]
             }, {}, () => {
                 applyEnemyTake();
                 assert.equal(battle.enemyHP, enemyOf('hearty').hp - TAKE_DAMAGE_PER_CARD);
@@ -9044,14 +9043,14 @@ function runGameUnitTests() {
         const amountOf = (plate) => Number(plate.split('|')[1].replace(/[^0-9]/g, ''));
         const takeScenario = () => ({
             phase: BATTLE_PHASES.RESOLVING, defender: 'player', enemyHP: 40,
-            playerHand: [testCard('p1', 'Hearts', 6), testCard('p2', 'Hearts', 10), testCard('p3', 'Hearts', 11)],
-            enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Hearts', 14)],
-            table: [testPair(testCard('a1', 'Pikes', 9))]
+            playerHand: [heart('p1', 6), heart('p2', 10), heart('p3', 11)],
+            enemyHand: [pike('e1', 9), heart('e2', 14)],
+            table: [testPair(pike('a1', 9))]
         });
         const cardsJustTaken = () => battle.playerHand.length - 3;
         const enemyTakeScenario = () => ({
             phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', cardsToTake: true, enemyHP: 40,
-            table: [testPair(testCard('a1', 'Pikes', 7))]
+            table: [testPair(pike('a1', 7))]
         });
 
         // ---- text, style, anchors ----
@@ -9139,7 +9138,7 @@ function runGameUnitTests() {
 
         it('Relic that brings gold: +gold badge at the relic', () => {
             inBattle({ floor: 1, gold: 0, relics: [{ id: 'coin_magnet' }] }, {}, () => {
-                fireAllHooks('onCardPlayed', testCard('s1', 'Pikes', 6));
+                fireAllHooks('onCardPlayed', pike('s1', 6));
                 assert.equal(plates().join(), `relic:coin_magnet|+${COIN_MAGNET_GOLD_PER_SIX}$`);
                 assert.equal(run.gold, COIN_MAGNET_GOLD_PER_SIX);
             });
@@ -9207,7 +9206,7 @@ function runGameUnitTests() {
         it('Lost round: one player damage badge in the middle of the table', () => {
             inBattle({ floor: 1, playerHP: 30, maxHP: 30 }, {
                 phase: BATTLE_PHASES.RESOLVING, defender: 'player', drawDeck: [], table: [], enemyHand: [],
-                playerHand: [testCard('p1', 'Hearts', 6), testCard('p2', 'Hearts', 10)]
+                playerHand: [heart('p1', 6), heart('p2', 10)]
             }, () => {
                 const result = getRoundResult();
                 assert.equal(result.type, 'enemy_win');
@@ -9284,12 +9283,12 @@ function runGameUnitTests() {
 
         it('mirror_ring (nerf): damage = cards taken x TAKE_DAMAGE_PER_CARD x MIRROR_RING_MULTIPLIER, WITHOUT level/double_penalty', () => {
             playerTakes(['mirror_ring'], {
-                drawDeck: [testCard('d1', 'Hearts', 6)],
-                enemyHand: [testCard('e1', 'Pikes', 9)],
+                drawDeck: [heart('d1', 6)],
+                enemyHand: [pike('e1', 9)],
                 table: [
-                    testPair(testCard('x1', 'Hearts', 6)),
-                    testPair(testCard('x2', 'Hearts', 7)),
-                    testPair(testCard('x3', 'Hearts', 8)),
+                    testPair(heart('x1', 6)),
+                    testPair(heart('x2', 7)),
+                    testPair(heart('x3', 8)),
                 ]
             }, () => {
                 // 3 cards x TAKE_DAMAGE_PER_CARD(2) x MIRROR_RING_MULTIPLIER(1) = 6. On floor 12
@@ -9303,9 +9302,9 @@ function runGameUnitTests() {
         it('heavy_ballast: ticks once per enemy turn, damage capped via getEnemyDamageExcess', () => {
             const bigEnemyHand = testCards('e', 'Pikes', 9);
             game({ relics: [{ id: 'heavy_ballast' }] }, {
-                drawDeck: [testCard('d1', 'Hearts', 6)],
+                drawDeck: [heart('d1', 6)],
                 enemyHand: bigEnemyHand,
-                trumpCard: testCard('t1', 'Hearts', 6),
+                trumpCard: heart('t1', 6),
                 defender: 'player',
                 enemyHP: 50, phase: BATTLE_PHASES.AI_WAITING
             }, () => {
@@ -9324,8 +9323,8 @@ function runGameUnitTests() {
             // reasons - exactly what broke the "AI finishes throwing in" test.
             game(
                 {},
-                { playerHand: [testCard('p1', 'Hearts', 9)],
-                    enemyHand: [testCard('e1', 'Pikes', 6)],
+                { playerHand: [heart('p1', 9)],
+                    enemyHand: [pike('e1', 6)],
                     defender: 'player',
                     enemyHP: 0, phase: BATTLE_PHASES.AI_WAITING
                },
@@ -9339,8 +9338,8 @@ function runGameUnitTests() {
         it('spam_mail + salted_wound: enemy draws a card on take, damage capped by the hand excess', () => {
             const enemyHand = testCards('e', 'Pikes', 6);
             enemyTakes(['spam_mail', 'salted_wound'], {
-                drawDeck: [testCard('d1', 'Hearts', 6)],
-                playerHand: [testCard('p1', 'Pikes', 8)],
+                drawDeck: [heart('d1', 6)],
+                playerHand: [pike('p1', 8)],
                 enemyHand
             }, () => {
                 // enemyHand: 6 (initial) + 1 (from the table) + 1 (spam_mail) = 8 -> excess 2
@@ -9354,11 +9353,11 @@ function runGameUnitTests() {
             // Both hands start full so replenishHands() after the take doesn't
             // draw from the same deck and blur what spam_mail itself took.
             enemyTakes(['spam_mail'], {
-                drawDeck: [testCard('d_bottom', 'Hearts', 6), testCard('d_mid', 'Hearts', 8), testCard('d_top', 'Hearts', 7)],
+                drawDeck: [heart('d_bottom', 6), heart('d_mid', 8), heart('d_top', 7)],
                 playerHand: fullHand('p', 'Pikes'),
                 enemyHand: fullHand('e', 'Pikes'),
-                trumpCard: testCard('t1', 'Hearts', 6),
-                table: [testPair(testCard('x1', 'Clubs', 7))]
+                trumpCard: heart('t1', 6),
+                table: [testPair(club('x1', 7))]
             }, () => {
                 assert.isTrue(battle.enemyHand.some(c => c.id === 'd_top'), 'Enemy must get the top deck card');
                 assert.isFalse(battle.enemyHand.some(c => c.id === 'd_bottom'), 'Bottom deck card must not get into the hand');
@@ -9378,10 +9377,10 @@ function runGameUnitTests() {
             };
             try {
                 enemyTakes(['spam_mail', '__test_order'], {
-                    drawDeck: [testCard('d1', 'Hearts', 6)],
-                    playerHand: [testCard('p1', 'Pikes', 8)],
-                    enemyHand: [testCard('e1', 'Pikes', 6)],
-                    table: [testPair(testCard('x1', 'Clubs', 7))]
+                    drawDeck: [heart('d1', 6)],
+                    playerHand: [pike('p1', 8)],
+                    enemyHand: [pike('e1', 6)],
+                    table: [testPair(club('x1', 7))]
                 }, () => {
                     // 1 (initial) + 1 (from the table) + 1 (spam_mail) = 3
                     assert.equal(handSizeSeen, 3, 'onEnemyTookCards must see the hand already holding the spam_mail card');
@@ -9394,13 +9393,13 @@ function runGameUnitTests() {
         it('spam_mail: if one (trump) card is left in the deck - the enemy takes it and the trump suit stays', () => {
             // Asserts outcomes only, not which end of drawDeck the card is taken
             // from: with a single card, any way of taking it gives the same result.
-            const trump = testCard('t1', 'Hearts', 6);
+            const trump = heart('t1', 6);
             enemyTakes(['spam_mail'], {
                 drawDeck: [trump],
                 playerHand: fullHand('p', 'Pikes'),
                 enemyHand: fullHand('e', 'Pikes'),
                 trumpCard: trump,
-                table: [testPair(testCard('x1', 'Clubs', 7))]
+                table: [testPair(club('x1', 7))]
             }, () => {
                 assert.equal(battle.drawDeck.length, 0, 'Deck must be empty');
                 assert.isTrue(battle.enemyHand.some(c => c.id === 't1'), 'Trump card must end up in the enemy hand');
@@ -9411,8 +9410,8 @@ function runGameUnitTests() {
 
         it('spam_mail: with an empty deck the enemy draws nothing and does not crash', () => {
             enemyTakes(['spam_mail'], {
-                playerHand: [testCard('p1', 'Pikes', 8)],
-                enemyHand: [testCard('e1', 'Pikes', 6)]
+                playerHand: [pike('p1', 8)],
+                enemyHand: [pike('e1', 6)]
             }, () => {
                 // 1 (initial) + 1 (from the table); nothing to draw
                 assert.equal(battle.enemyHand.length, 2);
@@ -9430,7 +9429,7 @@ function runGameUnitTests() {
                 onEnemyTookCards() { otherHookCalled = true; return 5; }
             };
             try {
-                enemyTakes(['salted_wound', '__test_take'], { playerHand: [testCard('p1', 'Pikes', 8)], enemyHand: testCards('e', 'Pikes', 6)
+                enemyTakes(['salted_wound', '__test_take'], { playerHand: [pike('p1', 8)], enemyHand: testCards('e', 'Pikes', 6)
                 }, () => {
                     // enemyHand: 6 (initial) + 1 (from the table) = 7 -> excess 1
                     // damage: 1 card x TAKE_DAMAGE_PER_CARD(2) + 1 (salted_wound) + 5 (__test_take) = 8
@@ -9453,11 +9452,11 @@ function runGameUnitTests() {
             };
             try {
                 playerTakes(['__test_player_take', 'mirror_ring'], {
-                    drawDeck: [testCard('d1', 'Hearts', 6)],
-                    enemyHand: [testCard('e1', 'Pikes', 9)],
+                    drawDeck: [heart('d1', 6)],
+                    enemyHand: [pike('e1', 9)],
                     table: [
-                        testPair(testCard('x1', 'Hearts', 6)),
-                        testPair(testCard('x2', 'Hearts', 7)),
+                        testPair(heart('x1', 6)),
+                        testPair(heart('x2', 7)),
                     ]
                 }, () => {
                     assert.equal(seenCount, 2, 'Hook must receive the taken card count in ctx.cardsTakenCount');
@@ -9485,27 +9484,27 @@ function runGameUnitTests() {
             const sixCards = testCards('e', 'Pikes', 6);
             // enemyHand 6 + 1 (from the table) = 7 -> excess 1 -> salted_wound: +1 x SALTED_WOUND_DAMAGE_PER_CARD
             const cases = [
-                { name: 'ace_sleeve', relics: ['ace_sleeve'], enemyHand: [testCard('e1', 'Pikes', 9)], damage: TAKE_DAMAGE_PER_CARD + ACE_SLEEVE_BONUS_DAMAGE },
+                { name: 'ace_sleeve', relics: ['ace_sleeve'], enemyHand: [pike('e1', 9)], damage: TAKE_DAMAGE_PER_CARD + ACE_SLEEVE_BONUS_DAMAGE },
                 { name: 'ace_sleeve + salted_wound', relics: ['ace_sleeve', 'salted_wound'], enemyHand: sixCards, damage: TAKE_DAMAGE_PER_CARD + ACE_SLEEVE_BONUS_DAMAGE + SALTED_WOUND_DAMAGE_PER_CARD },
-                { name: 'no relic', relics: [], enemyHand: [testCard('e1', 'Pikes', 9)], damage: TAKE_DAMAGE_PER_CARD }
+                { name: 'no relic', relics: [], enemyHand: [pike('e1', 9)], damage: TAKE_DAMAGE_PER_CARD }
             ];
             for (const c of cases) {
-                enemyTakes(c.relics, { playerHand: [testCard('p1', 'Pikes', 8)], enemyHand: c.enemyHand },
+                enemyTakes(c.relics, { playerHand: [pike('p1', 8)], enemyHand: c.enemyHand },
                     () => assert.equal(battle.enemyHP, 50 - c.damage, c.name));
             }
         });
 
         it('ballast_drop: on taking cards discards 2 non-trump cards of the lowest rank', () => {
             playerTakes(['ballast_drop'], {
-                drawDeck: [testCard('d1', 'Hearts', 6)],
+                drawDeck: [heart('d1', 6)],
                 playerHand: [
-                    testCard('p1', 'Pikes', 7),
-                    testCard('p2', 'Pikes', 6),
+                    pike('p1', 7),
+                    pike('p2', 6),
                 ],
-                enemyHand: [testCard('e1', 'Pikes', 9)],
+                enemyHand: [pike('e1', 9)],
                 table: [
-                    testPair(testCard('x1', 'Hearts', 6)),
-                    testPair(testCard('x2', 'Pikes', 8)),
+                    testPair(heart('x1', 6)),
+                    testPair(pike('x2', 8)),
                 ]
             }, () => {
                 // When two cards are taken the relic discards p1 and p2 from the hand.
@@ -9518,9 +9517,9 @@ function runGameUnitTests() {
 
         it('ballast_drop: does not fire if only one card was taken from the table', () => {
             playerTakes(['ballast_drop'], {
-                playerHand: [testCard('p1', 'Pikes', 7)],
-                enemyHand: [testCard('e1', 'Pikes', 9)],
-                table: [testPair(testCard('x1', 'Pikes', 6))]
+                playerHand: [pike('p1', 7)],
+                enemyHand: [pike('e1', 9)],
+                table: [testPair(pike('x1', 6))]
             }, () => {
                 assert.equal(battle.playerHand.length, 2, 'Both cards must stay in hand');
                 assert.equal(battle.discardPile.filter(c => c.id === 'p1' || c.id === 'x1').length, 0,
@@ -9530,13 +9529,13 @@ function runGameUnitTests() {
 
         it('ballast_drop: does not fire if the take finished the enemy via mirror_ring (victory takes priority)', () => {
             playerTakes(['mirror_ring', 'ballast_drop'], {
-                drawDeck: [testCard('d1', 'Hearts', 6)],
+                drawDeck: [heart('d1', 6)],
                 playerHand: [
-                    testCard('p1', 'Pikes', 7),
-                    testCard('p2', 'Pikes', 6),
+                    pike('p1', 7),
+                    pike('p2', 6),
                 ],
-                enemyHand: [testCard('e1', 'Pikes', 9)],
-                table: [testPair(testCard('x1', 'Hearts', 6))],
+                enemyHand: [pike('e1', 9)],
+                table: [testPair(heart('x1', 6))],
                 enemyHP: 1
             }, () => {
                 assert.equal(battle.enemyHP, 0);
@@ -9556,12 +9555,12 @@ function runGameUnitTests() {
     runner.describe('11b. Moonshine Flask and Golden Bullet', (it, assert) => {
         const { game, playerTakes } = makeRelicFixtures();
         const defendedTable = () => [
-            testPair(testCard('bt1', 'Pikes', 6), testCard('bt2', 'Pikes', 7)),
-            testPair(testCard('bt3', 'Pikes', 10), testCard('bt4', 'Pikes', 11))
+            testPair(pike('bt1', 6), pike('bt2', 7)),
+            testPair(pike('bt3', 10), pike('bt4', 11))
         ];
         // The enemy keeps cards: an empty enemy hand would end the round and cost the player HP.
-        const enemyCards = () => [testCard('bz1', 'Clubs', 13), testCard('bz2', 'Clubs', 14)];
-        const defending = { playerHand: [testCard('bz9', 'Pikes', 8)], enemyHand: enemyCards(), defender: 'player', enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE };
+        const enemyCards = () => [club('bz1', 13), club('bz2', 14)];
+        const defending = { playerHand: [pike('bz9', 8)], enemyHand: enemyCards(), defender: 'player', enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE };
 
         it('moonshine_flask: relic data (name, price 12$) and heal by FLASK_HEAL_ON_DEFEND', () => {
             const relic = ALL_RELICS.find(r => r.id === 'moonshine_flask');
@@ -9601,12 +9600,12 @@ function runGameUnitTests() {
         });
 
         it('moonshine_flask: does NOT heal when the player took cards or the enemy defended; without the relic HP is unchanged', () => {
-            playerTakes(['moonshine_flask'], { table: [testPair(testCard('a1', 'Pikes', 6))] }, () => {
+            playerTakes(['moonshine_flask'], { table: [testPair(pike('a1', 6))] }, () => {
                 assert.isTrue(run.playerHP < 20, 'taking cards does not heal: the take penalty stays');
             }, { playerHP: 20 });
             game({ relics: [{ id: 'moonshine_flask' }] }, {
-                playerHand: [testCard('bz9', 'Pikes', 8)], enemyHand: enemyCards(),
-                table: [testPair(testCard('bz3', 'Pikes', 6), testCard('bz4', 'Pikes', 7))], enemyHP: 50
+                playerHand: [pike('bz9', 8)], enemyHand: enemyCards(),
+                table: [testPair(pike('bz3', 6), pike('bz4', 7))], enemyHP: 50
             }, () => {
                 run.playerHP = run.maxHP - 10;
                 handleBito();
@@ -9635,11 +9634,11 @@ function runGameUnitTests() {
 
         it('golden_bullet: every coin_magnet six (own and enemy) hits the enemy', () => {
             game({ relics: [{ id: 'coin_magnet' }, { id: 'golden_bullet' }] }, { enemyHP: 50, phase: BATTLE_PHASES.PLAYER_ATTACK }, () => {
-                onPlayerCardPlayed(testCard('p1', 'Pikes', 6));
+                onPlayerCardPlayed(pike('p1', 6));
                 assert.equal(battle.enemyHP, 50 - GOLDEN_BULLET_DAMAGE);
-                onEnemyCardPlayed(testCard('e1', 'Clubs', 6));
+                onEnemyCardPlayed(club('e1', 6));
                 assert.equal(battle.enemyHP, 50 - 2 * GOLDEN_BULLET_DAMAGE);
-                onPlayerCardPlayed(testCard('p2', 'Pikes', 9));
+                onPlayerCardPlayed(pike('p2', 9));
                 assert.equal(battle.enemyHP, 50 - 2 * GOLDEN_BULLET_DAMAGE, 'not a six - no gold, no damage');
             });
         });
@@ -9665,7 +9664,7 @@ function runGameUnitTests() {
         const { game, enemyTakes, playerTakes } = makeRelicFixtures();
 
         it('safety_rope: saves from lethal damage once per run, clears the table and leaves the inventory', () => {
-            game({ playerHP: 5, relics: [{ id: 'safety_rope' }] }, { table: [testPair(testCard('a', 'Hearts', 6))] }, () => {
+            game({ playerHP: 5, relics: [{ id: 'safety_rope' }] }, { table: [testPair(heart('a', 6))] }, () => {
                 const first = applyPlayerDamage(100);
                 assert.isTrue(first.savedBySafetyRope);
                 assert.isFalse(first.isDefeated);
@@ -9769,11 +9768,11 @@ function runGameUnitTests() {
             const transferFloorIndex = ENEMIES.findIndex(e => e.activeAbilities.has('ai_transfer'));
             game({ floor: transferFloorIndex + 1, relics: [{ id: 'cascade_transfer' }] }, {
                 playerHand: [
-                    testCard('p1', 'Pikes', 10),
-                    testCard('p2', 'Pikes', 11)
+                    pike('p1', 10),
+                    pike('p2', 11)
                 ],
-                enemyHand: [testCard('e1', 'Clubs', 8)],
-                table: [testPair(testCard('a1', 'Clubs', 8))], phase: BATTLE_PHASES.AI_WAITING
+                enemyHand: [club('e1', 8)],
+                table: [testPair(club('a1', 8))], phase: BATTLE_PHASES.AI_WAITING
             }, () => {
                 executeEnemyAI();
                 assert.equal(battle.defender, 'player', 'After the opponent transfer the player is the defender again');
@@ -9811,11 +9810,11 @@ function runGameUnitTests() {
 
         it('handlePlayerTake: if a hook killed the enemy - AI is not scheduled, phase stays RESOLVING', () => {
             playerTakes(['mirror_ring'], {
-                drawDeck: [testCard('d1', 'Hearts', 6)],
-                enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Clubs', 10)],
+                drawDeck: [heart('d1', 6)],
+                enemyHand: [pike('e1', 9), club('e2', 10)],
                 table: [
-                    testPair(testCard('x1', 'Hearts', 6)),
-                    testPair(testCard('x2', 'Hearts', 7)),
+                    testPair(heart('x1', 6)),
+                    testPair(heart('x2', 7)),
                 ],
                 enemyHP: 4
             }, () => {
@@ -9828,11 +9827,11 @@ function runGameUnitTests() {
 
         it('victory takes priority: a hook killed the enemy while the take would be lethal for the player - no defeat, HP untouched', () => {
             playerTakes(['mirror_ring'], {
-                drawDeck: [testCard('d1', 'Hearts', 6)],
-                enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Clubs', 10)],
+                drawDeck: [heart('d1', 6)],
+                enemyHand: [pike('e1', 9), club('e2', 10)],
                 table: [
-                    testPair(testCard('x1', 'Hearts', 6)),
-                    testPair(testCard('x2', 'Hearts', 7)),
+                    testPair(heart('x1', 6)),
+                    testPair(heart('x2', 7)),
                 ],
                 enemyHP: 4
             }, () => {
@@ -9846,11 +9845,11 @@ function runGameUnitTests() {
 
         it('victory takes priority: safety_rope is not spent and does not cover the victory modal if the same take kills the enemy', () => {
             playerTakes(['mirror_ring', 'safety_rope'], {
-                drawDeck: [testCard('d1', 'Hearts', 6)],
-                enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Clubs', 10)],
+                drawDeck: [heart('d1', 6)],
+                enemyHand: [pike('e1', 9), club('e2', 10)],
                 table: [
-                    testPair(testCard('x1', 'Hearts', 6)),
-                    testPair(testCard('x2', 'Hearts', 7)),
+                    testPair(heart('x1', 6)),
+                    testPair(heart('x2', 7)),
                 ],
                 enemyHP: 4
             }, () => {
@@ -9862,11 +9861,11 @@ function runGameUnitTests() {
 
         it('handlePlayerTake: if the enemy is alive - AI is still scheduled (guard against over-guarding)', () => {
             playerTakes(['mirror_ring'], {
-                drawDeck: [testCard('d1', 'Hearts', 6)],
-                enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Clubs', 10)],
+                drawDeck: [heart('d1', 6)],
+                enemyHand: [pike('e1', 9), club('e2', 10)],
                 table: [
-                    testPair(testCard('x1', 'Hearts', 6)),
-                    testPair(testCard('x2', 'Hearts', 7)),
+                    testPair(heart('x1', 6)),
+                    testPair(heart('x2', 7)),
                 ]
             }, () => {
                 assert.isTrue(battle.enemyHP > 0);
@@ -9877,7 +9876,7 @@ function runGameUnitTests() {
 
         it('handleEnemyTake: if the enemy died from taking cards - the round-end modal does not cover the victory modal, phase unchanged', () => {
             enemyTakes([], {
-                enemyHand: [testCard('e1', 'Pikes', 9)],
+                enemyHand: [pike('e1', 9)],
                 enemyHP: TAKE_DAMAGE_PER_CARD, phase: BATTLE_PHASES.AI_WAITING
             }, () => {
                 assert.equal(battle.enemyHP, 0);
@@ -9921,8 +9920,8 @@ function runGameUnitTests() {
 
         it('coin_magnet: +1$ for every six played by the player', () => {
             game({ relics: [{ id: 'coin_magnet' }] }, {
-                playerHand: [testCard('p1', 'Pikes', 6)],
-                enemyHand: [testCard('e1', 'Pikes', 9)],
+                playerHand: [pike('p1', 6)],
+                enemyHand: [pike('e1', 9)],
                 enemyHP: 50
             }, () => {
                 onPlayerCardClick(0);
@@ -9933,14 +9932,14 @@ function runGameUnitTests() {
         it('coin_magnet: enemy sixes also bring +1$ - attack, throw-in, transfer and defense', () => {
             const enemyActions = [
                 ['attack', { defender: 'player', table: [] }, card => ({ type: 'attack', card })],
-                ['throw-in', { defender: 'player', table: [testPair(testCard('a1', 'Clubs', 6), testCard('d1', 'Clubs', 9))] }, card => ({ type: 'throw', card })],
-                ['transfer', { defender: 'enemy', table: [testPair(testCard('a1', 'Clubs', 6))] }, card => ({ type: 'transfer', card })]
+                ['throw-in', { defender: 'player', table: [testPair(club('a1', 6), club('d1', 9))] }, card => ({ type: 'throw', card })],
+                ['transfer', { defender: 'enemy', table: [testPair(club('a1', 6))] }, card => ({ type: 'transfer', card })]
             ];
             for (const [name, battleOverrides, makeAction] of enemyActions) {
                 game({ relics: [{ id: 'coin_magnet' }], gold: 0 }, {
                     phase: BATTLE_PHASES.RESOLVING, enemyHP: 50,
-                    playerHand: [testCard('p1', 'Pikes', 12), testCard('p2', 'Pikes', 13), testCard('p3', 'Pikes', 14)],
-                    enemyHand: [testCard('e1', 'Hearts', 6), testCard('e2', 'Hearts', 9)],
+                    playerHand: [pike('p1', 12), pike('p2', 13), pike('p3', 14)],
+                    enemyHand: [heart('e1', 6), heart('e2', 9)],
                     ...battleOverrides
                 }, () => {
                     const realRender = window.renderAll; window.renderAll = () => {};
@@ -9952,9 +9951,9 @@ function runGameUnitTests() {
             }
             game({ relics: [{ id: 'coin_magnet' }], gold: 0 }, {
                 phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', enemyHP: 50,
-                table: [testPair(testCard('a1', 'Pikes', 5))],
-                playerHand: [testCard('p1', 'Pikes', 12)],
-                enemyHand: [testCard('e1', 'Pikes', 6), testCard('e2', 'Hearts', 9)]
+                table: [testPair(pike('a1', 5))],
+                playerHand: [pike('p1', 12)],
+                enemyHand: [pike('e1', 6), heart('e2', 9)]
             }, () => {
                 const realRender = window.renderAll; window.renderAll = () => {};
                 try {
@@ -9964,7 +9963,7 @@ function runGameUnitTests() {
             });
             game({ relics: [{ id: 'coin_magnet' }], gold: 0 }, {
                 phase: BATTLE_PHASES.RESOLVING, defender: 'player', enemyHP: 50,
-                table: [], enemyHand: [testCard('e1', 'Hearts', 9)]
+                table: [], enemyHand: [heart('e1', 9)]
             }, () => {
                 const realRender = window.renderAll; window.renderAll = () => {};
                 try {
@@ -9976,8 +9975,8 @@ function runGameUnitTests() {
 
         it('sharp_suit: damages the enemy when defending with a trump card', () => {
             game({ relics: [{ id: 'sharp_suit' }] }, {
-                playerHand: [testCard('p1', 'Hearts', 9)],
-                table: [testPair(testCard('a1', 'Pikes', 8))],
+                playerHand: [heart('p1', 9)],
+                table: [testPair(pike('a1', 8))],
                 defender: 'player',
                 enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
             }, () => {
@@ -9987,30 +9986,30 @@ function runGameUnitTests() {
         });
 
         it('sharp_suit: damages for a trump in attack and throw-in, but not for a regular card; enemy trumps do not count', () => {
-            const base = { enemyHand: [testCard('e1', 'Pikes', 6), testCard('e2', 'Pikes', 7)], enemyHP: 50 };
-            game({ relics: [{ id: 'sharp_suit' }] }, { ...base, playerHand: [testCard('p1', 'Hearts', 9)] }, () => {
+            const base = { enemyHand: [pike('e1', 6), pike('e2', 7)], enemyHP: 50 };
+            game({ relics: [{ id: 'sharp_suit' }] }, { ...base, playerHand: [heart('p1', 9)] }, () => {
                 onPlayerCardClick(0); // trump in attack
                 assert.equal(battle.enemyHP, 50 - SHARP_SUIT_DAMAGE);
             });
-            game({ relics: [{ id: 'sharp_suit' }] }, { ...base, playerHand: [testCard('p1', 'Hearts', 9), testCard('p2', 'Hearts', 10)],
-                table: [testPair(testCard('a1', 'Clubs', 9), testCard('d1', 'Clubs', 11))] }, () => {
+            game({ relics: [{ id: 'sharp_suit' }] }, { ...base, playerHand: [heart('p1', 9), heart('p2', 10)],
+                table: [testPair(club('a1', 9), club('d1', 11))] }, () => {
                 onPlayerCardClick(0); // trump nine thrown in onto a nine on the table
                 assert.equal(battle.enemyHP, 50 - SHARP_SUIT_DAMAGE, 'a trump throw-in counts too');
             });
-            game({ relics: [{ id: 'sharp_suit' }] }, { ...base, playerHand: [testCard('p1', 'Pikes', 9)] }, () => {
+            game({ relics: [{ id: 'sharp_suit' }] }, { ...base, playerHand: [pike('p1', 9)] }, () => {
                 onPlayerCardClick(0);
                 assert.equal(battle.enemyHP, 50, 'a regular card deals no damage');
             });
-            game({ relics: [{ id: 'sharp_suit' }] }, { ...base, playerHand: [testCard('p1', 'Pikes', 9)] }, () => {
-                onEnemyCardPlayed(testCard('x1', 'Hearts', 8)); // Hearts is trump
+            game({ relics: [{ id: 'sharp_suit' }] }, { ...base, playerHand: [pike('p1', 9)] }, () => {
+                onEnemyCardPlayed(heart('x1', 8)); // Hearts is trump
                 assert.equal(battle.enemyHP, 50, 'an enemy trump deals no damage');
             });
         });
 
         it('midas_touch: +MIDAS_TOUCH_GOLD_ON_DEFEND once per round when the player beat all cards and the round ended with bito', () => {
             game({ relics: [{ id: 'midas_touch' }] }, {
-                playerHand: [testCard('p9', 'Pikes', 8)],
-                table: [testPair(testCard('a1', 'Pikes', 6), testCard('d1', 'Pikes', 7)), testPair(testCard('a2', 'Pikes', 10), testCard('d2', 'Pikes', 11))],
+                playerHand: [pike('p9', 8)],
+                table: [testPair(pike('a1', 6), pike('d1', 7)), testPair(pike('a2', 10), pike('d2', 11))],
                 defender: 'player',
                 enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
             }, () => {
@@ -10021,8 +10020,8 @@ function runGameUnitTests() {
 
         it('midas_touch: same when bito is called by the AI (handleBito(true)) and the player already beat everything', () => {
             game({ relics: [{ id: 'midas_touch' }] }, {
-                playerHand: [testCard('p9', 'Pikes', 8)],
-                table: [testPair(testCard('a1', 'Pikes', 6), testCard('d1', 'Pikes', 7))],
+                playerHand: [pike('p9', 8)],
+                table: [testPair(pike('a1', 6), pike('d1', 7))],
                 defender: 'player',
                 enemyHP: 50, phase: BATTLE_PHASES.AI_WAITING
             }, () => {
@@ -10033,8 +10032,8 @@ function runGameUnitTests() {
 
         it('midas_touch: no gold without the relic', () => {
             game({}, {
-                playerHand: [testCard('p9', 'Pikes', 8)],
-                table: [testPair(testCard('a1', 'Pikes', 6), testCard('d1', 'Pikes', 7)), testPair(testCard('a2', 'Pikes', 10), testCard('d2', 'Pikes', 11))],
+                playerHand: [pike('p9', 8)],
+                table: [testPair(pike('a1', 6), pike('d1', 7)), testPair(pike('a2', 10), pike('d2', 11))],
                 defender: 'player',
                 enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
             }, () => {
@@ -10045,15 +10044,15 @@ function runGameUnitTests() {
 
         it('midas_touch: does NOT fire when the player took cards (handlePlayerTake) or the enemy defended successfully', () => {
             playerTakes(['midas_touch'], {
-                playerHand: [testCard('p9', 'Pikes', 8)],
-                table: [testPair(testCard('a1', 'Pikes', 6))],
+                playerHand: [pike('p9', 8)],
+                table: [testPair(pike('a1', 6))],
                 enemyHP: 50
             }, () => {
                 assert.equal(run.gold, 0, 'Player took cards - this is not a successful defense');
             });
             game({ relics: [{ id: 'midas_touch' }] }, {
-                playerHand: [testCard('p9', 'Pikes', 8)],
-                table: [testPair(testCard('a1', 'Pikes', 6), testCard('d1', 'Pikes', 7))],
+                playerHand: [pike('p9', 8)],
+                table: [testPair(pike('a1', 6), pike('d1', 7))],
                 enemyHP: 50
             }, () => {
                 handleBito();
@@ -10063,8 +10062,8 @@ function runGameUnitTests() {
 
         it('midas_touch: does NOT fire mid-round - beating one card gives no gold', () => {
             game({ relics: [{ id: 'midas_touch' }] }, {
-                playerHand: [testCard('p9', 'Pikes', 9)],
-                table: [testPair(testCard('a1', 'Pikes', 8))],
+                playerHand: [pike('p9', 9)],
+                table: [testPair(pike('a1', 8))],
                 defender: 'player',
                 enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
             }, () => {
@@ -10083,10 +10082,10 @@ function runGameUnitTests() {
             // DOM itself - so the popup layer was not covered by tests at all.
             // This test clicks the real button inside the popup.
             game({ relics: [{ id: 'pocket_discard' }, { id: 'jester_discard' }] }, {
-                drawDeck: [testCard('d1', 'Hearts', 6), testCard('d2', 'Hearts', 7)],
-                playerHand: [testCard('p1', 'Pikes', 6), testCard('p2', 'Hearts', 10)],
-                enemyHand: [testCard('e1', 'Pikes', 9)],
-                trumpCard: testCard('t1', 'Hearts', 6),
+                drawDeck: [heart('d1', 6), heart('d2', 7)],
+                playerHand: [pike('p1', 6), heart('p2', 10)],
+                enemyHand: [pike('e1', 9)],
+                trumpCard: heart('t1', 6),
                 enemyHP: 50
             }, () => {
                 showRelicPopover('pocket_discard');
@@ -10131,10 +10130,10 @@ function runGameUnitTests() {
 
         it('showRelicPopover(): tapping the dimmed backdrop closes the popup without activating the ability', () => {
             game({ relics: [{ id: 'pocket_discard' }] }, {
-                drawDeck: [testCard('d1', 'Hearts', 6)],
-                playerHand: [testCard('p1', 'Pikes', 6), testCard('p2', 'Hearts', 10)],
-                enemyHand: [testCard('e1', 'Pikes', 9)],
-                trumpCard: testCard('t1', 'Hearts', 6),
+                drawDeck: [heart('d1', 6)],
+                playerHand: [pike('p1', 6), heart('p2', 10)],
+                enemyHand: [pike('e1', 9)],
+                trumpCard: heart('t1', 6),
                 enemyHP: 50
             }, () => {
                 showRelicPopover('pocket_discard');
@@ -10169,7 +10168,7 @@ function runGameUnitTests() {
 
         it('relics-bar: a relic ready to activate is ringed (relic-ready-glow), an unavailable one is not', () => {
             game({ relics: [{ id: 'pocket_discard' }] }, {
-                playerHand: [testCard('p1', 'Pikes', 6)],
+                playerHand: [pike('p1', 6)],
                 enemyHP: 50
             }, () => {
                 renderAll();
@@ -10219,10 +10218,10 @@ function runGameUnitTests() {
 
         it('pocket_discard: once per round discards a 6/7 from hand to the discard pile', () => {
             game({ relics: [{ id: 'pocket_discard' }] }, {
-                drawDeck: [testCard('d1', 'Hearts', 6)],
-                playerHand: [testCard('p1', 'Pikes', 6), testCard('p2', 'Hearts', 10)],
-                enemyHand: [testCard('e1', 'Pikes', 9)],
-                trumpCard: testCard('t1', 'Hearts', 6),
+                drawDeck: [heart('d1', 6)],
+                playerHand: [pike('p1', 6), heart('p2', 10)],
+                enemyHand: [pike('e1', 9)],
+                trumpCard: heart('t1', 6),
                 enemyHP: 50
             }, () => {
                 usePocketDiscard();
@@ -10248,14 +10247,14 @@ function runGameUnitTests() {
 
         it('pocket_discard: isReady() - single source of the condition for button render and handler', () => {
             game({ relics: [{ id: 'pocket_discard' }] }, {
-                playerHand: [testCard('p1', 'Pikes', 8), testCard('p2', 'Hearts', 10)],
-                enemyHand: [testCard('e1', 'Pikes', 9)],
-                trumpCard: testCard('t1', 'Hearts', 6),
+                playerHand: [pike('p1', 8), heart('p2', 10)],
+                enemyHand: [pike('e1', 9)],
+                trumpCard: heart('t1', 6),
                 enemyHP: 50
             }, () => {
                 expectReadySteps('pocket_discard', [
                     ['without a 6/7 in hand the ability is unavailable', () => {}, false],
-                    ['with a 6/7 in hand and an unused charge the ability is available', () => battle.playerHand.push(testCard('p3', 'Pikes', 6)), true],
+                    ['with a 6/7 in hand and an unused charge the ability is available', () => battle.playerHand.push(pike('p3', 6)), true],
                     ['already used this round - unavailable', () => { battle.pocketDiscardUsedThisRound = true; }, false],
                     ['cannot be used outside the player action phase', () => { battle.pocketDiscardUsedThisRound = false; battle.phase = BATTLE_PHASES.RESOLVING; }, false],
                     ['cannot discard a card while defending against the opponent attack', () => { battle.phase = BATTLE_PHASES.PLAYER_DEFENSE; battle.defender = 'player'; }, false],
@@ -10266,9 +10265,9 @@ function runGameUnitTests() {
 
         it('pocket_discard: discarding the last hand card ends the round (when deck and table are already empty)', () => {
             game({ playerHP: 23, gold: 16, relics: [{ id: 'pocket_discard' }] }, {
-                playerHand: [testCard('p1', 'Hearts', 6)],
-                enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Hearts', 10)],
-                trumpCard: testCard('t1', 'Pikes', 6), trumpSuit: 'Pikes',
+                playerHand: [heart('p1', 6)],
+                enemyHand: [pike('e1', 9), heart('e2', 10)],
+                trumpCard: pike('t1', 6), trumpSuit: 'Pikes',
                 enemyHP: 6
             }, () => {
                 usePocketDiscard();
@@ -10287,9 +10286,9 @@ function runGameUnitTests() {
             const drawDeck = testCards('d', 'Hearts', 5, i => 6 + i);
             game({ relics: [{ id: 'jester_discard' }] }, {
                 drawDeck,
-                playerHand: [testCard('p1', 'Pikes', 6), testCard('p2', 'Pikes', 7)],
-                enemyHand: [testCard('e1', 'Pikes', 9)],
-                trumpCard: testCard('t1', 'Hearts', 6),
+                playerHand: [pike('p1', 6), pike('p2', 7)],
+                enemyHand: [pike('e1', 9)],
+                trumpCard: heart('t1', 6),
                 enemyHP: 50
             }, () => {
                 useJesterDiscard();
@@ -10302,15 +10301,15 @@ function runGameUnitTests() {
 
         it('jester_discard: isReady() - single source of the condition for button render and handler', () => {
             game({ relics: [{ id: 'jester_discard' }] }, {
-                drawDeck: [testCard('d1', 'Hearts', 6)],
-                playerHand: [testCard('p1', 'Pikes', 8)],
-                enemyHand: [testCard('e1', 'Pikes', 9)],
-                trumpCard: testCard('t1', 'Hearts', 6),
+                drawDeck: [heart('d1', 6)],
+                playerHand: [pike('p1', 8)],
+                enemyHand: [pike('e1', 9)],
+                trumpCard: heart('t1', 6),
                 enemyHP: 50
             }, () => {
                 expectReadySteps('jester_discard', [
                     ['own attack turn, empty table, not used yet - available', () => {}, true],
-                    ['cards already on the table - unavailable', () => { battle.table = [testPair(testCard('a1', 'Pikes', 6))]; }, false],
+                    ['cards already on the table - unavailable', () => { battle.table = [testPair(pike('a1', 6))]; }, false],
                     ['cannot redeal the hand while defending against the opponent attack', () => { battle.table = []; battle.defender = 'player'; }, false],
                     ['already used this battle - unavailable', () => { battle.defender = 'enemy'; battle.jesterDiscardUsedThisBattle = true; }, false],
                     ['fewer cards in the deck than in hand - unavailable', () => { battle.jesterDiscardUsedThisBattle = false; battle.drawDeck = []; }, false]
@@ -10320,10 +10319,10 @@ function runGameUnitTests() {
 
         it('jester_discard: not enough cards in the deck - ability unavailable and does not spoil the hand', () => {
             game({ playerHP: 23, gold: 16, relics: [{ id: 'jester_discard' }] }, {
-                drawDeck: [testCard('d1', 'Pikes', 6)],
-                playerHand: [testCard('p1', 'Hearts', 6), testCard('p2', 'Pikes', 7)],
-                enemyHand: [testCard('e1', 'Pikes', 9), testCard('e2', 'Hearts', 10)],
-                trumpCard: testCard('t1', 'Pikes', 6), trumpSuit: 'Pikes',
+                drawDeck: [pike('d1', 6)],
+                playerHand: [heart('p1', 6), pike('p2', 7)],
+                enemyHand: [pike('e1', 9), heart('e2', 10)],
+                trumpCard: pike('t1', 6), trumpSuit: 'Pikes',
                 enemyHP: 6
             }, () => {
                 // The deck (1 card) is smaller than the hand (2 cards): before, this
@@ -10341,11 +10340,11 @@ function runGameUnitTests() {
 
         it('sleight_of_hand: once per battle swaps an attack card on the table for a random one from the deck', () => {
             game({ relics: [{ id: 'sleight_of_hand' }] }, {
-                drawDeck: [testCard('d1', 'Hearts', 6)],
-                playerHand: [testCard('p1', 'Pikes', 12)],
-                enemyHand: [testCard('e1', 'Pikes', 9)],
-                trumpCard: testCard('t1', 'Hearts', 6),
-                table: [testPair(testCard('a1', 'Pikes', 14))],
+                drawDeck: [heart('d1', 6)],
+                playerHand: [pike('p1', 12)],
+                enemyHand: [pike('e1', 9)],
+                trumpCard: heart('t1', 6),
+                table: [testPair(pike('a1', 14))],
                 defender: 'player',
                 enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
             }, () => {
@@ -10359,11 +10358,11 @@ function runGameUnitTests() {
 
         it('sleight_of_hand: isReady() - single source of the condition for button render and handler', () => {
             game({ relics: [{ id: 'sleight_of_hand' }] }, {
-                drawDeck: [testCard('d1', 'Hearts', 6)],
-                playerHand: [testCard('p1', 'Pikes', 8)],
-                enemyHand: [testCard('e1', 'Pikes', 9)],
-                trumpCard: testCard('t1', 'Hearts', 6),
-                table: [testPair(testCard('a1', 'Pikes', 14))],
+                drawDeck: [heart('d1', 6)],
+                playerHand: [pike('p1', 8)],
+                enemyHand: [pike('e1', 9)],
+                trumpCard: heart('t1', 6),
+                table: [testPair(pike('a1', 14))],
                 defender: 'player',
                 enemyHP: 50, phase: BATTLE_PHASES.PLAYER_DEFENSE
             }, () => {
@@ -10371,8 +10370,8 @@ function runGameUnitTests() {
                     ['defending against an unbeaten attack, deck has cards - available', () => {}, true],
                     ['already used this battle - unavailable', () => { battle.sleightOfHandUsedThisBattle = true; }, false],
                     ['cannot be used on the own attack turn', () => { battle.sleightOfHandUsedThisBattle = false; battle.defender = 'enemy'; }, false],
-                    ['all attacks on the table are already beaten - nothing to swap', () => { battle.defender = 'player'; battle.table = [testPair(testCard('a1', 'Pikes', 14), testCard('d0', 'Pikes', 8))]; }, false],
-                    ['no cards in the deck to swap with - unavailable', () => { battle.table = [testPair(testCard('a1', 'Pikes', 14))]; battle.drawDeck = []; }, false]
+                    ['all attacks on the table are already beaten - nothing to swap', () => { battle.defender = 'player'; battle.table = [testPair(pike('a1', 14), pike('d0', 8))]; }, false],
+                    ['no cards in the deck to swap with - unavailable', () => { battle.table = [testPair(pike('a1', 14))]; battle.drawDeck = []; }, false]
                 ]);
             });
         });
@@ -10388,19 +10387,19 @@ function runGameUnitTests() {
         // clicks the opponent's side is faked by Object.assign()ing one of these onto `battle`.
         const beatOffer = () => ({
             phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: false,
-            table: [testPair(testCard('a1', 'Pikes', 7))], playerHand: [testCard('p1', 'Pikes', 9)],
-            enemyHand: [testCard('e1', 'Hearts', 7), testCard('e2', 'Pikes', 12)]
+            table: [testPair(pike('a1', 7))], playerHand: [pike('p1', 9)],
+            enemyHand: [heart('e1', 7), pike('e2', 12)]
         });
         const attackOffer = () => ({
             phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', isTransferActive: false, table: [],
-            playerHand: [testCard('p1', 'Pikes', 9), testCard('p2', 'Clubs', 9)],
-            enemyHand: [testCard('e1', 'Pikes', 12), testCard('e2', 'Clubs', 12)]
+            playerHand: [pike('p1', 9), club('p2', 9)],
+            enemyHand: [pike('e1', 12), club('e2', 12)]
         });
         const throwInOffer = () => ({
             phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', isTransferActive: false,
-            table: [testPair(testCard('a1', 'Pikes', 9), testCard('d1', 'Pikes', 12))],
-            playerHand: [testCard('p1', 'Clubs', 9), testCard('p2', 'Hearts', 6)],
-            enemyHand: [testCard('e1', 'Hearts', 7), testCard('e2', 'Clubs', 12)]
+            table: [testPair(pike('a1', 9), pike('d1', 12))],
+            playerHand: [club('p1', 9), heart('p2', 6)],
+            enemyHand: [heart('e1', 7), club('e2', 12)]
         });
         const click = (offer) => { Object.assign(battle, offer); window.onPlayerCardClick(0); };
         const relicBadge = (relicId) => getEl('relics-bar').querySelector(`[data-relic-id="${relicId}"] .relic-badge`);
@@ -10474,9 +10473,9 @@ function runGameUnitTests() {
             const transferEnemyFloor = ENEMIES.findIndex(e => e.activeAbilities && e.activeAbilities.has('ai_transfer')) + 1;
             assert.isTrue(transferEnemyFloor > 0, 'the enemy ladder has ai_transfer');
             game({ floor: transferEnemyFloor, ...withStreak }, {
-                playerHand: [testCard('p1', 'Pikes', 10), testCard('p2', 'Pikes', 11)],
-                enemyHand: [testCard('e1', 'Clubs', 8)],
-                table: [testPair(testCard('a1', 'Clubs', 8))], phase: BATTLE_PHASES.AI_WAITING, enemyHP: START_HP
+                playerHand: [pike('p1', 10), pike('p2', 11)],
+                enemyHand: [club('e1', 8)],
+                table: [testPair(club('a1', 8))], phase: BATTLE_PHASES.AI_WAITING, enemyHP: START_HP
             }, () => {
                 executeEnemyAI();
                 assert.equal(battle.defender, 'player', 'the opponent did transfer');
@@ -10493,7 +10492,7 @@ function runGameUnitTests() {
         });
 
         it('transfer_streak: taking the table breaks the streak', () => {
-            playerTakes(['transfer_streak'], { transferStreak: 3, table: [testPair(testCard('x1', 'Hearts', 7))] },
+            playerTakes(['transfer_streak'], { transferStreak: 3, table: [testPair(heart('x1', 7))] },
                 () => assert.equal(battle.transferStreak, 0));
         });
 
@@ -10520,8 +10519,8 @@ function runGameUnitTests() {
         it('transfer_streak: the streak survives a save and load', () => {
             // A save is only resumable when it is a plausible battle (cards in play, a real deck).
             inGameSaved({
-                transferStreak: 3, drawDeck: [testCard('d1', 'Hearts', 6)],
-                playerHand: [testCard('p1', 'Pikes', 9)], enemyHand: [testCard('e1', 'Clubs', 9)]
+                transferStreak: 3, drawDeck: [heart('d1', 6)],
+                playerHand: [pike('p1', 9)], enemyHand: [club('e1', 9)]
             }, () => {
                 saveGameState();
                 battle.transferStreak = 0;
@@ -10567,15 +10566,15 @@ function runGameUnitTests() {
         // A round the player has beaten completely: handleBito() counts it as a successful defense.
         const defendedRound = () => ({
             phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: false, enemyHP: START_HP,
-            table: [testPair(testCard('bt1', 'Pikes', 6), testCard('bt2', 'Pikes', 7))],
-            playerHand: [testCard('bz9', 'Pikes', 8)],
-            enemyHand: [testCard('bz1', 'Clubs', 13), testCard('bz2', 'Clubs', 14)]
+            table: [testPair(pike('bt1', 6), pike('bt2', 7))],
+            playerHand: [pike('bz9', 8)],
+            enemyHand: [club('bz1', 13), club('bz2', 14)]
         });
         // The player is about to take `cards` unbeaten attacks (ranks 6, 7, 8, ...). The opponent holds one
         // card that cannot be thrown in, so the take resolves at once and the battle goes on.
         const takeRound = (streak, cards) => ({
             phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', enemyHP: START_HP, defenseStreak: streak,
-            drawDeck: [testCard('d1', 'Hearts', 6)], enemyHand: [testCard('e1', 'Pikes', 14)],
+            drawDeck: [heart('d1', 6)], enemyHand: [pike('e1', 14)],
             table: Array.from({ length: cards }, (_, i) => testPair(testCard('x' + i, 'Hearts', 6 + i)))
         });
         const takeWith = (relicIds, streak, cards, check, runOverrides) => game(
@@ -10604,8 +10603,8 @@ function runGameUnitTests() {
         it('defense_streak: beating a single card is not a finished defense - only the round counts', () => {
             inGameStrict({
                 phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: false, enemyHP: START_HP,
-                table: [testPair(testCard('a1', 'Pikes', 7))], playerHand: [testCard('p1', 'Pikes', 9)],
-                enemyHand: [testCard('e1', 'Hearts', 7), testCard('e2', 'Pikes', 12)]
+                table: [testPair(pike('a1', 7))], playerHand: [pike('p1', 9)],
+                enemyHand: [heart('e1', 7), pike('e2', 12)]
             }, () => {
                 window.onPlayerCardClick(0);
                 assert.equal(battle.defenseStreak, 0);
@@ -10615,7 +10614,7 @@ function runGameUnitTests() {
         it('defense_streak: the opponent defending (the player attacked) does not count', () => {
             game(withSkin, {
                 ...defendedRound(), phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy',
-                table: [testPair(testCard('bt1', 'Pikes', 6), testCard('bt2', 'Pikes', 7))]
+                table: [testPair(pike('bt1', 6), pike('bt2', 7))]
             }, () => {
                 handleBito();
                 assert.equal(battle.defenseStreak, 0);
@@ -10687,8 +10686,8 @@ function runGameUnitTests() {
             inGameStrict({
                 phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', isTransferActive: false, table: [],
                 defenseStreak: 2, enemyHP: START_HP,
-                playerHand: [testCard('p1', 'Pikes', 9), testCard('p2', 'Clubs', 9)],
-                enemyHand: [testCard('e1', 'Pikes', 12), testCard('e2', 'Clubs', 12)]
+                playerHand: [pike('p1', 9), club('p2', 9)],
+                enemyHand: [pike('e1', 12), club('e2', 12)]
             }, () => {
                 window.onPlayerCardClick(0);
                 assert.equal(battle.defenseStreak, 2);
@@ -10728,8 +10727,8 @@ function runGameUnitTests() {
 
         it('defense_streak: the streak survives a save and load', () => {
             inGameSaved({
-                defenseStreak: 3, drawDeck: [testCard('d1', 'Hearts', 6)],
-                playerHand: [testCard('p1', 'Pikes', 9)], enemyHand: [testCard('e1', 'Clubs', 9)]
+                defenseStreak: 3, drawDeck: [heart('d1', 6)],
+                playerHand: [pike('p1', 9)], enemyHand: [club('e1', 9)]
             }, () => {
                 saveGameState();
                 battle.defenseStreak = 0;
@@ -10761,20 +10760,20 @@ function runGameUnitTests() {
         const withBattery = relicRun('take_streak');
         const defendedRound = (overrides = {}) => ({
             phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: false, enemyHP: START_HP,
-            table: [testPair(testCard('bt1', 'Pikes', 6), testCard('bt2', 'Pikes', 7))],
-            playerHand: [testCard('bz9', 'Pikes', 8)],
-            enemyHand: [testCard('bz1', 'Clubs', 13), testCard('bz2', 'Clubs', 14)],
+            table: [testPair(pike('bt1', 6), pike('bt2', 7))],
+            playerHand: [pike('bz9', 8)],
+            enemyHand: [club('bz1', 13), club('bz2', 14)],
             ...overrides
         });
         const takeRound = (charge) => ({
             phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', enemyHP: START_HP, takeStreak: charge,
-            drawDeck: [testCard('d1', 'Hearts', 6)], enemyHand: [testCard('e1', 'Pikes', 14)],
-            table: [testPair(testCard('x0', 'Hearts', 6)), testPair(testCard('x1', 'Hearts', 7))]
+            drawDeck: [heart('d1', 6)], enemyHand: [pike('e1', 14)],
+            table: [testPair(heart('x0', 6)), testPair(heart('x1', 7))]
         });
         const beatOffer = () => ({
             phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: false,
-            table: [testPair(testCard('a1', 'Pikes', 7))], playerHand: [testCard('p1', 'Pikes', 9)],
-            enemyHand: [testCard('e1', 'Hearts', 7), testCard('e2', 'Pikes', 12)]
+            table: [testPair(pike('a1', 7))], playerHand: [pike('p1', 9)],
+            enemyHand: [heart('e1', 7), pike('e2', 12)]
         });
         const relicBadge = (relicId) => getEl('relics-bar').querySelector(`[data-relic-id="${relicId}"] .relic-badge`);
         const flashed = (relicId) => (relicHighlightUntil[relicId] || 0) > Date.now();
@@ -10898,8 +10897,8 @@ function runGameUnitTests() {
                 assert.equal(battle.enemyHP, START_HP);
                 Object.assign(battle, {
                     phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', table: [],
-                    playerHand: [testCard('p2', 'Pikes', 9), testCard('p3', 'Clubs', 9)],
-                    enemyHand: [testCard('e3', 'Pikes', 12), testCard('e4', 'Clubs', 12)]
+                    playerHand: [pike('p2', 9), club('p3', 9)],
+                    enemyHand: [pike('e3', 12), club('e4', 12)]
                 });
                 window.onPlayerCardClick(0);
                 assert.equal(battle.takeStreak, 2, 'attacking');
@@ -10919,9 +10918,9 @@ function runGameUnitTests() {
             const transferEnemyFloor = ENEMIES.findIndex(e => e.activeAbilities && e.activeAbilities.has('ai_transfer')) + 1;
             assert.isTrue(transferEnemyFloor > 0, 'the enemy ladder has ai_transfer');
             game({ floor: transferEnemyFloor, ...withBattery }, {
-                playerHand: [testCard('p1', 'Pikes', 10), testCard('p2', 'Pikes', 11)],
-                enemyHand: [testCard('e1', 'Clubs', 8)], takeStreak: 2,
-                table: [testPair(testCard('a1', 'Clubs', 8))], phase: BATTLE_PHASES.AI_WAITING, enemyHP: START_HP
+                playerHand: [pike('p1', 10), pike('p2', 11)],
+                enemyHand: [club('e1', 8)], takeStreak: 2,
+                table: [testPair(club('a1', 8))], phase: BATTLE_PHASES.AI_WAITING, enemyHP: START_HP
             }, () => {
                 executeEnemyAI();
                 assert.equal(battle.defender, 'player', 'the opponent did transfer');
@@ -11004,8 +11003,8 @@ function runGameUnitTests() {
 
         it('take_streak: the charge survives a save and load', () => {
             inGameSaved({
-                takeStreak: 3, drawDeck: [testCard('d1', 'Hearts', 6)],
-                playerHand: [testCard('p1', 'Pikes', 9)], enemyHand: [testCard('e1', 'Clubs', 9)]
+                takeStreak: 3, drawDeck: [heart('d1', 6)],
+                playerHand: [pike('p1', 9)], enemyHand: [club('e1', 9)]
             }, () => {
                 saveGameState();
                 battle.takeStreak = 0;
@@ -11151,9 +11150,9 @@ function runGameUnitTests() {
     runner.describe('14. Real battle isolation from the test run (AI timer)', (it, assert) => {
         // A fight whose enemy move is pending, on a bare run.
         const { inGame, makeFixtureBattle } = makeTestFixtures({
-            playerHand: [testCard('p1', 'Pikes', 10)],
-            enemyHand: [testCard('e1', 'Clubs', 8)],
-            table: [testPair(testCard('a1', 'Clubs', 8))],
+            playerHand: [pike('p1', 10)],
+            enemyHand: [club('e1', 8)],
+            table: [testPair(club('a1', 8))],
             defender: 'player', phase: BATTLE_PHASES.AI_WAITING
         }, { deck: [] });
 
@@ -11585,7 +11584,7 @@ function runGameUnitTests() {
             inGameStrict({ phase: BATTLE_PHASES.PLAYER_ATTACK }, () => {
                 assert.isTrue(messageOf(checkFuzzState).includes('no move'), 'an attacker with no card and an empty table must be reported');
             });
-            inGameStrict({ phase: BATTLE_PHASES.PLAYER_ATTACK, playerHand: [testCard('p1', 'Hearts', 9)] }, () => {
+            inGameStrict({ phase: BATTLE_PHASES.PLAYER_ATTACK, playerHand: [heart('p1', 9)] }, () => {
                 assert.isTrue(messageOf(checkFuzzState).includes('cards in play'), 'a card that is not in the deck must be reported');
             });
         });
