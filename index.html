@@ -6445,150 +6445,82 @@ function runGameUnitTests() {
             });
         });
 
-        // cascade_transfer can deal the killing blow, and a transfer is not a
-        // terminal action: the code after the damage must notice the win instead of
-        // carrying on (the reported hang — enemy at 0 HP, win modal replaced by the
-        // opponent-transfers one, no way forward).
-        it('Cascade transfer: enemy transfers the attack and dies from damage - victory, victory modal not covered', () => {
-            inGameStrict({
+        // A relic hook (or a transfer / defense / bito) can deal the killing blow in the middle of a
+        // turn: the code after the damage must notice the win instead of carrying on (the reported
+        // hang: enemy at 0 HP, the win modal replaced by another one, no way forward). Every case
+        // ends the same way: BATTLE_OVER, no AI turn scheduled, the victory modal on screen.
+        const bigEnemyHand = testCards('e', 'Pikes', 10);
+        const victoryFromHook = [ // [title, battle fields, run overrides, act, reward paid once?, extra checks]
+            ['Cascade transfer: enemy transfers the attack and dies from damage', {
                 phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', enemyHP: CASCADE_TRANSFER_DAMAGE,
-                table: [testPair(club('a1', 8))],
-                enemyHand: [heart('e1', 8), pike('e2', 12)]
-            }, () => {
-                clearLocalSave();
-                executeEnemyAction({ type: 'transfer', card: battle.enemyHand[0] });
-                assert.equal(battle.enemyHP, 0);
-                assert.phase(BATTLE_PHASES.BATTLE_OVER, 'battle must stay in BATTLE_OVER, not hand the turn to the player');
-                assert.modalTitle('Победа в Бою!', 'victory modal must not be replaced by the transfer modal');
-                assert.rewardGrantedOnce();
+                table: [testPair(club('a1', 8))], enemyHand: [heart('e1', 8), pike('e2', 12)]
+            }, relicRun('cascade_transfer'), () => executeEnemyAction({ type: 'transfer', card: battle.enemyHand[0] }), true, () => {
                 assert.equal(readSavedGame().battle.phase, BATTLE_PHASES.BATTLE_OVER, 'save holds a victory, not a live round');
                 getEl('msg-btn').click();
                 assert.isFalse(getEl('shop-modal').classList.contains('hidden'), 'shop must open after victory');
-            }, relicRun('cascade_transfer'));
-        });
-
-        it('Cascade transfer: player transfers the attack and finishes the enemy - victory, AI turn not started', () => {
-            inGameStrict({
-                phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', isTransferActive: true, enemyHP: CASCADE_TRANSFER_DAMAGE,
-                table: [testPair(club('a1', 8))],
-                playerHand: [heart('p1', 8), pike('p2', 12)],
-                enemyHand: [heart('e1', 7), pike('e2', 12)]
-            }, () => {
-                clearLocalSave();
-                window.onPlayerCardClick(0);
-                assert.equal(battle.enemyHP, 0);
-                assert.phase(BATTLE_PHASES.BATTLE_OVER, 'victory must not be overwritten by the AI_WAITING phase');
-                assert.aiNotScheduled();
-                assert.modalTitle('Победа в Бою!');
-                assert.rewardGrantedOnce();
-                assert.equal(readSavedGame().battle.phase, BATTLE_PHASES.BATTLE_OVER);
-            }, relicRun('cascade_transfer'));
-        });
-
-        it('transfer_streak: player transfers and the streak hit finishes the enemy - victory, AI turn not started', () => {
-            inGameStrict(transferOfferFields({ enemyHP: TRANSFER_STREAK_DAMAGE_PER_LINK }), () => {
-                clearLocalSave();
-                window.onPlayerCardClick(0);
-                assert.equal(battle.enemyHP, 0);
-                assert.phase(BATTLE_PHASES.BATTLE_OVER, 'victory must not be overwritten by the AI_WAITING phase');
-                assert.aiNotScheduled();
-                assert.modalTitle('Победа в Бою!');
-                assert.rewardGrantedOnce();
-            }, relicRun('transfer_streak'));
-        });
-
-        it('transfer_streak: another hook already won the battle on the same transfer - no second hit, the reward is paid once', () => {
-            inGameStrict(transferOfferFields({ enemyHP: CASCADE_TRANSFER_DAMAGE }), () => {
-                clearLocalSave();
-                window.onPlayerCardClick(0);
-                assert.equal(battle.enemyHP, 0);
-                assert.phase(BATTLE_PHASES.BATTLE_OVER);
-                assert.rewardGrantedOnce();
-            }, relicRun('cascade_transfer', 'transfer_streak'));
-        });
-
-        // Same root cause on the defend path: sharp_suit's hit lands inside
-        // onPlayerCardClick(), which then used to hand the turn to the AI anyway.
-        it('sharp_suit: enemy dies from damage when defended with a trump - victory, AI turn not started', () => {
-            inGameStrict({
+            }],
+            ['Cascade transfer: player transfers the attack and finishes the enemy', transferOfferFields({ enemyHP: CASCADE_TRANSFER_DAMAGE }),
+                relicRun('cascade_transfer'), () => window.onPlayerCardClick(0), true,
+                () => assert.equal(readSavedGame().battle.phase, BATTLE_PHASES.BATTLE_OVER)],
+            ['transfer_streak: player transfers and the streak hit finishes the enemy', transferOfferFields({ enemyHP: TRANSFER_STREAK_DAMAGE_PER_LINK }),
+                relicRun('transfer_streak'), () => window.onPlayerCardClick(0), true],
+            ['transfer_streak: another hook already won on the same transfer - no second hit, the reward is paid once', transferOfferFields({ enemyHP: CASCADE_TRANSFER_DAMAGE }),
+                relicRun('cascade_transfer', 'transfer_streak'), () => window.onPlayerCardClick(0), true],
+            // Same root cause on the defend path: sharp_suit's hit lands inside onPlayerCardClick().
+            ['sharp_suit: enemy dies from damage when defended with a trump', {
                 phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', enemyHP: SHARP_SUIT_DAMAGE,
-                table: [testPair(pike('a1', 7))],
-                playerHand: [heart('p1', 9)]
-            }, () => {
-                clearLocalSave();
-                window.onPlayerCardClick(0);
-                assert.equal(battle.enemyHP, 0);
-                assert.phase(BATTLE_PHASES.BATTLE_OVER, 'victory must not be overwritten by the AI_WAITING phase');
-                assert.aiNotScheduled();
-                assert.modalTitle('Победа в Бою!');
-            }, relicRun('sharp_suit'));
-        });
-
-        // golden_bullet turns artifact gold into damage, so gold payouts became a way to kill
-        // the enemy from three more places: bito, the player's own card play, the enemy's.
-        it('golden_bullet: enemy dies from the bullet after midas_touch gold in bito - victory, reward once, AI turn not started', () => {
-            inGameStrict({
+                table: [testPair(pike('a1', 7))], playerHand: [heart('p1', 9)]
+            }, relicRun('sharp_suit'), () => window.onPlayerCardClick(0), false],
+            // golden_bullet turns artifact gold into damage: bito, the player's own card, the enemy's card.
+            ['golden_bullet: enemy dies from the bullet after midas_touch gold in bito', {
                 phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', enemyHP: GOLDEN_BULLET_DAMAGE,
-                table: [testPair(pike('bx1', 6), pike('bx2', 7))],
-                playerHand: [pike('bx3', 8)]
-            }, () => {
-                clearLocalSave();
-                handleBito();
-                assert.equal(battle.enemyHP, 0);
-                assert.phase(BATTLE_PHASES.BATTLE_OVER, 'victory must not be overwritten by a player or AI turn');
-                assert.aiNotScheduled();
-                assert.modalTitle('Победа в Бою!');
+                table: [testPair(pike('bx1', 6), pike('bx2', 7))], playerHand: [pike('bx3', 8)]
+            }, relicRun('midas_touch', 'golden_bullet'), () => handleBito(), false, () => {
                 assert.equal(run.gold, 15 + MIDAS_TOUCH_GOLD_ON_DEFEND + WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR, 'victory gold is granted exactly once, and the reward itself does not fire the bullet');
-            }, { relics: [{ id: 'midas_touch' }, { id: 'golden_bullet' }] });
-        });
-
-        it('golden_bullet: enemy dies from the bullet for a player six (coin_magnet) - victory, AI turn not started', () => {
-            inGameStrict({
+            }],
+            ['golden_bullet: enemy dies from the bullet for a player six (coin_magnet)', {
                 phase: BATTLE_PHASES.PLAYER_ATTACK, defender: 'enemy', enemyHP: GOLDEN_BULLET_DAMAGE, table: [],
                 playerHand: [pike('p1', 6), club('p2', 9)]
-            }, () => {
-                clearLocalSave();
-                window.onPlayerCardClick(0);
-                assert.equal(battle.enemyHP, 0);
-                assert.phase(BATTLE_PHASES.BATTLE_OVER, 'victory must not be overwritten by the AI_WAITING phase');
-                assert.aiNotScheduled();
-                assert.modalTitle('Победа в Бою!');
-            }, { relics: [{ id: 'coin_magnet' }, { id: 'golden_bullet' }] });
-        });
-
-        it('golden_bullet: enemy dies from the bullet for its OWN six in defense (coin_magnet pays for enemy sixes too) - victory, remaining cards not played', () => {
-            inGameStrict({
+            }, relicRun('coin_magnet', 'golden_bullet'), () => window.onPlayerCardClick(0), false],
+            ['golden_bullet: enemy dies from the bullet for its OWN six in defense - remaining cards not played', {
                 phase: BATTLE_PHASES.RESOLVING, defender: 'enemy', enemyHP: GOLDEN_BULLET_DAMAGE,
                 table: [testPair(pike('a1', 5)), testPair(club('a2', 5))],
                 enemyHand: [pike('e1', 6), club('e2', 6), heart('e3', 12)]
-            }, () => {
-                clearLocalSave();
+            }, relicRun('coin_magnet', 'golden_bullet'), () => {
                 const [first, second] = battle.table;
                 executeEnemyAction({
                     type: 'defend', complete: true,
                     plays: [{ pair: first, card: battle.enemyHand[0] }, { pair: second, card: battle.enemyHand[1] }]
                 });
-                assert.equal(battle.enemyHP, 0);
-                assert.phase(BATTLE_PHASES.BATTLE_OVER);
-                assert.aiNotScheduled();
-                assert.isTrue(second.defend === null, 'after the enemy dies the second defense card is not placed');
-                assert.modalTitle('Победа в Бою!');
-            }, { relics: [{ id: 'coin_magnet' }, { id: 'golden_bullet' }] });
+            }, false, () => assert.isTrue(battle.table[1].defend === null, 'after the enemy dies the second defense card is not placed')],
+            ['golden_bullet: victory reward from damage by another relic does not fire the bullet (no double reward)', {
+                phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', enemyHP: SHARP_SUIT_DAMAGE,
+                table: [testPair(pike('a1', 7))], playerHand: [heart('p1', 9)]
+            }, relicRun('sharp_suit', 'midas_touch', 'golden_bullet'), () => window.onPlayerCardClick(0), true],
+            // If you add a relic hook that calls damageEnemyHP(), add its case here.
+            ['heavy_ballast: enemy dies from the hook at the start of its turn - the AI turn does not continue', {
+                phase: BATTLE_PHASES.AI_WAITING, defender: 'player', enemyHP: 2, enemyHand: bigEnemyHand, table: []
+            }, relicRun('heavy_ballast'), () => executeEnemyAI(), true, () => {
+                assert.equal(battle.table.length, 0, 'enemy attack must not be placed');
+                // Regression: an early exit from executeEnemyAI is allowed only when the hook itself killed the enemy.
+                assert.equal(battle.enemyHand.length, bigEnemyHand.length, 'enemy hand must not change after the early exit');
+            }]
+        ];
+        victoryFromHook.forEach(([title, fields, runOverrides, act, rewardOnce, extra]) => {
+            it(title + ' - victory, AI turn not started', () => {
+                inGameStrict(fields, () => {
+                    clearLocalSave();
+                    act();
+                    assert.equal(battle.enemyHP, 0);
+                    assert.phase(BATTLE_PHASES.BATTLE_OVER, 'victory must not be overwritten by another phase');
+                    assert.aiNotScheduled();
+                    assert.modalTitle('Победа в Бою!', 'victory modal must not be replaced by another one');
+                    if (rewardOnce) assert.rewardGrantedOnce();
+                    if (extra) extra();
+                }, runOverrides);
+            });
         });
 
-        it('golden_bullet: victory reward from damage by another relic does not fire the bullet (no double reward)', () => {
-            inGameStrict({
-                phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player', enemyHP: SHARP_SUIT_DAMAGE,
-                table: [testPair(pike('a1', 7))],
-                playerHand: [heart('p1', 9)]
-            }, () => {
-                clearLocalSave();
-                window.onPlayerCardClick(0);
-                assert.equal(battle.enemyHP, 0);
-                assert.phase(BATTLE_PHASES.BATTLE_OVER);
-                assert.rewardGrantedOnce();
-            }, { relics: [{ id: 'sharp_suit' }, { id: 'midas_touch' }, { id: 'golden_bullet' }] });
-        });
 
         // Structural safety net for future relics: with invariants on (every strict
         // test), a commit that leaves a dead enemy in a live phase throws at once.
@@ -6605,25 +6537,6 @@ function runGameUnitTests() {
                 try { commitBattleState({ render: false }); } catch (err) { message = err.message; }
                 assert.isTrue(message.includes('must be BATTLE_OVER'), 'commit must throw on a dead enemy outside BATTLE_OVER: ' + message);
             });
-        });
-
-        // If you add a relic hook that calls damageEnemyHP(), this fails on purpose.
-        it('heavy_ballast: enemy dies from hook at the start of its turn - victory, AI turn does not continue, victory modal intact', () => {
-            const bigHand = testCards('e', 'Pikes', 10);
-            inGameStrict({
-                phase: BATTLE_PHASES.AI_WAITING, defender: 'player', enemyHP: 2, enemyHand: bigHand, table: []
-            }, () => {
-                clearLocalSave();
-                executeEnemyAI();
-                assert.equal(battle.enemyHP, 0);
-                assert.phase(BATTLE_PHASES.BATTLE_OVER);
-                assert.aiNotScheduled();
-                assert.equal(battle.table.length, 0, 'enemy attack must not be placed');
-                // Regression: an early exit from executeEnemyAI is allowed only when the hook itself killed the enemy.
-                assert.equal(battle.enemyHand.length, bigHand.length, 'enemy hand must not change after the early exit');
-                assert.modalTitle('Победа в Бою!');
-                assert.rewardGrantedOnce();
-            }, relicRun('heavy_ballast'));
         });
 
         it('Cascade transfer: non-lethal damage - transfer proceeds as usual', () => {
