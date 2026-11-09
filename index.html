@@ -1965,7 +1965,7 @@ function resumeFromSave() {
             setBattlePhase(BATTLE_PHASES.BATTLE_OVER);
             commitBattleState({ render: false });
         }
-        showModal(t('modal.battleWon'), t('modal.alreadyWon'), () => {
+        effects.modal('alreadyWon', {}, () => {
             openShop();
         });
         return;
@@ -2538,6 +2538,27 @@ function didEnemyJustDie(enemyHPBefore) {
 }
 
 // ============================================================
+// EFFECTS PORT
+// ------------------------------------------------------------
+// What the game logic wants the player to see or hear. The logic only reports it
+// (a sound kind, a notice kind, a modal kind with its data); how that looks and
+// sounds lives in UI_EFFECTS (MODALS AND POPOVERS), installed at load. Logic
+// never calls audio or showModal directly. Tests can swap `effects` for a recorder.
+//   sound(kind)                 'card' | 'take' | 'win'
+//   notice(kind, data)          a rejection or a heads-up, nothing follows it
+//   modal(kind, data, onClose)  a stop-and-read message; onClose continues the game
+// The default below is the silent port of a headless run: no sound, no notices,
+// and every modal counts as already confirmed.
+// ============================================================
+
+const SILENT_EFFECTS = {
+    sound() {},
+    notice() {},
+    modal(kind, data, onClose) { if (onClose) onClose(); }
+};
+let effects = SILENT_EFFECTS;
+
+// ============================================================
 // BATTLE STATE TRANSITIONS
 // ------------------------------------------------------------
 // What happens when someone acts: bito, take, a card played, the round or the battle
@@ -2596,12 +2617,12 @@ function applyRoundResult(result) {
 function presentRoundResult(outcome) {
     switch (outcome.type) {
         case 'draw':
-            showModal(t('modal.drawTitle'), t('modal.drawText'), () => {
+            effects.modal('draw', {}, () => {
                 startNewRound();
             });
             break;
         case 'player_win':
-            showModal(t('modal.roundWonTitle'), t('modal.roundWonText', { n: outcome.damage }), () => {
+            effects.modal('roundWon', { damage: outcome.damage }, () => {
                 withChangeSource({ kind: 'table' }, () => damageEnemyHP(outcome.damage));
                 if (battle.enemyHP > 0) {
                     startNewRound();
@@ -2610,10 +2631,9 @@ function presentRoundResult(outcome) {
             break;
         case 'enemy_win':
             if (outcome.isDefeated) {
-                presentPlayerDefeat(t('modal.defeatRound', { n: outcome.damage }));
+                presentPlayerDefeat({ reason: 'round', damage: outcome.damage });
             } else {
-                const safetyNote = outcome.savedBySafetyRope ? t('modal.roundLostRope') : "";
-                showModal(t('modal.roundLostTitle'), t('modal.roundLostText', { cards: outcome.cardsLeft, n: outcome.damage, note: safetyNote }), () => {
+                effects.modal('roundLost', { cards: outcome.cardsLeft, damage: outcome.damage, ropeSaved: outcome.savedBySafetyRope }, () => {
                     startNewRound();
                 });
             }
@@ -2623,9 +2643,10 @@ function presentRoundResult(outcome) {
 
 // The run is over: drop the save (no continuing a dead run) and show the
 // defeat modal, which returns to the splash screen.
-function presentPlayerDefeat(text) {
+// `data` says why: { reason: 'round', damage } or { reason: 'hp' }.
+function presentPlayerDefeat(data) {
     clearLocalSave();
-    showModal(t('modal.defeatTitle'), text, () => {
+    effects.modal('defeat', data, () => {
         showSplashScreen();
     });
 }
@@ -2723,7 +2744,7 @@ function handleEnemyTake() {
 
     resolveTurn(() => {
         const outcome = applyEnemyTake();
-        audio.playTakeSound();
+        effects.sound('take');
         return outcome;
     }, presentEnemyTakeOutcome);
 }
@@ -2786,11 +2807,11 @@ function presentPlayerTakeOutcome({ enemyJustDied, isDefeated, savedBySafetyRope
     if (enemyJustDied) return;
 
     if (isDefeated) {
-        presentPlayerDefeat(t('modal.defeatHp'));
+        presentPlayerDefeat({ reason: 'hp' });
         return;
     }
     if (savedBySafetyRope) {
-        showModal(t('modal.ropeTitle'), t('modal.ropeText'));
+        effects.notice('safetyRope');
     }
     if (!checkRoundEnd()) {
         scheduleEnemyAI(AI_TAKE_RESOLVE_DELAY_MS);
@@ -2836,7 +2857,7 @@ function handlePlayerTake() {
     if (!canAcceptPlayerAction() || battle.defender !== 'player') return;
     if (battle.table.length === 0) return;
 
-    audio.playTakeSound();
+    effects.sound('take');
     battle.isTransferActive = false;
 
     // Nothing to throw in: the take resolves right away.
@@ -2881,7 +2902,7 @@ function onEnemyCardPlayed(card) {
 function playPlayerAttackCard(card) {
     playAttackCard(battle.playerHand, card);
     onPlayerCardPlayed(card);
-    audio.playCardSound();
+    effects.sound('card');
     scheduleEnemyAI(AI_STANDARD_DELAY_MS);
 }
 
@@ -2896,13 +2917,13 @@ window.onPlayerCardClick = function(index) {
             playPlayerAttackCard(card);
         } else {
             if (battle.table.length >= maxAllowed) {
-                showModal(t('modal.limitTitle'), t('modal.limitText'));
+                effects.notice('attackLimit');
                 return;
             }
             if (isRankOnTable(card.value)) {
                 playPlayerAttackCard(card);
             } else {
-                showModal(t('modal.badMoveTitle'), t('modal.badMoveText'));
+                effects.notice('badMove');
             }
         }
     } else {
@@ -2910,7 +2931,7 @@ window.onPlayerCardClick = function(index) {
             const requiredRank = battle.table[0].attack.value;
             if (card.value === requiredRank) {
                 if (battle.enemyHand.length < battle.table.length + 1) {
-                    showModal(t('transfer.impossibleTitle'), t('transfer.handSmall'));
+                    effects.notice('transferHandSmall');
                     battle.isTransferActive = false;
                     renderAll();
                     return;
@@ -2922,12 +2943,12 @@ window.onPlayerCardClick = function(index) {
                 triggerCascadeTransfer();
                 // Only the player's own transfers count for transfer_streak (an ai_transfer bounce does not).
                 fireAllHooks('onPlayerTransfer');
-                audio.playCardSound();
+                effects.sound('card');
                 renderAll();
                 scheduleEnemyAI(AI_STANDARD_DELAY_MS);
                 return;
             } else {
-                showModal(t('modal.wrongCardTitle'), t('modal.wrongCardText', { rank: VALUES[requiredRank] }));
+                effects.notice('wrongCard', { rank: requiredRank });
                 return;
             }
         }
@@ -2938,11 +2959,11 @@ window.onPlayerCardClick = function(index) {
                 playDefenseCard(battle.playerHand, undefendedPair, card);
                 onPlayerCardPlayed(card);
                 fireAllHooks('onPlayerBeatCard');
-                audio.playCardSound();
+                effects.sound('card');
 
                 scheduleEnemyAI(AI_QUICK_DELAY_MS);
             } else {
-                showModal(t('modal.cantBeatTitle'), t('modal.cantBeatText'));
+                effects.notice('cantBeat');
             }
         }
     }
@@ -2950,25 +2971,25 @@ window.onPlayerCardClick = function(index) {
 };
 
 // State only: pays out the battle-won gold (and the boss max-HP bonus) and
-// returns the text to show for it.
+// returns what was paid: { gold, bossMaxHP } (bossMaxHP is 0 off a boss floor).
 function grantVictoryRewards() {
     const goldReward = applyEnemyAbilityModifier('modifyVictoryGold', WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR);
     changeGold(goldReward);
 
-    let rewardText = t('modal.reward', { n: goldReward });
+    let bossMaxHP = 0;
     if (getCurrentEnemy().isBoss) {
-        run.maxHP += BOSS_MAX_HP_BONUS;
-        healPlayerHP(BOSS_MAX_HP_BONUS);
-        rewardText += t('modal.rewardBoss', { n: BOSS_MAX_HP_BONUS });
+        bossMaxHP = BOSS_MAX_HP_BONUS;
+        run.maxHP += bossMaxHP;
+        healPlayerHP(bossMaxHP);
     }
-    return rewardText;
+    return { gold: goldReward, bossMaxHP };
 }
 
 // The enemy just hit 0 HP: reward, persist the win as its own phase, show the
 // modal that leads to the shop.
 function winBattle() {
-    audio.playWinSound();
-    const rewardText = grantVictoryRewards();
+    effects.sound('win');
+    const reward = grantVictoryRewards();
 
     // The reward is already in run.gold / run.maxHP, so persist the win as its
     // own phase BEFORE the modal: a save taken from here on (or the one the
@@ -2976,7 +2997,7 @@ function winBattle() {
     // shop pending", never as a live round against a 0-HP enemy.
     setBattlePhase(BATTLE_PHASES.BATTLE_OVER);
     commitBattleState({ render: false });
-    showModal(t('modal.battleWon'), rewardText, () => {
+    effects.modal('battleWon', reward, () => {
         openShop();
     });
 }
@@ -3447,12 +3468,12 @@ function executeEnemyAction(action) {
             onEnemyCardPlayed(action.card);
             battle.defender = 'player';
             triggerCascadeTransfer();
-            audio.playCardSound();
+            effects.sound('card');
             // cascade_transfer may have just killed the enemy: the win modal is
             // already up (its close handler opens the shop). Don't cover it with
             // the transfer modal or hand the turn to the player.
             if (didEnemyJustDie(enemyHPBeforeTransfer)) break;
-            showModal(t('modal.enemyTransferTitle'), t('modal.enemyTransferText', { name: getCurrentEnemy().name }));
+            effects.modal('enemyTransfer', { name: getCurrentEnemy().name });
             finishAIPhase();
             break;
         }
@@ -3464,7 +3485,7 @@ function executeEnemyAction(action) {
             for (const { pair, card } of action.plays) {
                 playDefenseCard(battle.enemyHand, pair, card);
                 onEnemyCardPlayed(card);
-                audio.playCardSound();
+                effects.sound('card');
                 if (didEnemyJustDie(enemyHPBeforeDefense)) return;
             }
             battle.cardsToTake = !action.complete;
@@ -3479,7 +3500,7 @@ function executeEnemyAction(action) {
             battle.enemyHand.sort((a, b) => cardPower(a) - cardPower(b));
             if (playAttackCard(battle.enemyHand, action.card)) {
                 onEnemyCardPlayed(action.card);
-                audio.playCardSound();
+                effects.sound('card');
             }
             finishAIPhase();
             break;
@@ -3487,7 +3508,7 @@ function executeEnemyAction(action) {
         case 'throw':
             playAttackCard(battle.enemyHand, action.card);
             onEnemyCardPlayed(action.card);
-            audio.playCardSound();
+            effects.sound('card');
             finishAIPhase();
             break;
 
@@ -4005,7 +4026,7 @@ function useActiveRelic(id, effectFn) {
     const result = effectFn();
     if (result === false) return;
     highlightRelic(id);
-    audio.playCardSound();
+    effects.sound('card');
     commitBattleState();
     if (result === 'checkRound') checkRoundEnd();
 }
@@ -4712,6 +4733,41 @@ function showConfirm(title, text, onConfirm) {
         cancel: { label: t('btn.cancel'), onClick: () => closeModal() }
     });
 }
+
+// The UI side of the effects port: sounds by kind, and the title and text of every
+// notice and modal the logic can ask for. Installed once at load.
+const UI_EFFECTS = {
+    SOUNDS: { card: 'playCardSound', take: 'playTakeSound', win: 'playWinSound' },
+    // kind -> [title key, text key, (data) => text params]
+    MESSAGES: {
+        attackLimit: ['modal.limitTitle', 'modal.limitText'],
+        badMove: ['modal.badMoveTitle', 'modal.badMoveText'],
+        transferHandSmall: ['transfer.impossibleTitle', 'transfer.handSmall'],
+        wrongCard: ['modal.wrongCardTitle', 'modal.wrongCardText', d => ({ rank: VALUES[d.rank] })],
+        cantBeat: ['modal.cantBeatTitle', 'modal.cantBeatText'],
+        safetyRope: ['modal.ropeTitle', 'modal.ropeText'],
+        draw: ['modal.drawTitle', 'modal.drawText'],
+        roundWon: ['modal.roundWonTitle', 'modal.roundWonText', d => ({ n: d.damage })],
+        roundLost: ['modal.roundLostTitle', 'modal.roundLostText',
+            d => ({ cards: d.cards, n: d.damage, note: d.ropeSaved ? t('modal.roundLostRope') : '' })],
+        alreadyWon: ['modal.battleWon', 'modal.alreadyWon'],
+        enemyTransfer: ['modal.enemyTransferTitle', 'modal.enemyTransferText', d => ({ name: d.name })],
+        defeat: ['modal.defeatTitle'],
+        battleWon: ['modal.battleWon']
+    },
+    title(kind) { return t(this.MESSAGES[kind][0]); },
+    // Defeat and victory texts are assembled from several parts, the rest is one key.
+    text(kind, data = {}) {
+        if (kind === 'defeat') return data.reason === 'round' ? t('modal.defeatRound', { n: data.damage }) : t('modal.defeatHp');
+        if (kind === 'battleWon') return t('modal.reward', { n: data.gold }) + (data.bossMaxHP ? t('modal.rewardBoss', { n: data.bossMaxHP }) : '');
+        const [, textKey, params] = this.MESSAGES[kind];
+        return t(textKey, params ? params(data) : undefined);
+    },
+    sound(kind) { audio[this.SOUNDS[kind]](); },
+    notice(kind, data) { showModal(this.title(kind), this.text(kind, data)); },
+    modal(kind, data, onClose) { showModal(this.title(kind), this.text(kind, data), onClose); }
+};
+effects = UI_EFFECTS;
 
 // ============================================================
 // EVENT BINDINGS
@@ -7344,18 +7400,19 @@ function runGameUnitTests() {
             inGameStrict({ enemyHP: 3 }, () => assert.isFalse(didEnemyJustDie(5)));
         });
 
-        it('grantVictoryRewards(): floor gold; boss - +max HP and heal, text matches', () => {
+        it('grantVictoryRewards(): floor gold; boss - +max HP and heal, returns what was paid', () => {
             inGameStrict({}, () => {
-                const text = grantVictoryRewards();
+                const reward = grantVictoryRewards();
                 assert.equal(run.gold, 5 + WIN_GOLD_BASE + 2 * WIN_GOLD_PER_FLOOR);
-                assert.isTrue(text.includes('+' + (WIN_GOLD_BASE + 2 * WIN_GOLD_PER_FLOOR) + '$'));
+                assert.equal(reward.gold, WIN_GOLD_BASE + 2 * WIN_GOLD_PER_FLOOR);
+                assert.equal(reward.bossMaxHP, 0);
             }, { floor: 2, gold: 5 });
             const bossFloor = ENEMIES.findIndex(e => e.isBoss) + 1;
             inGameStrict({}, () => {
-                const text = grantVictoryRewards();
+                const reward = grantVictoryRewards();
                 assert.equal(run.maxHP, 30 + BOSS_MAX_HP_BONUS);
                 assert.equal(run.playerHP, 20 + BOSS_MAX_HP_BONUS);
-                assert.isTrue(text.includes('максимальному здоровью'));
+                assert.equal(reward.bossMaxHP, BOSS_MAX_HP_BONUS);
             }, { floor: bossFloor, playerHP: 20, maxHP: 30 });
         });
 
@@ -8205,6 +8262,84 @@ function runGameUnitTests() {
         });
     });
 
+    runner.describe('8p. Effects port (the logic reports, UI_EFFECTS shows)', (it, assert) => {
+        const { inGameStrict } = makeTestFixtures({
+            phase: BATTLE_PHASES.PLAYER_DEFENSE, defender: 'player',
+            table: [testPair(pike('a1', 9))],
+            playerHand: [pike('p1', 7), heart('p2', 6)], enemyHand: [heart('e1', 7)],
+            drawDeck: [heart('d1', 6)], trumpCard: heart('t1', 6), enemyHP: 5
+        }, { gold: 0 });
+        // Swaps the port for a recorder (modals are never confirmed) and puts the real one back.
+        const recording = (fn) => {
+            const real = effects, log = [];
+            effects = {
+                sound: (kind) => log.push(['sound', kind]),
+                notice: (kind, data) => log.push(['notice', kind, data]),
+                modal: (kind, data) => log.push(['modal', kind, data])
+            };
+            try { fn(log); } finally { effects = real; }
+        };
+
+        it('A refused move is reported as a notice; no window opens by itself', () => {
+            inGameStrict({}, () => recording((log) => {
+                closeModal();
+                window.onPlayerCardClick(0); // a 7 does not beat a 9 of the same suit
+                assert.equal(JSON.stringify(log), JSON.stringify([['notice', 'cantBeat', undefined]]));
+                assert.isTrue(getEl('msg-box').classList.contains('hidden'), 'logic must not touch the window');
+            }));
+        });
+
+        it('A played card is reported as a sound, a rank in a notice is the raw value', () => {
+            inGameStrict({}, () => recording((log) => {
+                window.onPlayerCardClick(1); // the trump beats the attack
+                assert.equal(JSON.stringify(log), JSON.stringify([['sound', 'card']]));
+            }));
+            inGameStrict({ isTransferActive: true }, () => recording((log) => {
+                window.onPlayerCardClick(0); // transfer needs the rank of the attack
+                assert.equal(JSON.stringify(log), JSON.stringify([['notice', 'wrongCard', { rank: 9 }]]));
+            }));
+        });
+
+        it('Victory is reported as a sound and a modal with the reward paid; the shop waits for the modal to close', () => {
+            inGameStrict({}, () => recording((log) => {
+                damageEnemyHP(999);
+                assert.equal(JSON.stringify(log), JSON.stringify([
+                    ['sound', 'win'], ['modal', 'battleWon', { gold: WIN_GOLD_BASE + WIN_GOLD_PER_FLOOR, bossMaxHP: 0 }]
+                ]));
+                assert.isTrue(getEl('shop-modal').classList.contains('hidden'), 'shop opens only from the modal close handler');
+            }));
+        });
+
+        it('UI_EFFECTS: every kind has real texts (a typo in a key would show the key itself)', () => {
+            for (const [kind, [titleKey, textKey]] of Object.entries(UI_EFFECTS.MESSAGES)) {
+                assert.isTrue(t(titleKey) !== titleKey, kind + ': no title for ' + titleKey);
+                if (textKey) assert.isTrue(t(textKey) !== textKey, kind + ': no text for ' + textKey);
+            }
+            for (const kind of Object.keys(UI_EFFECTS.SOUNDS)) assert.equal(typeof audio[UI_EFFECTS.SOUNDS[kind]], 'function');
+        });
+
+        it('UI_EFFECTS: texts are assembled from the data (reward, boss bonus, defeat reason, card rank)', () => {
+            assert.isTrue(UI_EFFECTS.text('battleWon', { gold: 7, bossMaxHP: 0 }).includes('+7$'));
+            assert.isFalse(UI_EFFECTS.text('battleWon', { gold: 7, bossMaxHP: 0 }).includes('максимальному здоровью'));
+            assert.isTrue(UI_EFFECTS.text('battleWon', { gold: 7, bossMaxHP: 3 }).includes('максимальному здоровью'));
+            assert.equal(UI_EFFECTS.text('defeat', { reason: 'hp' }), t('modal.defeatHp'));
+            assert.equal(UI_EFFECTS.text('defeat', { reason: 'round', damage: 4 }), t('modal.defeatRound', { n: 4 }));
+            assert.isTrue(UI_EFFECTS.text('wrongCard', { rank: 8 }).includes(String(VALUES[8])));
+            assert.isTrue(UI_EFFECTS.text('roundLost', { cards: 2, damage: 3, ropeSaved: true }).includes(t('modal.roundLostRope')));
+            assert.isFalse(UI_EFFECTS.text('roundLost', { cards: 2, damage: 3, ropeSaved: false }).includes(t('modal.roundLostRope')));
+        });
+
+        it('SILENT_EFFECTS (headless run): no sound, no notices, every modal counts as confirmed', () => {
+            let closed = 0;
+            SILENT_EFFECTS.sound('card');
+            SILENT_EFFECTS.notice('badMove');
+            SILENT_EFFECTS.modal('draw', {}, () => closed++);
+            SILENT_EFFECTS.modal('draw', {});
+            assert.equal(closed, 1);
+        });
+    });
+
+
     runner.describe('9. Shop and player health', (it, assert) => {
         // Strict mode also closes the shop modal after each test.
         const { inGameStrict: game } = makeTestFixtures();
@@ -8894,11 +9029,11 @@ function runGameUnitTests() {
         it('pickpocket: victory reward is reduced by PICKPOCKET_REWARD_CUT (rounded in the player favor)', () => {
             inFight('pickpocket', {}, { gold: 0 }, () => {
                 const base = WIN_GOLD_BASE + run.floor * WIN_GOLD_PER_FLOOR;
-                const text = grantVictoryRewards();
+                const reward = grantVictoryRewards();
                 const expected = base - Math.floor(base * PICKPOCKET_REWARD_CUT);
                 assert.equal(run.gold, expected);
                 assert.isTrue(expected < base && expected > 0);
-                assert.isTrue(text.includes(`+${expected}$`), 'reward text holds the final amount');
+                assert.equal(reward.gold, expected, 'the reported reward is the final amount');
             });
         });
 
