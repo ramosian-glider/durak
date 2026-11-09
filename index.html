@@ -762,63 +762,6 @@ const RARITY_DROP_WEIGHTS = { [RARITY.COMMON]: 0.6, [RARITY.UNCOMMON]: 0.3, [RAR
 const RARITY_LABELS = {};
 Object.values(RARITY).forEach(tier => Object.defineProperty(RARITY_LABELS, tier, { get: () => t('rarity.' + tier), enumerable: true }));
 
-const ALL_RELICS = [
-    { id: "ace_sleeve", rarity: RARITY.RARE, icon: "🃏", price: 12 },
-    { id: "midas_touch", rarity: RARITY.UNCOMMON, icon: "🪙", price: 10 },
-    { id: "mirror_ring", rarity: RARITY.RARE, icon: "💍", price: 14 },
-    { id: "cheat_eye", rarity: RARITY.COMMON, icon: "👁️", price: 8 },
-    { id: "pocket_discard", rarity: RARITY.COMMON, icon: "✂️", price: 7 },
-    { id: "spam_mail", rarity: RARITY.COMMON, icon: "✉️", price: 9 },
-    { id: "heavy_ballast", rarity: RARITY.COMMON, icon: "⚓", price: 13 },
-    { id: "ballast_drop", rarity: RARITY.RARE, icon: "🪂", price: 10 },
-    { id: "coin_magnet", rarity: RARITY.COMMON, icon: "🧲", price: 8 },
-    { id: "safety_rope", rarity: RARITY.RARE, icon: "🪢", price: 18 },
-    { id: "jester_discard", rarity: RARITY.COMMON, icon: "🤡", price: 9 },
-    { id: "cascade_transfer", rarity: RARITY.RARE, icon: "🎱", price: 11 },
-    { id: "sleight_of_hand", rarity: RARITY.UNCOMMON, icon: "🪄", price: 12 },
-    { id: "salted_wound", rarity: RARITY.UNCOMMON, icon: "🧂", price: 10 },
-    { id: "sharp_suit", rarity: RARITY.UNCOMMON, icon: "🗡️", price: 9 },
-    { id: "moonshine_flask", rarity: RARITY.UNCOMMON, icon: "🍶", price: 12 },
-    { id: "golden_bullet", rarity: RARITY.UNCOMMON, icon: "🔫", price: 8 },
-    { id: "transfer_streak", rarity: RARITY.UNCOMMON, icon: "🌊", price: 10 },
-    { id: "defense_streak", rarity: RARITY.UNCOMMON, icon: "🦏", price: 10 },
-    { id: "take_streak", rarity: RARITY.UNCOMMON, icon: "🔋", price: 10 }
-];
-
-// Numbers that are interpolated into a relic description (the text itself is in I18N).
-const RELIC_DESC_PARAMS = {
-    ace_sleeve: () => ({ n: ACE_SLEEVE_BONUS_DAMAGE }),
-    midas_touch: () => ({ n: MIDAS_TOUCH_GOLD_ON_DEFEND }),
-    mirror_ring: () => ({ n: TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER }),
-    sharp_suit: () => ({ n: SHARP_SUIT_DAMAGE }),
-    moonshine_flask: () => ({ n: FLASK_HEAL_ON_DEFEND }),
-    golden_bullet: () => ({ n: GOLDEN_BULLET_DAMAGE }),
-    heavy_ballast: () => ({ n: HEAVY_BALLAST_DAMAGE_PER_CARD, limit: HAND_SIZE, max: ENEMY_HAND_EXCESS_CAP * HEAVY_BALLAST_DAMAGE_PER_CARD }),
-    salted_wound: () => ({ n: SALTED_WOUND_DAMAGE_PER_CARD, limit: HAND_SIZE, max: ENEMY_HAND_EXCESS_CAP * SALTED_WOUND_DAMAGE_PER_CARD }),
-    ballast_drop: () => ({ n: BALLAST_DROP_DISCARD_COUNT }),
-    coin_magnet: () => ({ n: COIN_MAGNET_GOLD_PER_SIX }),
-    cascade_transfer: () => ({ n: CASCADE_TRANSFER_DAMAGE }),
-    transfer_streak: () => ({ n: TRANSFER_STREAK_DAMAGE_PER_LINK }),
-    take_streak: () => ({ transfer: TAKE_STREAK_TRANSFER_DAMAGE_PER_TAKE, defense: TAKE_STREAK_DEFENSE_DAMAGE_PER_TAKE, max: TAKE_STREAK_MAX_CHARGE })
-};
-
-// Relic text is looked up by id, so a relic saved in one language is shown in the current one.
-function getRelicName(relic) {
-    return t(`relic.${relic.id}.name`);
-}
-
-function getRelicDesc(relic) {
-    const params = RELIC_DESC_PARAMS[relic.id];
-    return t(`relic.${relic.id}.desc`, params ? params() : undefined);
-}
-
-// name/desc stay readable on the catalogue entries but are not enumerable data, so copying a
-// relic into a run (and into its save) never freezes a language into it.
-ALL_RELICS.forEach(relic => Object.defineProperties(relic, {
-    name: { get: () => getRelicName(relic) },
-    desc: { get: () => getRelicDesc(relic) }
-}));
-
 // --- Enemy ladder ------------------------------------------------------------
 // Everything you need to edit when adding/removing/swapping enemies lives in
 // the two lists below. Floor numbers, filler HP between bosses, and whether a
@@ -978,12 +921,6 @@ const TRANSFER_BLOCK_MESSAGES = {
     enemy_hand_too_small: ['transfer.impossibleTitle', 'transfer.handSmall']
 };
 
-// The active (button-triggered) relic abilities. Each has an
-// isReady/label/onUse entry in RELIC_EFFECTS — this list is what makes
-// showRelicPopover() decide whether to offer an activate button at all,
-// and what makes a relic's relics-bar slot get the "ready to tap"
-// .relic-ready-glow ring.
-const ACTIVE_RELIC_IDS = ['pocket_discard', 'jester_discard', 'sleight_of_hand'];
 
 // ============================================================
 // DOM HELPERS
@@ -3541,7 +3478,7 @@ function executeEnemyAI() {
 // ============================================================
 // RELICS
 // ------------------------------------------------------------
-// The relic registry (RELIC_EFFECTS), the single hook walk behind fireHook/fireAllHooks/
+// The relic definitions (RELIC_DEFS and what is derived from it), the single hook walk behind fireHook/fireAllHooks/
 // fireHookSum/queryRelicHook, and the active relic abilities the player triggers.
 // ============================================================
 
@@ -3549,343 +3486,446 @@ function hasRelic(relicId) {
     return run.relics.some(r => r.id === relicId);
 }
 
-// --- Relic effect registry (pilot) --------------------------------------
-// Each relic defines a handler per hook name, and game code calls
-// fireHook()/fireAllHooks()/fireHookSum() at one canonical point rather than
-// re-checking hasRelic() at every call site. All relics are registered here.
-//
-// pocket_discard, jester_discard, and sleight_of_hand are *active*
-// (button-triggered) relics — see isReady/onUse below. These don't fire
-// off a game event the way the hooks above do, so they aren't dispatched
-// via fireHook(); instead showRelicPopover() and the relic's own
-// use*() function both call isReady() directly, so the availability
-// condition is defined once.
-const RELIC_EFFECTS = {
-    cheat_eye: {
-        // Passive: consulted by renderAll() via queryRelicHook() (no flash), never
-        // fired from game logic. Returns the enemy card to show face-up — their
-        // strongest (by cardPower, so any trump outranks any plain card) — or
-        // null. The weakest card used to be shown, but that only mattered in the
-        // endgame; the top card tells the player what the enemy can still beat
-        // with from the very first round.
-        getRevealedEnemyCard() {
-            if (battle.enemyHand.length === 0) return null;
-            return battle.enemyHand.reduce((maxCard, currentCard) => {
-                return cardPower(currentCard) > cardPower(maxCard) ? currentCard : maxCard;
-            }, battle.enemyHand[0]);
+// --- Relic definitions ----------------------------------------------------
+// One entry per relic: everything about it in a single place.
+//   id, rarity, icon, price   the catalogue data (rarity only changes how often it
+//                             shows up in the shop draft, see RARITY)
+//   descParams                the numbers interpolated into its description (the text
+//                             itself is in I18N under relic.<id>.name / .desc)
+//   effects                   a handler per hook name; game code calls
+//                             fireHook()/fireAllHooks()/fireHookSum() at one canonical
+//                             point rather than re-checking hasRelic() at every call site.
+//                             Active (button-triggered) relics add isReady/label/onUse,
+//                             which showRelicPopover() and the relic's own use*() function
+//                             both read, so the availability condition is defined once.
+// The lists below the table (ALL_RELICS, RELIC_EFFECTS, RELIC_DESC_PARAMS,
+// ACTIVE_RELIC_IDS) are derived from it. To add a relic: one entry here, the numbers it
+// uses in CONSTANTS, its name and description in I18N (ru and en).
+const RELIC_DEFS = [
+    {
+        id: 'ace_sleeve', rarity: RARITY.RARE, icon: '🃏', price: 12,
+        descParams: () => ({ n: ACE_SLEEVE_BONUS_DAMAGE }),
+        effects: {
+            // Called from handleEnemyTake() via fireHookSum, folded into the
+            // same single `damage` total as salted_wound. A flat modifier:
+            // it returns its bonus rather than calling damageEnemyHP itself,
+            // so it can't trigger a second "enemy defeated" off a dead enemy.
+            onEnemyTookCards() {
+                return ACE_SLEEVE_BONUS_DAMAGE;
+            }
         }
     },
-    safety_rope: {
-        // Called from applyPlayerDamage() only when the hit would be lethal.
-        // Consumes the relic (removes it from run.relics) so it visibly
-        // disappears from the relic bar once spent, rather than lingering
-        // as an inert slot. Returns true if this relic intercepted the kill.
-        onLethalDamage() {
-            const idx = run.relics.findIndex(r => r.id === 'safety_rope');
-            if (idx === -1) return false;
-            run.relics.splice(idx, 1);
-            run.playerHP = 1;
-            announceChange('playerHP', 1);
-            discardTable();
-            return true;
-        }
-    },
-    coin_magnet: {
-        // Called from onPlayerCardPlayed() / onEnemyCardPlayed() for every card
-        // either side plays (attack, throw-in, transfer, or defend). The hook takes
-        // no "who played it" argument on purpose: this relic doesn't care.
-        // Additive — doesn't intercept anything, so it's dispatched via
-        // fireAllHooks() rather than fireHook().
-        onCardPlayed(card) {
-            if (card.value === 6) {
-                changeGold(COIN_MAGNET_GOLD_PER_SIX);
+    {
+        id: 'midas_touch', rarity: RARITY.UNCOMMON, icon: '🪙', price: 10,
+        descParams: () => ({ n: MIDAS_TOUCH_GOLD_ON_DEFEND }),
+        effects: {
+            // Called from handleBito() when the PLAYER is the defender and
+            // the round ends with every attack beaten (the player pressed
+            // the player pressed bito / the AI called bito; taking cards goes through
+            // handlePlayerTake() and never reaches this hook). Fires once
+            // per round, not once per beaten card — so it is deliberately
+            // NOT wired to onPlayerDefend, which fires per card. Additive,
+            // so dispatched via fireAllHooks().
+            onDefenseSucceeded() {
+                changeGold(MIDAS_TOUCH_GOLD_ON_DEFEND);
                 return true;
             }
         }
     },
-    sharp_suit: {
-        // Called from onPlayerCardPlayed() for every card the PLAYER plays
-        // (attack, throw-in, transfer or defend) — deliberately not from the shared
-        // onCardPlayed hook, which also fires for the enemy's cards. It used to
-        // trigger only when defending with a trump, which was too rare to matter.
-        onPlayerCardPlayed(card) {
-            if (card.suit === battle.trumpSuit) {
-                damageEnemyHP(SHARP_SUIT_DAMAGE);
+    {
+        id: 'mirror_ring', rarity: RARITY.RARE, icon: '💍', price: 14,
+        descParams: () => ({ n: TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER }),
+        effects: {
+            // Called from handlePlayerTake() via fireAllHooks with
+            // { cardsTakenCount }. Reflects damage based on that raw count,
+            // NOT the already-scaled selfDamage: reflecting the scaled value
+            // let the enemy's own level/double_penalty multiplier compound
+            // with this relic's own MIRROR_RING_MULTIPLIER, snowballing far
+            // past the intended damage. The result is the same per-card
+            // baseline the enemy takes when it takes cards itself (scaled
+            // only by MIRROR_RING_MULTIPLIER). Dispatched via fireAllHooks (not fireHook):
+            // it's a direct damage source, so another onPlayerTookCards owner
+            // shouldn't be skipped just because this one fired.
+            onPlayerTookCards({ cardsTakenCount }) {
+                damageEnemyHP(cardsTakenCount * TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER);
+                return cardsTakenCount > 0;
+            }
+        }
+    },
+    {
+        id: 'cheat_eye', rarity: RARITY.COMMON, icon: '👁️', price: 8,
+        effects: {
+            // Passive: consulted by renderAll() via queryRelicHook() (no flash), never
+            // fired from game logic. Returns the enemy card to show face-up — their
+            // strongest (by cardPower, so any trump outranks any plain card) — or
+            // null. The weakest card used to be shown, but that only mattered in the
+            // endgame; the top card tells the player what the enemy can still beat
+            // with from the very first round.
+            getRevealedEnemyCard() {
+                if (battle.enemyHand.length === 0) return null;
+                return battle.enemyHand.reduce((maxCard, currentCard) => {
+                    return cardPower(currentCard) > cardPower(maxCard) ? currentCard : maxCard;
+                }, battle.enemyHand[0]);
+            }
+        }
+    },
+    {
+        id: 'pocket_discard', rarity: RARITY.COMMON, icon: '✂️', price: 7,
+        effects: {
+            // Once per round, permanently discard a 6 or 7 from hand. Not fired
+            // from a game-event call site like the hooks above — it's a
+            // player-triggered ability rendered as a button by
+            // showRelicPopover() and executed by usePocketDiscard(). Both of
+            // those call isReady(), so the "can this fire right now" condition
+            // lives in exactly one place instead of being copy-pasted between
+            // the render check and the click-handler guard.
+            //
+            // Restricted to the player's own attacking turn (defender ===
+            // 'enemy'): using it while the player is defending against an
+            // enemy attack (defender === 'player') is deliberately disallowed,
+            // so the player can't shed a card mid-defense.
+            isReady() {
+                return !battle.pocketDiscardUsedThisRound && canAcceptPlayerAction()
+                    && battle.defender === 'enemy'
+                    && battle.playerHand.some(isPocketDiscardCard);
+            },
+            get label() { return t('relic.pocket_discard.action'); },
+            onUse: () => usePocketDiscard()
+        }
+    },
+    {
+        id: 'spam_mail', rarity: RARITY.COMMON, icon: '✉️', price: 9,
+        effects: {
+            // Called from handleEnemyTake() via fireAllHooks, right after the
+            // table cards are moved into the enemy's hand and BEFORE the take
+            // damage is computed: salted_wound (onEnemyTookCards) reads
+            // battle.enemyHand.length, so the extra card must already be in the
+            // hand by then. A separate hook from onEnemyTookCards on purpose —
+            // that one is a numeric-sum hook fired after this point. No-op when
+            // the draw deck is empty. Dispatched via fireAllHooks: a pure
+            // side effect on the hand, nothing to intercept or sum.
+            onEnemyCollectedTable() {
+                if (dealCard(battle.enemyHand) !== null) {
+                    return true;
+                }
+            }
+        }
+    },
+    {
+        id: 'heavy_ballast', rarity: RARITY.COMMON, icon: '⚓', price: 13,
+        descParams: () => ({ n: HEAVY_BALLAST_DAMAGE_PER_CARD, limit: HAND_SIZE, max: ENEMY_HAND_EXCESS_CAP * HEAVY_BALLAST_DAMAGE_PER_CARD }),
+        effects: {
+            // Fired once at the start of the enemy's attacking turn (from
+            // executeEnemyAI's "enemy is attacker" branch), not on every
+            // recursive executeEnemyAI() call within that turn. Guarded via
+            // battle.heavyBallastAppliedThisTurn, reset by
+            // resetTurnScopedFlags() — same turn-scoped shape as
+            // cascade_transfer's guard, and dispatched via fireAllHooks for
+            // the same reason: the guard is this relic's own concern, not a
+            // reason to skip some future second onEnemyTurnStart owner.
+            onEnemyTurnStart() {
+                if (battle.heavyBallastAppliedThisTurn) return;
+                battle.heavyBallastAppliedThisTurn = true;
+                const excess = getEnemyDamageExcess(battle.enemyHand.length);
+                if (excess > 0) {
+                    damageEnemyHP(excess * HEAVY_BALLAST_DAMAGE_PER_CARD);
+                    return true;
+                }
+            }
+        }
+    },
+    {
+        id: 'ballast_drop', rarity: RARITY.RARE, icon: '🪂', price: 10,
+        descParams: () => ({ n: BALLAST_DROP_DISCARD_COUNT }),
+        effects: {
+            // Called from handlePlayerTake() via fireAllHooks, after the cards
+            // from the table are already in the player's hand and only if the
+            // take did NOT just kill the enemy (victory takes priority over the
+            // take's own consequences). Deliberately a separate hook from
+            // onPlayerTookCards: that one fires BEFORE the enemy-death check, so
+            // a discard there would hit the hand of a player who already won.
+            // Fires before applyPlayerDamage().
+            // Dispatched via fireAllHooks: a pure side effect on the
+            // hand, nothing to intercept or sum.
+            onPlayerTakePenalty({ cardsTakenCount }) {
+                if (cardsTakenCount < BALLAST_DROP_DISCARD_COUNT) return;
+                discardLowestNonTrumpCards(battle.playerHand, BALLAST_DROP_DISCARD_COUNT);
                 return true;
             }
         }
     },
-    moonshine_flask: {
-        // Same trigger as midas_touch: handleBito() with the player as the defender
-        // and every attack beaten, once per round. Heals through healPlayerHP(), so
-        // it never exceeds max HP; it only flashes when HP was actually restored.
-        onDefenseSucceeded() {
-            return healPlayerHP(FLASK_HEAL_ON_DEFEND) > 0;
+    {
+        id: 'coin_magnet', rarity: RARITY.COMMON, icon: '🧲', price: 8,
+        descParams: () => ({ n: COIN_MAGNET_GOLD_PER_SIX }),
+        effects: {
+            // Called from onPlayerCardPlayed() / onEnemyCardPlayed() for every card
+            // either side plays (attack, throw-in, transfer, or defend). The hook takes
+            // no "who played it" argument on purpose: this relic doesn't care.
+            // Additive — doesn't intercept anything, so it's dispatched via
+            // fireAllHooks() rather than fireHook().
+            onCardPlayed(card) {
+                if (card.value === 6) {
+                    changeGold(COIN_MAGNET_GOLD_PER_SIX);
+                    return true;
+                }
+            }
         }
     },
-    golden_bullet: {
-        // Fired from changeGold() when an ARTIFACT (midas_touch, coin_magnet) just paid
-        // the player gold; the victory reward, shop actions and enemy abilities do
-        // not count. A direct damage source, so it can kill the enemy in the middle of
-        // another handler's action (handleBito, an enemy card play): those call sites
-        // check didEnemyJustDie().
-        onGoldGained() {
-            damageEnemyHP(GOLDEN_BULLET_DAMAGE);
-            return true;
-        }
-    },
-    midas_touch: {
-        // Called from handleBito() when the PLAYER is the defender and
-        // the round ends with every attack beaten (the player pressed
-        // the player pressed bito / the AI called bito; taking cards goes through
-        // handlePlayerTake() and never reaches this hook). Fires once
-        // per round, not once per beaten card — so it is deliberately
-        // NOT wired to onPlayerDefend, which fires per card. Additive,
-        // so dispatched via fireAllHooks().
-        onDefenseSucceeded() {
-            changeGold(MIDAS_TOUCH_GOLD_ON_DEFEND);
-            return true;
-        }
-    },
-    cascade_transfer: {
-        // Called from triggerCascadeTransfer(), fired whenever a transfer
-        // happens (player-initiated, or bounced back by the ai_transfer
-        // boss ability). Guarded per-turn via
-        // battle.cascadeTransferUsedThisTurn, which resetTurnScopedFlags()
-        // clears when the turn passes — unlike safety_rope, this recharges
-        // every turn rather than being consumed for the whole run, so the
-        // guard lives on battle (turn-scoped state), not run.relics.
-        // Dispatched via fireAllHooks (not fireHook): the guard is this
-        // relic's own concern, and a future second onTransfer owner
-        // shouldn't be silently skipped just because this one already
-        // fired its charge this turn.
-        onTransfer() {
-            if (battle.cascadeTransferUsedThisTurn) return;
-            battle.cascadeTransferUsedThisTurn = true;
-            damageEnemyHP(CASCADE_TRANSFER_DAMAGE);
-            return true;
-        }
-    },
-    transfer_streak: {
-        // The streak (battle.transferStreak) is the number of transfers the PLAYER made in a
-        // row this battle. It grows on onPlayerTransfer (an opponent's ai_transfer does not
-        // count) and breaks when the player beats a card (onPlayerBeatCard, per card) or
-        // takes the table (onPlayerTookCards). Attacking and throwing in neither grow nor
-        // break it. startFloorBattle() zeroes it, so a streak never outlives its battle.
-        onPlayerTransfer() {
-            battle.transferStreak++;
-            // An earlier hook on this very transfer (sharp_suit, cascade_transfer) may have
-            // already won the battle: a second hit would pay the victory out twice.
-            if (battle.phase === BATTLE_PHASES.BATTLE_OVER) return;
-            damageEnemyHP(TRANSFER_STREAK_DAMAGE_PER_LINK * battle.transferStreak);
-            return true;
-        },
-        // Both reset hooks return true only when there was a streak to lose, so the
-        // artifact flashes exactly when the player sees the counter vanish.
-        onPlayerBeatCard() {
-            return resetTransferStreak();
-        },
-        onPlayerTookCards() {
-            return resetTransferStreak();
-        },
-        // Passive: the small number drawn over the icon (renderRelicSlots); 0 = no badge.
-        getBadge() {
-            return battle.transferStreak;
-        }
-    },
-    defense_streak: {
-        // The streak (battle.defenseStreak) is the number of rounds the PLAYER defended successfully
-        // in a row this battle. It grows on onDefenseSucceeded (once per round, not per beaten card)
-        // and ends when the player transfers (onPlayerTransfer) or takes the table. A take spends it:
-        // that many of the taken cards deal no self-damage (getTakeCardDiscount, read in
-        // applyPlayerTake() before anything resets), then onPlayerTookCards clears it. Attacking and
-        // throwing in neither grow nor break it. startFloorBattle() zeroes it.
-        onDefenseSucceeded() {
-            battle.defenseStreak++;
-            return true;
-        },
-        onPlayerTransfer() {
-            return resetDefenseStreak();
-        },
-        // Only counts cards that were really taken, so the artifact flashes exactly when it saved some.
-        getTakeCardDiscount({ cardsTakenCount }) {
-            return Math.min(battle.defenseStreak, cardsTakenCount);
-        },
-        onPlayerTookCards() {
-            return resetDefenseStreak();
-        },
-        getBadge() {
-            return battle.defenseStreak;
-        }
-    },
-    take_streak: {
-        // The charge (battle.takeStreak) is the number of takes in a row that cost the PLAYER HP
-        // this battle, up to TAKE_STREAK_MAX_CHARGE. A take adds 1 (onPlayerTakeDamaged, fired after
-        // the damage landed, so a free take adds nothing) and deals nothing by itself.
-        // The first transfer or successful defense after it spends the whole charge as a hit of N
-        // times the per-take damage. Attacking, throwing in and beating single cards leave it alone.
-        // startFloorBattle() zeroes it, so a charge never outlives its battle.
-        onPlayerTakeDamaged() {
-            if (battle.takeStreak >= TAKE_STREAK_MAX_CHARGE) return false;
-            battle.takeStreak++;
-            return true;
-        },
-        onPlayerTransfer() {
-            return dischargeTakeStreak(TAKE_STREAK_TRANSFER_DAMAGE_PER_TAKE);
-        },
-        onDefenseSucceeded() {
-            return dischargeTakeStreak(TAKE_STREAK_DEFENSE_DAMAGE_PER_TAKE);
-        },
-        getBadge() {
-            return battle.takeStreak;
-        }
-    },
-    heavy_ballast: {
-        // Fired once at the start of the enemy's attacking turn (from
-        // executeEnemyAI's "enemy is attacker" branch), not on every
-        // recursive executeEnemyAI() call within that turn. Guarded via
-        // battle.heavyBallastAppliedThisTurn, reset by
-        // resetTurnScopedFlags() — same turn-scoped shape as
-        // cascade_transfer's guard, and dispatched via fireAllHooks for
-        // the same reason: the guard is this relic's own concern, not a
-        // reason to skip some future second onEnemyTurnStart owner.
-        onEnemyTurnStart() {
-            if (battle.heavyBallastAppliedThisTurn) return;
-            battle.heavyBallastAppliedThisTurn = true;
-            const excess = getEnemyDamageExcess(battle.enemyHand.length);
-            if (excess > 0) {
-                damageEnemyHP(excess * HEAVY_BALLAST_DAMAGE_PER_CARD);
+    {
+        id: 'safety_rope', rarity: RARITY.RARE, icon: '🪢', price: 18,
+        effects: {
+            // Called from applyPlayerDamage() only when the hit would be lethal.
+            // Consumes the relic (removes it from run.relics) so it visibly
+            // disappears from the relic bar once spent, rather than lingering
+            // as an inert slot. Returns true if this relic intercepted the kill.
+            onLethalDamage() {
+                const idx = run.relics.findIndex(r => r.id === 'safety_rope');
+                if (idx === -1) return false;
+                run.relics.splice(idx, 1);
+                run.playerHP = 1;
+                announceChange('playerHP', 1);
+                discardTable();
                 return true;
             }
         }
     },
-    ace_sleeve: {
-        // Called from handleEnemyTake() via fireHookSum, folded into the
-        // same single `damage` total as salted_wound. A flat modifier:
-        // it returns its bonus rather than calling damageEnemyHP itself,
-        // so it can't trigger a second "enemy defeated" off a dead enemy.
-        onEnemyTookCards() {
-            return ACE_SLEEVE_BONUS_DAMAGE;
+    {
+        id: 'jester_discard', rarity: RARITY.COMMON, icon: '🤡', price: 9,
+        effects: {
+            // Once per battle, on the player's own attacking turn with an
+            // empty table, discard the whole hand and redraw the same number of
+            // cards. Same active-ability shape as pocket_discard above.
+            //
+            // Requires the draw deck to hold at least a full hand's worth of
+            // cards: a partial redraw could leave the player with fewer cards than
+            // they discarded (or, with an empty deck, none at all) — a downgrade
+            // dressed up as a reshuffle. Below this threshold the ability just isn't
+            // offered.
+            isReady() {
+                return !battle.jesterDiscardUsedThisBattle && canAcceptPlayerAction()
+                    && battle.defender === 'enemy' && battle.table.length === 0
+                    && battle.drawDeck.length >= battle.playerHand.length;
+            },
+            get label() { return t('relic.jester_discard.action'); },
+            onUse: () => useJesterDiscard()
         }
     },
-    mirror_ring: {
-        // Called from handlePlayerTake() via fireAllHooks with
-        // { cardsTakenCount }. Reflects damage based on that raw count,
-        // NOT the already-scaled selfDamage: reflecting the scaled value
-        // let the enemy's own level/double_penalty multiplier compound
-        // with this relic's own MIRROR_RING_MULTIPLIER, snowballing far
-        // past the intended damage. The result is the same per-card
-        // baseline the enemy takes when it takes cards itself (scaled
-        // only by MIRROR_RING_MULTIPLIER). Dispatched via fireAllHooks (not fireHook):
-        // it's a direct damage source, so another onPlayerTookCards owner
-        // shouldn't be skipped just because this one fired.
-        onPlayerTookCards({ cardsTakenCount }) {
-            damageEnemyHP(cardsTakenCount * TAKE_DAMAGE_PER_CARD * MIRROR_RING_MULTIPLIER);
-            return cardsTakenCount > 0;
-        }
-    },
-    salted_wound: {
-        // Called from handleEnemyTake() via fireHookSum, folded into the
-        // single `damage` total that call site's own one damageEnemyHP()
-        // call applies. Same excess-hand formula as heavy_ballast, but a
-        // pure modifier here rather than a direct damageEnemyHP call — it
-        // must not cause its own separate HP reduction (see fireHookSum's
-        // comment for why that would be unsafe).
-        onEnemyTookCards() {
-            return getEnemyDamageExcess(battle.enemyHand.length) * SALTED_WOUND_DAMAGE_PER_CARD;
-        }
-    },
-    spam_mail: {
-        // Called from handleEnemyTake() via fireAllHooks, right after the
-        // table cards are moved into the enemy's hand and BEFORE the take
-        // damage is computed: salted_wound (onEnemyTookCards) reads
-        // battle.enemyHand.length, so the extra card must already be in the
-        // hand by then. A separate hook from onEnemyTookCards on purpose —
-        // that one is a numeric-sum hook fired after this point. No-op when
-        // the draw deck is empty. Dispatched via fireAllHooks: a pure
-        // side effect on the hand, nothing to intercept or sum.
-        onEnemyCollectedTable() {
-            if (dealCard(battle.enemyHand) !== null) {
+    {
+        id: 'cascade_transfer', rarity: RARITY.RARE, icon: '🎱', price: 11,
+        descParams: () => ({ n: CASCADE_TRANSFER_DAMAGE }),
+        effects: {
+            // Called from triggerCascadeTransfer(), fired whenever a transfer
+            // happens (player-initiated, or bounced back by the ai_transfer
+            // boss ability). Guarded per-turn via
+            // battle.cascadeTransferUsedThisTurn, which resetTurnScopedFlags()
+            // clears when the turn passes — unlike safety_rope, this recharges
+            // every turn rather than being consumed for the whole run, so the
+            // guard lives on battle (turn-scoped state), not run.relics.
+            // Dispatched via fireAllHooks (not fireHook): the guard is this
+            // relic's own concern, and a future second onTransfer owner
+            // shouldn't be silently skipped just because this one already
+            // fired its charge this turn.
+            onTransfer() {
+                if (battle.cascadeTransferUsedThisTurn) return;
+                battle.cascadeTransferUsedThisTurn = true;
+                damageEnemyHP(CASCADE_TRANSFER_DAMAGE);
                 return true;
             }
         }
     },
-    ballast_drop: {
-        // Called from handlePlayerTake() via fireAllHooks, after the cards
-        // from the table are already in the player's hand and only if the
-        // take did NOT just kill the enemy (victory takes priority over the
-        // take's own consequences). Deliberately a separate hook from
-        // onPlayerTookCards: that one fires BEFORE the enemy-death check, so
-        // a discard there would hit the hand of a player who already won.
-        // Fires before applyPlayerDamage().
-        // Dispatched via fireAllHooks: a pure side effect on the
-        // hand, nothing to intercept or sum.
-        onPlayerTakePenalty({ cardsTakenCount }) {
-            if (cardsTakenCount < BALLAST_DROP_DISCARD_COUNT) return;
-            discardLowestNonTrumpCards(battle.playerHand, BALLAST_DROP_DISCARD_COUNT);
-            return true;
+    {
+        id: 'sleight_of_hand', rarity: RARITY.UNCOMMON, icon: '🪄', price: 12,
+        effects: {
+            // Once per battle, while defending against an undefended attack
+            // card, swap that card for a random card from the draw deck.
+            // Same active-ability shape as pocket_discard/jester_discard
+            // above: isReady() is the single source of truth, called from
+            // both showRelicPopover() and useSleightOfHand().
+            //
+            // Restricted to the player defending (defender === 'player')
+            // against an attack that still has an unanswered pair on the
+            // table, with at least one card left in the draw deck to swap
+            // in.
+            isReady() {
+                return !battle.sleightOfHandUsedThisBattle && canAcceptPlayerAction()
+                    && battle.defender === 'player'
+                    && hasOpenAttacks()
+                    && battle.drawDeck.length > 0;
+            },
+            get label() { return t('relic.sleight_of_hand.action'); },
+            onUse: () => useSleightOfHand()
         }
     },
-    pocket_discard: {
-        // Once per round, permanently discard a 6 or 7 from hand. Not fired
-        // from a game-event call site like the hooks above — it's a
-        // player-triggered ability rendered as a button by
-        // showRelicPopover() and executed by usePocketDiscard(). Both of
-        // those call isReady(), so the "can this fire right now" condition
-        // lives in exactly one place instead of being copy-pasted between
-        // the render check and the click-handler guard.
-        //
-        // Restricted to the player's own attacking turn (defender ===
-        // 'enemy'): using it while the player is defending against an
-        // enemy attack (defender === 'player') is deliberately disallowed,
-        // so the player can't shed a card mid-defense.
-        isReady() {
-            return !battle.pocketDiscardUsedThisRound && canAcceptPlayerAction()
-                && battle.defender === 'enemy'
-                && battle.playerHand.some(isPocketDiscardCard);
-        },
-        get label() { return t('relic.pocket_discard.action'); },
-        onUse: () => usePocketDiscard()
+    {
+        id: 'salted_wound', rarity: RARITY.UNCOMMON, icon: '🧂', price: 10,
+        descParams: () => ({ n: SALTED_WOUND_DAMAGE_PER_CARD, limit: HAND_SIZE, max: ENEMY_HAND_EXCESS_CAP * SALTED_WOUND_DAMAGE_PER_CARD }),
+        effects: {
+            // Called from handleEnemyTake() via fireHookSum, folded into the
+            // single `damage` total that call site's own one damageEnemyHP()
+            // call applies. Same excess-hand formula as heavy_ballast, but a
+            // pure modifier here rather than a direct damageEnemyHP call — it
+            // must not cause its own separate HP reduction (see fireHookSum's
+            // comment for why that would be unsafe).
+            onEnemyTookCards() {
+                return getEnemyDamageExcess(battle.enemyHand.length) * SALTED_WOUND_DAMAGE_PER_CARD;
+            }
+        }
     },
-    jester_discard: {
-        // Once per battle, on the player's own attacking turn with an
-        // empty table, discard the whole hand and redraw the same number of
-        // cards. Same active-ability shape as pocket_discard above.
-        //
-        // Requires the draw deck to hold at least a full hand's worth of
-        // cards: a partial redraw could leave the player with fewer cards than
-        // they discarded (or, with an empty deck, none at all) — a downgrade
-        // dressed up as a reshuffle. Below this threshold the ability just isn't
-        // offered.
-        isReady() {
-            return !battle.jesterDiscardUsedThisBattle && canAcceptPlayerAction()
-                && battle.defender === 'enemy' && battle.table.length === 0
-                && battle.drawDeck.length >= battle.playerHand.length;
-        },
-        get label() { return t('relic.jester_discard.action'); },
-        onUse: () => useJesterDiscard()
+    {
+        id: 'sharp_suit', rarity: RARITY.UNCOMMON, icon: '🗡️', price: 9,
+        descParams: () => ({ n: SHARP_SUIT_DAMAGE }),
+        effects: {
+            // Called from onPlayerCardPlayed() for every card the PLAYER plays
+            // (attack, throw-in, transfer or defend) — deliberately not from the shared
+            // onCardPlayed hook, which also fires for the enemy's cards. It used to
+            // trigger only when defending with a trump, which was too rare to matter.
+            onPlayerCardPlayed(card) {
+                if (card.suit === battle.trumpSuit) {
+                    damageEnemyHP(SHARP_SUIT_DAMAGE);
+                    return true;
+                }
+            }
+        }
     },
-    sleight_of_hand: {
-        // Once per battle, while defending against an undefended attack
-        // card, swap that card for a random card from the draw deck.
-        // Same active-ability shape as pocket_discard/jester_discard
-        // above: isReady() is the single source of truth, called from
-        // both showRelicPopover() and useSleightOfHand().
-        //
-        // Restricted to the player defending (defender === 'player')
-        // against an attack that still has an unanswered pair on the
-        // table, with at least one card left in the draw deck to swap
-        // in.
-        isReady() {
-            return !battle.sleightOfHandUsedThisBattle && canAcceptPlayerAction()
-                && battle.defender === 'player'
-                && hasOpenAttacks()
-                && battle.drawDeck.length > 0;
-        },
-        get label() { return t('relic.sleight_of_hand.action'); },
-        onUse: () => useSleightOfHand()
+    {
+        id: 'moonshine_flask', rarity: RARITY.UNCOMMON, icon: '🍶', price: 12,
+        descParams: () => ({ n: FLASK_HEAL_ON_DEFEND }),
+        effects: {
+            // Same trigger as midas_touch: handleBito() with the player as the defender
+            // and every attack beaten, once per round. Heals through healPlayerHP(), so
+            // it never exceeds max HP; it only flashes when HP was actually restored.
+            onDefenseSucceeded() {
+                return healPlayerHP(FLASK_HEAL_ON_DEFEND) > 0;
+            }
+        }
+    },
+    {
+        id: 'golden_bullet', rarity: RARITY.UNCOMMON, icon: '🔫', price: 8,
+        descParams: () => ({ n: GOLDEN_BULLET_DAMAGE }),
+        effects: {
+            // Fired from changeGold() when an ARTIFACT (midas_touch, coin_magnet) just paid
+            // the player gold; the victory reward, shop actions and enemy abilities do
+            // not count. A direct damage source, so it can kill the enemy in the middle of
+            // another handler's action (handleBito, an enemy card play): those call sites
+            // check didEnemyJustDie().
+            onGoldGained() {
+                damageEnemyHP(GOLDEN_BULLET_DAMAGE);
+                return true;
+            }
+        }
+    },
+    {
+        id: 'transfer_streak', rarity: RARITY.UNCOMMON, icon: '🌊', price: 10,
+        descParams: () => ({ n: TRANSFER_STREAK_DAMAGE_PER_LINK }),
+        effects: {
+            // The streak (battle.transferStreak) is the number of transfers the PLAYER made in a
+            // row this battle. It grows on onPlayerTransfer (an opponent's ai_transfer does not
+            // count) and breaks when the player beats a card (onPlayerBeatCard, per card) or
+            // takes the table (onPlayerTookCards). Attacking and throwing in neither grow nor
+            // break it. startFloorBattle() zeroes it, so a streak never outlives its battle.
+            onPlayerTransfer() {
+                battle.transferStreak++;
+                // An earlier hook on this very transfer (sharp_suit, cascade_transfer) may have
+                // already won the battle: a second hit would pay the victory out twice.
+                if (battle.phase === BATTLE_PHASES.BATTLE_OVER) return;
+                damageEnemyHP(TRANSFER_STREAK_DAMAGE_PER_LINK * battle.transferStreak);
+                return true;
+            },
+            // Both reset hooks return true only when there was a streak to lose, so the
+            // artifact flashes exactly when the player sees the counter vanish.
+            onPlayerBeatCard() {
+                return resetTransferStreak();
+            },
+            onPlayerTookCards() {
+                return resetTransferStreak();
+            },
+            // Passive: the small number drawn over the icon (renderRelicSlots); 0 = no badge.
+            getBadge() {
+                return battle.transferStreak;
+            }
+        }
+    },
+    {
+        id: 'defense_streak', rarity: RARITY.UNCOMMON, icon: '🦏', price: 10,
+        effects: {
+            // The streak (battle.defenseStreak) is the number of rounds the PLAYER defended successfully
+            // in a row this battle. It grows on onDefenseSucceeded (once per round, not per beaten card)
+            // and ends when the player transfers (onPlayerTransfer) or takes the table. A take spends it:
+            // that many of the taken cards deal no self-damage (getTakeCardDiscount, read in
+            // applyPlayerTake() before anything resets), then onPlayerTookCards clears it. Attacking and
+            // throwing in neither grow nor break it. startFloorBattle() zeroes it.
+            onDefenseSucceeded() {
+                battle.defenseStreak++;
+                return true;
+            },
+            onPlayerTransfer() {
+                return resetDefenseStreak();
+            },
+            // Only counts cards that were really taken, so the artifact flashes exactly when it saved some.
+            getTakeCardDiscount({ cardsTakenCount }) {
+                return Math.min(battle.defenseStreak, cardsTakenCount);
+            },
+            onPlayerTookCards() {
+                return resetDefenseStreak();
+            },
+            getBadge() {
+                return battle.defenseStreak;
+            }
+        }
+    },
+    {
+        id: 'take_streak', rarity: RARITY.UNCOMMON, icon: '🔋', price: 10,
+        descParams: () => ({ transfer: TAKE_STREAK_TRANSFER_DAMAGE_PER_TAKE, defense: TAKE_STREAK_DEFENSE_DAMAGE_PER_TAKE, max: TAKE_STREAK_MAX_CHARGE }),
+        effects: {
+            // The charge (battle.takeStreak) is the number of takes in a row that cost the PLAYER HP
+            // this battle, up to TAKE_STREAK_MAX_CHARGE. A take adds 1 (onPlayerTakeDamaged, fired after
+            // the damage landed, so a free take adds nothing) and deals nothing by itself.
+            // The first transfer or successful defense after it spends the whole charge as a hit of N
+            // times the per-take damage. Attacking, throwing in and beating single cards leave it alone.
+            // startFloorBattle() zeroes it, so a charge never outlives its battle.
+            onPlayerTakeDamaged() {
+                if (battle.takeStreak >= TAKE_STREAK_MAX_CHARGE) return false;
+                battle.takeStreak++;
+                return true;
+            },
+            onPlayerTransfer() {
+                return dischargeTakeStreak(TAKE_STREAK_TRANSFER_DAMAGE_PER_TAKE);
+            },
+            onDefenseSucceeded() {
+                return dischargeTakeStreak(TAKE_STREAK_DEFENSE_DAMAGE_PER_TAKE);
+            },
+            getBadge() {
+                return battle.takeStreak;
+            }
+        }
     }
-};
+];
+
+const ALL_RELICS = RELIC_DEFS.map(({ id, rarity, icon, price }) => ({ id, rarity, icon, price }));
+const RELIC_EFFECTS = Object.fromEntries(RELIC_DEFS.map(def => [def.id, def.effects]));
+const RELIC_DESC_PARAMS = Object.fromEntries(RELIC_DEFS.filter(def => def.descParams).map(def => [def.id, def.descParams]));
+
+// The active (button-triggered) relics: the ones whose effects have an onUse. This list is
+// what makes showRelicPopover() decide whether to offer an activate button at all, and
+// what gives a relic's relics-bar slot the "ready to tap" .relic-ready-glow ring.
+const ACTIVE_RELIC_IDS = RELIC_DEFS.filter(def => def.effects.onUse).map(def => def.id);
+
+// Relic text is looked up by id, so a relic saved in one language is shown in the current one.
+function getRelicName(relic) {
+    return t(`relic.${relic.id}.name`);
+}
+
+function getRelicDesc(relic) {
+    const params = RELIC_DESC_PARAMS[relic.id];
+    return t(`relic.${relic.id}.desc`, params ? params() : undefined);
+}
+
+// name/desc stay readable on the catalogue entries but are not enumerable data, so copying a
+// relic into a run (and into its save) never freezes a language into it.
+ALL_RELICS.forEach(relic => Object.defineProperties(relic, {
+    name: { get: () => getRelicName(relic) },
+    desc: { get: () => getRelicDesc(relic) }
+}));
 
 // Relic id -> timestamp (ms) until which its relics-bar slot should
 // render with the `relic-highlight` flash class. Populated by
@@ -7657,11 +7697,25 @@ function runGameUnitTests() {
         });
 
         // ---- relics: one dispatch mechanism ----
-        it('Relic registry: every relic in ALL_RELICS has an entry in RELIC_EFFECTS (incl. passive cheat_eye)', () => {
-            for (const relic of ALL_RELICS) {
-                assert.isTrue(relic.id in RELIC_EFFECTS, 'no entry in RELIC_EFFECTS: ' + relic.id);
+        it('RELIC_DEFS: one well-formed definition per relic; the catalogue, effects, params and active list are derived from it', () => {
+            const ids = RELIC_DEFS.map(def => def.id);
+            assert.equal(new Set(ids).size, ids.length, 'duplicate relic id');
+            for (const def of RELIC_DEFS) {
+                assert.isTrue(Object.values(RARITY).includes(def.rarity), def.id + ': unknown rarity');
+                assert.isTrue(typeof def.icon === 'string' && def.icon.length > 0, def.id + ': no icon');
+                assert.isTrue(Number.isInteger(def.price) && def.price > 0, def.id + ': bad price');
+                assert.isTrue(typeof def.effects === 'object' && def.effects !== null, def.id + ': no effects');
+                assert.isTrue(def.effects === RELIC_EFFECTS[def.id], def.id + ': RELIC_EFFECTS must be the definition effects');
+                assert.equal(RELIC_DESC_PARAMS[def.id], def.descParams, def.id + ': RELIC_DESC_PARAMS out of sync');
             }
-            assert.equal(typeof RELIC_EFFECTS.cheat_eye.getRevealedEnemyCard, 'function');
+            assert.equal(ALL_RELICS.map(r => r.id).join(), ids.join(), 'ALL_RELICS keeps the definition order');
+            assert.equal(ACTIVE_RELIC_IDS.join(), RELIC_DEFS.filter(def => def.effects.onUse).map(def => def.id).join());
+            for (const id of ACTIVE_RELIC_IDS) {
+                assert.equal(typeof RELIC_EFFECTS[id].isReady, 'function', id + ': an active relic needs isReady');
+                assert.equal(typeof RELIC_EFFECTS[id].onUse, 'function', id + ': an active relic needs onUse');
+                assert.equal(typeof RELIC_EFFECTS[id].label, 'string', id + ': an active relic needs a label');
+            }
+            assert.equal(typeof RELIC_EFFECTS.cheat_eye.getRevealedEnemyCard, 'function', 'passive cheat_eye');
         });
 
         it('queryRelicHook(): first truthy result without highlight; no relic - null; cheat_eye shows the enemy highest card', () => {
