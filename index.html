@@ -3524,18 +3524,22 @@ function executeEnemyAI() {
     if (checkRoundEnd()) return;
     setBattlePhase(BATTLE_PHASES.RESOLVING);
 
-    if (battle.defender === 'player') {
-        // Enemy is attacking this turn. heavy_ballast ticks once at the start of
-        // that turn, not on every recursive executeEnemyAI() call within it. Only
-        // bail out if a hook just brought a previously-alive enemy to 0 — not
-        // merely because battle.enemyHP happens to be unset/0 (e.g. in a test
-        // fixture that doesn't touch HP at all).
+    const action = chooseEnemyAction();
+
+    // A turn of the opponent starts exactly when it lays a card on an EMPTY table
+    // (an 'attack' action). A transfer is a card on a non-empty table, so it is not
+    // a turn start, and neither is any later step of the same turn. onEnemyTurnStart
+    // (heavy_ballast) fires before the card is laid, so the hand it reads is the full
+    // one. Only bail out if a hook just brought a previously-alive enemy to 0 — not
+    // merely because battle.enemyHP happens to be unset/0 (e.g. in a test fixture
+    // that doesn't touch HP at all).
+    if (action.type === 'attack') {
         const enemyHPBeforeTurnStart = battle.enemyHP;
         fireAllHooks('onEnemyTurnStart');
         if (didEnemyJustDie(enemyHPBeforeTurnStart)) return;
     }
 
-    executeEnemyAction(chooseEnemyAction());
+    executeEnemyAction(action);
 }
 
 // ============================================================
@@ -3741,9 +3745,10 @@ const RELIC_EFFECTS = {
         }
     },
     heavy_ballast: {
-        // Fired once at the start of the enemy's attacking turn (from
-        // executeEnemyAI's "enemy is attacker" branch), not on every
-        // recursive executeEnemyAI() call within that turn. Guarded via
+        // Fired once at the start of the enemy's turn: when executeEnemyAI is
+        // about to lay an attack card on an empty table. An ai_transfer is not a
+        // turn start (the table is not empty), and later steps of the same turn
+        // never fire it. Kept as a safety net, guarded via
         // battle.heavyBallastAppliedThisTurn, reset by
         // resetTurnScopedFlags() — same turn-scoped shape as
         // cascade_transfer's guard, and dispatched via fireAllHooks for
@@ -9389,6 +9394,42 @@ function runGameUnitTests() {
                 // 9 cards in the enemy hand - 6 = 3 excess (not capped, since < 4)
                 assert.equal(battle.enemyHP, 47);
                 assert.isTrue(battle.heavyBallastAppliedThisTurn);
+            });
+        });
+
+        it('heavy_ballast: ticks before the attack card is laid, so the full hand is counted', () => {
+            game({ relics: [{ id: 'heavy_ballast' }] }, {
+                drawDeck: [heart('d1', 6)],
+                enemyHand: testCards('e', 'Pikes', 9),
+                trumpCard: heart('t1', 6),
+                defender: 'player', table: [],
+                enemyHP: 50, phase: BATTLE_PHASES.AI_WAITING
+            }, () => {
+                executeEnemyAI();
+                assert.equal(battle.enemyHP, 47, '9 cards - 6 = 3 excess, counted before the attack card leaves the hand');
+                assert.equal(battle.table.length, 1, 'the attack card is laid after the tick');
+            });
+        });
+
+        it('heavy_ballast: an ai_transfer is not a turn start - no tick on it nor on the later steps', () => {
+            const transferEnemyFloor = ENEMIES.findIndex(e => e.activeAbilities && e.activeAbilities.has('ai_transfer')) + 1;
+            game({ relics: [{ id: 'heavy_ballast' }], floor: transferEnemyFloor }, {
+                drawDeck: [heart('d1', 6)],
+                table: [testPair(pike('a1', 7))],
+                enemyHand: [heart('e1', 7), ...testCards('e', 'Pikes', 8)],
+                playerHand: [heart('p1', 10), heart('p2', 11), heart('p3', 12)],
+                trumpCard: heart('t1', 6),
+                defender: 'enemy',
+                enemyHP: 50, phase: BATTLE_PHASES.AI_WAITING
+            }, () => {
+                executeEnemyAI();
+                assert.equal(battle.defender, 'player', 'the opponent transferred the attack');
+                assert.equal(battle.enemyHP, 50, 'a transfer must not tick heavy_ballast');
+                // The player acts, then the AI is asked for its next step within the same turn.
+                setBattlePhase(BATTLE_PHASES.AI_WAITING);
+                executeEnemyAI();
+                assert.equal(battle.enemyHP, 50, 'a later step of the same turn must not tick heavy_ballast');
+                assert.isFalse(battle.heavyBallastAppliedThisTurn);
             });
         });
 
